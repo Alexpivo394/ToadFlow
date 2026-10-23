@@ -1,0 +1,40 @@
+<Project Sdk="Nice3point.Revit.Sdk/6.2.2">
+
+    <!-- Аддин фермы для Revit 2020–2027: выполняет задания агента через пакет Alexpivo394.Revit.Export.
+         Собирается конфигурациями Debug.R20…Release.R27 (ToadFlow.Revit.slnx). -->
+    <PropertyGroup>
+        <Configurations>Debug.R20;Debug.R21;Debug.R22;Debug.R23;Debug.R24;Debug.R25;Debug.R26;Debug.R27</Configurations>
+        <Configurations>$(Configurations);Release.R20;Release.R21;Release.R22;Release.R23;Release.R24;Release.R25;Release.R26;Release.R27</Configurations>
+        <RootNamespace>ToadFlow.Revit.Addin</RootNamespace>
+        <UseWPF>true</UseWPF>
+        <PublishAddin>true</PublishAddin>
+        <EnableDynamicLoading>true</EnableDynamicLoading>
+    </PropertyGroup>
+
+    <!-- При отладке аддин сразу кладётся в %AppData%\Autodesk\Revit\Addins\20NN -->
+    <PropertyGroup Condition="$(Configuration.StartsWith('Debug'))">
+        <DeployAddin>true</DeployAddin>
+    </PropertyGroup>
+
+    <!-- Revit до 2027 не изолирует зависимости аддинов: Newtonsoft, Toolkit и библиотеку выгрузки вливаем в сборку аддина,
+         чтобы они не конфликтовали с версиями, уже загруженными Revit или другими аддинами. В 2027 — свой контекст загрузки (манифест). -->
+    <PropertyGroup Condition="'$(RevitVersion)' &lt; '2027'">
+        <IsRepackable>true</IsRepackable>
+        <RepackBinariesExcludes>System*.dll</RepackBinariesExcludes>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Nice3point.Revit.Toolkit"/>
+        <PackageReference Include="Nice3point.Revit.Extensions"/>
+        <PackageReference Include="Nice3point.Revit.Api.RevitAPI"/>
+        <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI"/>
+        <PackageReference Include="Alexpivo394.Revit.Export"/>
+        <PackageReference Include="Newtonsoft.Json"/>
+        <PackageReference Include="ILRepack" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Contracts\ToadFlow.Contracts.csproj"/>
+    </ItemGroup>
+
+</Project>

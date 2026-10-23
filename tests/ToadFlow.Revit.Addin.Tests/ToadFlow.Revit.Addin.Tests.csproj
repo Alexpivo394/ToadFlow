@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Логика аддина без Revit: файлы подключаются ссылками, пакет экспорта — сборка для Revit 2027 (только его Revit-независимые типы). -->
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RevitVersion>2027</RevitVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="TUnit"/>
+        <PackageReference Include="Shouldly"/>
+        <PackageReference Include="Newtonsoft.Json"/>
+        <PackageReference Include="Alexpivo394.Revit.Export"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\ToadFlow.Contracts\ToadFlow.Contracts.csproj"/>
+        <ProjectReference Include="..\..\src\ToadFlow.Agent.Core\ToadFlow.Agent.Core.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="..\..\src\ToadFlow.Revit.Addin\Logic\*.cs" Link="Linked\%(Filename)%(Extension)"/>
+        <None Include="..\ToadFlow.Agent.Tests\Pipe\samples\*.json" Link="samples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+
+</Project>

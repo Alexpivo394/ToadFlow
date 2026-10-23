@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>ToadFlow.Server</RootNamespace>
+        <!-- Ядро сервера — библиотека; приложение собирает ToadFlow.Server.Host вместе с модулями -->
+        <OutputType>Library</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all"/>
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL"/>
+        <PackageReference Include="EFCore.NamingConventions"/>
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer"/>
+    </ItemGroup>
+
+    <!-- Встроенный Postgres для разработки без Docker — только в Debug, в продакшен-сборку не попадает -->
+    <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+        <PackageReference Include="MysticMind.PostgresEmbed"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Contracts\ToadFlow.Contracts.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ToadFlow.Server.Tests"/>
+    </ItemGroup>
+
+</Project>

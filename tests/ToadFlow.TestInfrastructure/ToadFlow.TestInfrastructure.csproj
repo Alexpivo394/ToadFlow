@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Общее для интеграционных тестов сервера и агента: встроенный Postgres, сервер в памяти, тестовый агент -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>ToadFlow.Server.Tests.Infrastructure</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="TUnit.Core"/>
+        <PackageReference Include="Shouldly"/>
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing"/>
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing"/>
+        <PackageReference Include="MysticMind.PostgresEmbed"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\ToadFlow.Server.Host\ToadFlow.Server.Host.csproj"/>
+    </ItemGroup>
+
+</Project>

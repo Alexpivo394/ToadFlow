@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <!-- Модуль «Выгрузка RVT/NWC» на сервере: пресеты, настройки расписания, payload заданий -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Library</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Server\ToadFlow.Server.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ToadFlow.Server.Tests"/>
+    </ItemGroup>
+
+</Project>

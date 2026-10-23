@@ -1,0 +1,44 @@
+name: toadflow
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: toadflow
+      POSTGRES_USER: toadflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toadflow -d toadflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=toadflow;Username=toadflow;Password=${POSTGRES_PASSWORD}"
+      Auth__JwtKey: ${JWT_KEY:?задайте JWT_KEY в .env (не короче 32 символов)}
+      Admin__Login: ${ADMIN_LOGIN:-admin}
+      Admin__Password: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD в .env}
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  postgres:

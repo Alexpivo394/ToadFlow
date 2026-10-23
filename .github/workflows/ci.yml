@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    name: Server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Тесты сами поднимают встроенный PostgreSQL (MysticMind.PostgresEmbed) — сервис-контейнер не нужен.
+      - name: Test
+        run: dotnet test --project tests/ToadFlow.Server.Tests
+
+  web:
+    name: Web tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  deploy-check:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compose file is valid
+        working-directory: deploy
+        run: cp .env.example .env && docker compose config --quiet
+
+      - name: Build server image
+        run: docker build -f deploy/server.Dockerfile -t toadflow-server .
+
+      - name: Build web image
+        run: docker build -f deploy/web.Dockerfile -t toadflow-web .
+
+      - name: nginx config is valid
+        run: docker run --rm --add-host server:127.0.0.1 toadflow-web nginx -t
+
+  agent-windows:
+    name: Agent and Revit add-in
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # версия считается GitVersion по истории
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      # Аддин для всех версий Revit (ModularPipelines, build/)
+      - name: Compile add-in
+        run: dotnet run -c Release
+        working-directory: build
+
+      - name: Agent and add-in tests
+        run: dotnet run -c Release -- test
+        working-directory: build

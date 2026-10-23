@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <!-- Приложение сервера: ядро + подключённые модули. Новый модуль — ссылка на проект и одна строка в Program.cs. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>ToadFlow.Server.Host</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Server\ToadFlow.Server.csproj"/>
+        <ProjectReference Include="..\ToadFlow.Server.Export\ToadFlow.Server.Export.csproj"/>
+    </ItemGroup>
+
+</Project>

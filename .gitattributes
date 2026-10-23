@@ -1,0 +1,12 @@
+# Normalize line endings: let Git handle EOL automatically.
+* text=auto
+
+# Keep shell scripts LF.
+*.sh text eol=lf
+
+# Treat known binary types as binary.
+*.png binary
+*.jpg binary
+*.ico binary
+*.nwc binary
+*.rvt binary

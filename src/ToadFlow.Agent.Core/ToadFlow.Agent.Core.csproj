@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Логика агента без UI: связь с сервером, экземпляры Revit, задания, обзор источников. Агент живёт только на Windows. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <RootNamespace>ToadFlow.Agent</RootNamespace>
+        <!-- LibraryImport (загрузка процессора и память машины) -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="System.Security.Cryptography.ProtectedData"/>
+        <PackageReference Include="Alexpivo394.Revit.Export.Sources"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting"/>
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Contracts\ToadFlow.Contracts.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ToadFlow.Agent.Tests"/>
+    </ItemGroup>
+
+</Project>

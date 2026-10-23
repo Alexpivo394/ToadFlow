@@ -1,0 +1,259 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { Alert, Button, Checkbox, Group, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '../../api/client';
+import { useApi, useApiMutation } from '../../api/queries';
+import type { Preset, ScheduleChange, ScheduleRequest, ScheduleView, Source } from '../../api/types';
+import { useAuth } from '../../auth/AuthContext';
+import { ExportSettingsForm } from '../../components/ExportSettingsForm';
+import { ConfirmButton, Empty, Panel } from '../../components/ui';
+import { formatDateTime } from '../../lib/format';
+import { RecurrenceFields } from './RecurrenceFields';
+import { duplicateNames, fromSelectionDto, setFormats, toSelectionDto, type SelectionState } from './selection';
+import { SourceTree } from './SourceTree';
+
+function blank(presetId: string): ScheduleRequest {
+  return {
+    name: '',
+    moduleKind: 'export',
+    sourceId: '',
+    outputFolderTemplate: '\\\\nas\\exports\\{расписание}\\{дата}',
+    selection: { models: [], folders: [] },
+    moduleSettings: { presetId, overrides: {} },
+    recurrenceKind: 'Weekly',
+    daysOfWeekMask: 0b0011111,
+    timeOfDay: '20:00:00',
+    intervalHours: null,
+    onceAt: null,
+    priority: 0,
+    modelTimeoutMinutes: 30,
+    maxRetries: 1,
+    isEnabled: true,
+  };
+}
+
+function fromView(view: ScheduleView): ScheduleRequest {
+  const { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings, recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority,
+    modelTimeoutMinutes, maxRetries, isEnabled } = view;
+  return { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings: { presetId: moduleSettings.presetId, overrides: moduleSettings.overrides ?? {} },
+    recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority, modelTimeoutMinutes, maxRetries, isEnabled };
+}
+
+export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) {
+  const { can } = useAuth();
+  const readOnly = !can('Operator');
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const sources = useApi<Source[]>(['sources'], '/api/sources');
+  const presets = useApi<Preset[]>(['presets'], '/api/export/presets');
+  const changes = useApi<ScheduleChange[]>(['schedules', schedule?.id, 'changes'], schedule ? `/api/schedules/${schedule.id}/changes` : null);
+  const defaultPreset = presets.data?.find((p) => p.isDefault)?.id ?? '';
+
+  const [form, setForm] = useState<ScheduleRequest>(() => (schedule ? fromView(schedule) : blank(defaultPreset)));
+  const [selection, setSelection] = useState<SelectionState>(() => fromSelectionDto(form.selection));
+  const [includeNew, setIncludeNew] = useState(() => form.selection.folders.length > 0 || form.selection.models.length === 0);
+  const [errors, setErrors] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!schedule && !form.moduleSettings.presetId && defaultPreset)
+      setForm((f) => ({ ...f, moduleSettings: { ...f.moduleSettings, presetId: defaultPreset } }));
+  }, [defaultPreset, schedule, form.moduleSettings.presetId]);
+
+  const set = (patch: Partial<ScheduleRequest>) => setForm((f) => ({ ...f, ...patch }));
+  const source = sources.data?.find((s) => s.id === form.sourceId);
+  const preset = presets.data?.find((p) => p.id === form.moduleSettings.presetId);
+  const duplicates = useMemo(() => duplicateNames(selection), [selection]);
+  const selected = toSelectionDto(selection);
+
+  const run = useApiMutation<void>('POST', () => `/api/schedules/${schedule!.id}/run`, { invalidate: ['runs'], success: 'Запуск создан — смотрите «Историю»' });
+  const toggle = useApiMutation<boolean>('POST', () => `/api/schedules/${schedule!.id}/enabled`, {
+    invalidate: ['schedules'],
+    json: (isEnabled) => ({ isEnabled }),
+  });
+  const remove = useApiMutation<void>('DELETE', () => `/api/schedules/${schedule!.id}`, { invalidate: ['schedules'], success: 'Расписание удалено' });
+
+  async function save() {
+    setSaving(true);
+    setErrors(null);
+    try {
+      const body = { ...form, selection: selected };
+      const saved = schedule
+        ? await apiFetch<ScheduleView>(`/api/schedules/${schedule.id}`, { method: 'PUT', json: body })
+        : await apiFetch<ScheduleView>('/api/schedules', { method: 'POST', json: body });
+      for (const warning of saved.warnings) notifications.show({ color: 'yellow', title: 'Обратите внимание', message: warning, autoClose: 10_000 });
+      notifications.show({ color: 'green', message: 'Расписание сохранено' });
+      await queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      if (!schedule) navigate(`/schedules/${saved.id}`);
+    } catch (error) {
+      setErrors((error as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel title={schedule ? `Расписание «${schedule.name}»` : 'Новое расписание'}>
+      {errors && (
+        <Alert color="red" mb="sm">
+          {errors}
+        </Alert>
+      )}
+      <Tabs defaultValue="main" keepMounted={false}>
+        <Tabs.List mb="md">
+          <Tabs.Tab value="main">Настройка</Tabs.Tab>
+          <Tabs.Tab value="models">Модели ({selected.models.length + selected.folders.length})</Tabs.Tab>
+          <Tabs.Tab value="export">Параметры RVT / NWC</Tabs.Tab>
+          {schedule && <Tabs.Tab value="history">История изменений</Tabs.Tab>}
+        </Tabs.List>
+
+        <Tabs.Panel value="main">
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+            <Stack gap="sm">
+              <TextInput label="Название" value={form.name} disabled={readOnly} onChange={(e) => set({ name: e.currentTarget.value })} required />
+              <Select
+                label="Источник"
+                description="Версия Revit определяется по нему"
+                data={(sources.data ?? []).map((s) => ({ value: s.id, label: `${s.name}${s.revitYear ? ` · Revit ${s.revitYear}` : ''}` }))}
+                value={form.sourceId || null}
+                disabled={readOnly}
+                onChange={(v) => set({ sourceId: v ?? '' })}
+              />
+              <TextInput
+                label="Папка результатов"
+                description="Подстановки: {дата}, {время}, {расписание}"
+                value={form.outputFolderTemplate}
+                disabled={readOnly}
+                onChange={(e) => set({ outputFolderTemplate: e.currentTarget.value })}
+              />
+            </Stack>
+            <Stack gap="sm">
+              <RecurrenceFields value={form} readOnly={readOnly} onChange={(v) => set(v)} />
+              <Group grow>
+                <Select
+                  label="Приоритет"
+                  data={[{ value: '1', label: 'Высокий' }, { value: '0', label: 'Обычный' }, { value: '-1', label: 'Низкий' }]}
+                  value={String(form.priority)}
+                  allowDeselect={false}
+                  disabled={readOnly}
+                  onChange={(v) => set({ priority: Number(v) })}
+                />
+                <NumberInput label="Таймаут на модель, мин" min={1} value={form.modelTimeoutMinutes} disabled={readOnly}
+                  onChange={(v) => set({ modelTimeoutMinutes: Number(v) || 30 })} />
+                <NumberInput label="Повторять упавшие" min={0} max={10} value={form.maxRetries} disabled={readOnly}
+                  onChange={(v) => set({ maxRetries: Number(v) || 0 })} />
+              </Group>
+              {schedule && (
+                <Text size="xs" c="dimmed">
+                  Создал: {schedule.createdBy}, {formatDateTime(schedule.createdAt)} · Последнее изменение: {schedule.updatedBy}, {formatDateTime(schedule.updatedAt)}
+                </Text>
+              )}
+            </Stack>
+          </SimpleGrid>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="models">
+          <Stack gap="sm">
+            <Checkbox label="Добавлять новые модели из отмеченных папок автоматически" checked={includeNew} disabled={readOnly}
+              onChange={(e) => setIncludeNew(e.currentTarget.checked)} />
+            {duplicates.length > 0 && <Alert color="yellow">Одинаковые имена моделей: {duplicates.join(', ')} — файлы перезапишут друг друга.</Alert>}
+            {source ? (
+              <SourceTree sourceId={source.id} rootPath={source.rootPath} selection={selection} includeNew={includeNew} readOnly={readOnly} onChange={setSelection} />
+            ) : (
+              <Empty>Выберите источник на вкладке «Настройка»</Empty>
+            )}
+            {(selected.models.length > 0 || selected.folders.length > 0) && (
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Отмечено</Table.Th>
+                    <Table.Th>RVT</Table.Th>
+                    <Table.Th>NWC</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {selected.folders.map((f) => (
+                    <Table.Tr key={f.folderPath}>
+                      <Table.Td>📁 {f.folderPath || '(весь источник)'} <Text span size="xs" c="dimmed">— и новые модели</Text></Table.Td>
+                      <Table.Td><Checkbox size="xs" checked={f.rvt} disabled={readOnly} onChange={(e) => setSelection(setFormats(selection, f.folderPath, { rvt: e.currentTarget.checked, nwc: f.nwc }))} /></Table.Td>
+                      <Table.Td><Checkbox size="xs" checked={f.nwc} disabled={readOnly} onChange={(e) => setSelection(setFormats(selection, f.folderPath, { rvt: f.rvt, nwc: e.currentTarget.checked }))} /></Table.Td>
+                    </Table.Tr>
+                  ))}
+                  {selected.models.map((m) => (
+                    <Table.Tr key={m.modelPath}>
+                      <Table.Td>{m.name} <Text span size="xs" c="dimmed">{m.modelPath}</Text></Table.Td>
+                      <Table.Td><Checkbox size="xs" checked={m.rvt} disabled={readOnly} onChange={(e) => setSelection(setFormats(selection, m.modelPath, { rvt: e.currentTarget.checked, nwc: m.nwc }))} /></Table.Td>
+                      <Table.Td><Checkbox size="xs" checked={m.nwc} disabled={readOnly} onChange={(e) => setSelection(setFormats(selection, m.modelPath, { rvt: m.rvt, nwc: e.currentTarget.checked }))} /></Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="export">
+          <Stack gap="md">
+            <Select
+              label="Пресет"
+              description="Поля, отличающиеся от пресета, подсвечены"
+              data={(presets.data ?? []).map((p) => ({ value: p.id, label: p.isDefault ? `${p.name} (по умолчанию)` : p.name }))}
+              value={form.moduleSettings.presetId || null}
+              allowDeselect={false}
+              disabled={readOnly}
+              onChange={(v) => set({ moduleSettings: { ...form.moduleSettings, presetId: v ?? '' } })}
+            />
+            {preset && (
+              <ExportSettingsForm base={preset.settings} overrides={form.moduleSettings.overrides} readOnly={readOnly}
+                onOverridesChange={(overrides) => set({ moduleSettings: { ...form.moduleSettings, overrides } })} />
+            )}
+          </Stack>
+        </Tabs.Panel>
+
+        {schedule && (
+          <Tabs.Panel value="history">
+            {(changes.data ?? []).length === 0 ? (
+              <Empty>Изменений нет</Empty>
+            ) : (
+              <Table>
+                <Table.Tbody>
+                  {changes.data!.map((c, i) => (
+                    <Table.Tr key={i}>
+                      <Table.Td c="dimmed" w={130}>{formatDateTime(c.at)}</Table.Td>
+                      <Table.Td w={180}>{c.userName}</Table.Td>
+                      <Table.Td>{c.summary}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Tabs.Panel>
+        )}
+      </Tabs>
+
+      {!readOnly && (
+        <Group mt="lg">
+          <Button onClick={save} loading={saving}>
+            Сохранить
+          </Button>
+          {schedule && (
+            <>
+              <Button variant="default" onClick={() => run.mutate()} loading={run.isPending}>
+                Запустить сейчас
+              </Button>
+              <Button variant="default" onClick={() => toggle.mutate(!schedule.isEnabled)}>
+                {schedule.isEnabled ? 'Выключить' : 'Включить'}
+              </Button>
+              <ConfirmButton variant="subtle" color="red" question={`Удалить расписание «${schedule.name}»? Запуски останутся в истории.`}
+                onConfirm={() => remove.mutate(undefined, { onSuccess: () => navigate('/schedules') })}>
+                Удалить
+              </ConfirmButton>
+            </>
+          )}
+        </Group>
+      )}
+    </Panel>
+  );
+}

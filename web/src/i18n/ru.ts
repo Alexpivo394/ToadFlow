@@ -1,0 +1,56 @@
+import type { AgentState, JobStatus, RunState, StepStatus, UserRole } from '../api/types';
+
+// Все подписи интерфейса в одном месте — чтобы позже можно было добавить английский.
+export const t = {
+  appName: 'ToadFlow',
+  nav: {
+    dashboard: 'Обзор',
+    schedules: 'Расписания',
+    history: 'История и логи',
+    settings: 'Настройки',
+    agents: 'Агенты',
+    sources: 'Источники',
+    presets: 'Пресеты выгрузки',
+    users: 'Пользователи',
+    general: 'Общие',
+  },
+  auth: {
+    title: 'Вход в ToadFlow',
+    login: 'Логин',
+    password: 'Пароль',
+    submit: 'Войти',
+    logout: 'Выйти',
+    failed: 'Неверный логин или пароль',
+  },
+  role: { Viewer: 'Наблюдатель', Operator: 'Оператор', Admin: 'Администратор' } satisfies Record<UserRole, string>,
+  agentState: { Online: 'в сети', Offline: 'нет связи', Draining: 'не берёт новые', Disabled: 'отключён' } satisfies Record<AgentState, string>,
+  jobStatus: {
+    Queued: 'в очереди',
+    Running: 'выполняется',
+    Succeeded: 'успешно',
+    Warning: 'с предупреждением',
+    Failed: 'ошибка',
+    Cancelled: 'отменено',
+  } satisfies Record<JobStatus, string>,
+  runState: {
+    Expanding: 'разворачивается',
+    Queued: 'в очереди',
+    Running: 'выполняется',
+    Completed: 'завершён',
+    Cancelled: 'отменён',
+  } satisfies Record<RunState, string>,
+  step: { NotRequested: '—', Done: 'выгружено', Skipped: 'пропущено', Failed: 'ошибка' } satisfies Record<StepStatus, string>,
+  common: {
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    delete: 'Удалить',
+    edit: 'Изменить',
+    create: 'Создать',
+    loading: 'Загрузка…',
+    empty: 'Пусто',
+    confirm: 'Подтвердите действие',
+    yes: 'Да',
+    no: 'Нет',
+    themeToggle: 'Сменить тему',
+  },
+};
