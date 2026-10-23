@@ -5,11 +5,11 @@
 - Если Navisworks Exporter не создал файл, модель больше не считается выгруженной — NWC помечается ошибкой
 
 **Надёжность**
-- Внутренняя ошибка Revit («A managed exception was thrown by Revit or by one of its external applications») считается сбоем фермы, а не модели: Revit перезапускается, модель повторяется автоматически
+- Внутренняя ошибка Revit («A managed exception was thrown by Revit or by one of its external applications») считается сбоем сервиса, а не модели: Revit перезапускается, модель повторяется автоматически
 
 # 1.0.0
 
-Первый выпуск фермы выгрузки ToadFlow.
+Первый выпуск ToadFlow — сервиса автоматизации работы с моделями Revit; первый модуль — экспорт в RVT и NWC.
 
 **Сервер и веб-интерфейс** (Linux, docker compose)
 - Дашборд: агенты, экземпляры Revit, текущие выгрузки, статистика

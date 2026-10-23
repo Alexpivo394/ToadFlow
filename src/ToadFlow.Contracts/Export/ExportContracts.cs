@@ -2,7 +2,7 @@ namespace ToadFlow.Contracts.Export;
 
 /// <summary>
 ///     Настройки выгрузки — те же поля и значения по умолчанию, что у <c>Alexpivo394.Revit.Export.Core.ExportOptions</c>,
-///     кроме <c>AllowUpgrade</c>: ферма никогда не обновляет модели.
+///     кроме <c>AllowUpgrade</c>: сервис никогда не обновляет модели.
 /// </summary>
 public sealed record ExportSettingsDto
 {

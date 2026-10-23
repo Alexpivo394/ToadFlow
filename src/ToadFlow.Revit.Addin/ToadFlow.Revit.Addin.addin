@@ -6,7 +6,7 @@
         <AddInId>3C2F6E0B-7A44-4C1D-9B57-2F1D8C6A9E21</AddInId>
         <FullClassName>ToadFlow.Revit.Addin.App</FullClassName>
         <VendorId>Alexpivo394</VendorId>
-        <VendorDescription>ToadFlow — ферма выгрузки RVT/NWC, https://github.com/Alexpivo394</VendorDescription>
+        <VendorDescription>ToadFlow — сервис автоматизации работы с моделями Revit, https://github.com/Alexpivo394</VendorDescription>
     </AddIn>
     <ManifestSettings>
         <UseRevitContext>False</UseRevitContext>

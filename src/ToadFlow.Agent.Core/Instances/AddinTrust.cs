@@ -4,7 +4,7 @@ namespace ToadFlow.Agent.Instances;
 
 /// <summary>
 ///     Помечает аддин ToadFlow доверенным («Всегда загружать») для Revit нужного года, чтобы при запуске не появлялось окно
-///     «Неподписанная надстройка», которое некому нажать на машине фермы. Revit хранит выбор в
+///     «Неподписанная надстройка», которое некому нажать на машине с агентом. Revit хранит выбор в
 ///     HKCU\Software\Autodesk\Revit\Autodesk Revit {год}\CodeSigning: имя значения — AddInId из манифеста, 1 — всегда загружать.
 /// </summary>
 public sealed class AddinTrust(RegistryKey? root = null, string? baseKey = null)

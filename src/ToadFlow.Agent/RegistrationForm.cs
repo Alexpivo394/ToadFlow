@@ -10,7 +10,7 @@ internal sealed class RegistrationForm : Form
     private readonly Button _connect = new() { Text = "Подключить", AutoSize = true };
     private readonly CheckBox _trustAddin = new()
     {
-        Text = "Загружать аддин ToadFlow в Revit без вопроса «Неподписанная надстройка»\n(на машине фермы это окно некому нажать)",
+        Text = "Загружать аддин ToadFlow в Revit без вопроса «Неподписанная надстройка»\n(на машине с агентом это окно некому нажать)",
         AutoSize = true,
         Checked = false,
         Margin = new Padding(0, 12, 0, 0)
