@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Center, Paper, PasswordInput, Stack, TextInput, Title } from '@mantine/core';
+import { Brand } from '../components/ui';
 import { t } from '../i18n/ru';
 import { useAuth } from './AuthContext';
 
@@ -28,7 +29,7 @@ export function LoginPage() {
       <Paper withBorder shadow="sm" p="xl" radius="md" w="100%" maw={380}>
         <form onSubmit={submit}>
           <Stack>
-            <Title order={2}>🐸 {t.auth.title}</Title>
+            <Brand size={40}><Title order={2}>{t.auth.title}</Title></Brand>
             {error && <Alert color="red">{error}</Alert>}
             <TextInput label={t.auth.login} value={loginName} onChange={(e) => setLoginName(e.currentTarget.value)} autoFocus required />
             <PasswordInput label={t.auth.password} value={password} onChange={(e) => setPassword(e.currentTarget.value)} required />

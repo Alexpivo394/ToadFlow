@@ -3,6 +3,7 @@ import { ActionIcon, AppShell as Shell, Box, Burger, Group, NavLink, Stack, Text
 import { useDisclosure } from '@mantine/hooks';
 import { IconCalendarTime, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
+import { Brand } from '../components/ui';
 import { t } from '../i18n/ru';
 import { useLiveUpdates } from '../live/useLiveUpdates';
 
@@ -28,15 +29,17 @@ export function AppShell() {
       <Shell.Header hiddenFrom="sm">
         <Group h="100%" px="md">
           <Burger opened={opened} onClick={toggle} size="sm" />
-          <Text fw={700}>🐸 {t.appName}</Text>
+          <Brand><Text fw={700}>{t.appName}</Text></Brand>
         </Group>
       </Shell.Header>
 
       <Shell.Navbar p="sm">
         <Stack gap={4} h="100%">
-          <Text fw={700} size="lg" px="sm" py="xs" visibleFrom="sm">
-            🐸 {t.appName}
-          </Text>
+          <Box px="sm" py="xs" visibleFrom="sm">
+            <Brand>
+              <Text fw={700} size="lg">{t.appName}</Text>
+            </Brand>
+          </Box>
           <NavLink component={RouterLink} to="/" end label={t.nav.dashboard} leftSection={<IconLayoutDashboard size={18} />} onClick={close} />
           <NavLink component={RouterLink} to="/schedules" label={t.nav.schedules} leftSection={<IconCalendarTime size={18} />} onClick={close} />
           <NavLink component={RouterLink} to="/history" label={t.nav.history} leftSection={<IconHistory size={18} />} onClick={close} />

@@ -21,6 +21,7 @@ internal sealed class RegistrationForm : Form
     public RegistrationForm()
     {
         Text = "Подключение к ToadFlow";
+        Icon = AppIcon.Get(SystemInformation.IconSize);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

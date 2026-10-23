@@ -10,10 +10,17 @@
         <Version>0.1.0</Version>
         <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <!-- Значок exe — его же показывают ярлык в «Пуске» и «Приложения» Windows -->
+        <ApplicationIcon>Resources\toadflow.ico</ApplicationIcon>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\ToadFlow.Agent.Core\ToadFlow.Agent.Core.csproj"/>
+    </ItemGroup>
+
+    <!-- Тот же логотип для значка в трее и окна подключения -->
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\toadflow.ico" LogicalName="toadflow.ico"/>
     </ItemGroup>
 
 </Project>

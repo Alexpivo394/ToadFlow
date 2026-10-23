@@ -59,7 +59,13 @@ var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs
     UI = WUI.WixUI_ProgressOnly,
     OutDir = "output",
     OutFileName = $"ToadFlowAgent-{args[0]}",
-    ControlPanelInfo = { Manufacturer = "ToadFlow", UrlInfoAbout = "https://github.com/Alexpivo394/ToadFlow" },
+    // Значок в «Приложения» Windows; ярлык в «Пуске» берёт значок самого exe агента.
+    ControlPanelInfo =
+    {
+        Manufacturer = "ToadFlow",
+        UrlInfoAbout = "https://github.com/Alexpivo394/ToadFlow",
+        ProductIcon = @"src\ToadFlow.Agent\Resources\toadflow.ico"
+    },
     Properties =
     [
         new Property("SERVER", ""),

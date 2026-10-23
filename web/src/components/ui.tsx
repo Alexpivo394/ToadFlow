@@ -95,3 +95,13 @@ export function Empty({ children }: { children: ReactNode }) {
     </Text>
   );
 }
+
+/** Логотип ToadFlow с названием — в меню и на странице входа. */
+export function Brand({ size = 28, children }: { size?: number; children: ReactNode }) {
+  return (
+    <Group gap={8} wrap="nowrap">
+      <img src="/logo.png" alt="" width={size} height={size} />
+      {children}
+    </Group>
+  );
+}

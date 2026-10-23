@@ -26,7 +26,7 @@ internal sealed class TrayApplication : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => Exit());
 
-        _icon = new NotifyIcon { Icon = SystemIcons.Application, ContextMenuStrip = menu, Visible = true, Text = "ToadFlow" };
+        _icon = new NotifyIcon { Icon = AppIcon.Get(SystemInformation.SmallIconSize), ContextMenuStrip = menu, Visible = true, Text = "ToadFlow" };
         _icon.DoubleClick += (_, _) => Open(config.ServerUrl);
 
         _timer = new System.Windows.Forms.Timer { Interval = 3000 };
