@@ -28,14 +28,14 @@
     <ItemGroup>
         <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.13"/>
         <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13"/>
-        <PackageVersion Include="Alexpivo394.Revit.Export.Sources" Version="1.0.0"/>
+        <PackageVersion Include="Alexpivo394.Revit.Export.Sources" Version="1.1.0"/>
     </ItemGroup>
 
     <!-- Revit add-in: версии по году Revit (конфигурации Debug/Release.R20–R27), как в ToadTools и ToadExport -->
     <ItemGroup>
         <PackageVersion Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitVersion).*-*" Condition="$(RevitVersion) != ''"/>
         <PackageVersion Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitVersion).*-*" Condition="$(RevitVersion) != ''"/>
-        <PackageVersion Include="Alexpivo394.Revit.Export" Version="$(RevitVersion).1.0" Condition="$(RevitVersion) != ''"/>
+        <PackageVersion Include="Alexpivo394.Revit.Export" Version="$(RevitVersion).1.1" Condition="$(RevitVersion) != ''"/>
 
         <PackageVersion Include="Nice3point.Revit.Toolkit" Version="2020.4.0" Condition="$(RevitVersion) == '2020'"/>
         <PackageVersion Include="Nice3point.Revit.Toolkit" Version="2021.4.0" Condition="$(RevitVersion) == '2021'"/>

@@ -111,7 +111,12 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
 
             var current = connection.Settings ?? settings;
             completion = await runner.RunAsync(instance, assignment, current, connection, ct, options.SilenceTimeoutOverride);
-            if (instance.KillReason is null && !instance.Process.HasExited) instances.Release(instance, current);
+            if (instance.KillReason is null && !instance.Process.HasExited)
+            {
+                // Аддин сообщил о внутренней ошибке Revit — этот процесс больше не доверяем, повтор пойдёт в новом.
+                if (completion.Outcome == JobOutcome.InfrastructureFailure) instances.Kill(instance.Slot, "внутренняя ошибка Revit — перезапуск");
+                else instances.Release(instance, current);
+            }
             await connection.CompleteJobAsync(completion, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

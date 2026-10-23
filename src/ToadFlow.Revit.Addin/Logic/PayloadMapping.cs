@@ -61,7 +61,9 @@ public static class PayloadMapping
             model.Nwc == StepResult.Done ? Size(nwcPath) : null,
             model.Rvt == StepResult.Done ? rvtPath : null,
             model.Nwc == StepResult.Done ? nwcPath : null);
-        return (ExportOutcome.From(result, model.SkippedByUser), result);
+        // Внутренняя ошибка Revit — не вина модели: сбой инфраструктуры, ферма повторит модель в новом Revit.
+        var outcome = model.RevitFailure && !model.SkippedByUser ? JobOutcome.InfrastructureFailure : ExportOutcome.From(result, model.SkippedByUser);
+        return (outcome, result);
     }
 
     private static StepStatus Status(StepResult step) => step switch

@@ -103,6 +103,21 @@ public class AgentEndToEndTests : ServerTest
     }
 
     [Test]
+    public async Task EndToEnd_RevitInternalErrorRetriedInFreshRevit()
+    {
+        _models.Model("АР.rvt", 2022);
+        _launcher.Then(FakeBehaviors.Ok(JobOutcome.InfrastructureFailure)).Then(FakeBehaviors.Ok());
+        await AgentAsync();
+
+        var runId = await RunNowAsync(maxRetries: 1);
+
+        var job = (await UntilAsync(runId, d => d.Run.State == RunState.Completed, 60_000)).Jobs.Single();
+        job.Status.ShouldBe(JobStatus.Succeeded);
+        job.Attempt.ShouldBe(2);
+        _launcher.Started.Count.ShouldBe(2); // повтор — в новом процессе Revit, не в том, где случилась ошибка
+    }
+
+    [Test]
     public async Task EndToEnd_HangRetriedThenSucceeds()
     {
         _models.Model("АР.rvt", 2022);

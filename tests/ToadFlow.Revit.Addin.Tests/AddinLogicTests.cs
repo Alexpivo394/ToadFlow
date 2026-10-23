@@ -116,6 +116,11 @@ public class PayloadMappingTests
     }
 
     [Test]
+    public void ToResult_RevitInternalError_InfrastructureFailure() =>
+        PayloadMapping.ToResult(new ModelResult { Name = "АР.rvt", Rvt = StepResult.Failed, RevitFailure = true }, Payload())
+            .Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+
+    [Test]
     public void ToResult_SkippedByUser_Cancelled() =>
         PayloadMapping.ToResult(new ModelResult { Name = "АР.rvt", SkippedByUser = true }, Payload()).Outcome.ShouldBe(JobOutcome.Cancelled);
 
