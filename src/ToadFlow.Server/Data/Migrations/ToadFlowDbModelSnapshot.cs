@@ -653,6 +653,62 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("export_presets", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Loi.LoiCatalog", b =>
+                {
+                    b.Property<int>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<string>("Catalog")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("catalog");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("RevitYear")
+                        .HasName("pk_loi_catalogs");
+
+                    b.ToTable("loi_catalogs", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.LoiProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ProfileJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("profile_json");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loi_profiles");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_loi_profiles_name");
+
+                    b.ToTable("loi_profiles", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.Job", b =>
                 {
                     b.HasOne("ToadFlow.Server.Data.Entities.Run", null)

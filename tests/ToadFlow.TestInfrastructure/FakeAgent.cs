@@ -48,11 +48,14 @@ public sealed class FakeAgent : IAsyncDisposable
     }
 
     /// <summary>Подключается и представляется серверу найденными версиями Revit.</summary>
-    public async Task<AgentSettingsDto> ConnectAsync(params InstalledRevitDto[] revits)
+    public Task<AgentSettingsDto> ConnectAsync(params InstalledRevitDto[] revits) => ConnectAsync("1.1.0", revits);
+
+    /// <param name="version">Версия агента: 1.0.x — до заданий LOI, такие получают только выгрузку.</param>
+    public async Task<AgentSettingsDto> ConnectAsync(string version, params InstalledRevitDto[] revits)
     {
         await Hub.StartAsync();
         return await Hub.InvokeAsync<AgentSettingsDto>(nameof(IAgentHub.Hello),
-            new AgentHelloDto(MachineName, "1.0.0", 65536, revits.Length > 0 ? revits : [new InstalledRevitDto(2022, true)]));
+            new AgentHelloDto(MachineName, version, 65536, revits.Length > 0 ? revits : [new InstalledRevitDto(2022, true)]));
     }
 
     public Task HeartbeatAsync(params InstanceStatusDto[] instances) =>

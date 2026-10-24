@@ -179,7 +179,7 @@ public static class HistoryEndpoints
         return jobs.Select(job =>
         {
             int? waiting = null;
-            if (job is { Status: JobStatus.Queued, RevitYear: { } year } && !serving.Any(a => CanServe(a, year, job.RequiresNwc))) waiting = year;
+            if (job is { Status: JobStatus.Queued, RevitYear: { } year } && !serving.Any(a => CanServe(a, job, year))) waiting = year;
 
             JsonElement? result = null;
             if (job.ResultJson is { } json)
@@ -195,8 +195,10 @@ public static class HistoryEndpoints
         }).ToList();
     }
 
-    private static bool CanServe(Agent agent, int year, bool requiresNwc) =>
-        agent.Limits.Any(l => l.Year == year && l.MaxInstances > 0) && (!requiresNwc || agent.Revits.Any(r => r.Year == year && r.HasNwcExporter));
+    private static bool CanServe(Agent agent, Job job, int year) =>
+        agent.Limits.Any(l => l.Year == year && l.MaxInstances > 0)
+        && (!job.RequiresNwc || agent.Revits.Any(r => r.Year == year && r.HasNwcExporter))
+        && AgentCapabilities.CanRun(agent.AgentVersion, job.ModuleKind);
 
     private static int Count(List<JobStatus> statuses, JobStatus status) => statuses.Count(s => s == status);
 }

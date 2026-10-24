@@ -11,6 +11,7 @@ const settingsLinks = [
   { to: '/settings/agents', label: t.nav.agents },
   { to: '/settings/sources', label: t.nav.sources },
   { to: '/settings/presets', label: t.nav.presets },
+  { to: '/settings/loi', label: t.nav.loi },
   { to: '/settings/users', label: t.nav.users, admin: true },
   { to: '/settings/general', label: t.nav.general },
 ];

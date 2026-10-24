@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
+using ToadFlow.Server.Data.Entities;
 
 namespace ToadFlow.Server.Modules;
 
@@ -24,6 +25,14 @@ public interface IServerModule
 
     /// <summary>Payload задания для агента. Строится один раз при создании задания.</summary>
     Task<string> BuildPayloadAsync(JobBuildContext context, IServiceProvider services, CancellationToken ct);
+
+    /// <summary>
+    ///     Агент сдал задание (любого вида, не только <see cref="Kind" />) — например, чтобы модуль сохранил его результат у себя.
+    ///     Вызывается после сохранения итога; ошибка модуля итог не отменяет.
+    /// </summary>
+    Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct) => Task.CompletedTask;
 }
 
-public sealed record JobBuildContext(Guid ScheduleId, JsonElement ModuleSettings, ExpandedModelDto Model, int RevitYear, string OutputFolder);
+/// <param name="RunStartedAt">Начало запуска по часовому поясу из «Общих» — общее для всех заданий запуска.</param>
+public sealed record JobBuildContext(Guid ScheduleId, JsonElement ModuleSettings, ExpandedModelDto Model, int RevitYear, string OutputFolder,
+    DateTimeOffset RunStartedAt);

@@ -13,7 +13,7 @@ describe('describeInstance', () => {
         10,
         now,
       ),
-    ).toEqual({ tone: 'busy', text: 'Выгружает ЖК-Север_АР_К1.rvt · Экспорт NWC · 3:41' }));
+    ).toEqual({ tone: 'busy', text: 'Обрабатывает ЖК-Север_АР_К1.rvt · Экспорт NWC · 3:41' }));
 
   it('unresponsive counts down to restart', () =>
     expect(

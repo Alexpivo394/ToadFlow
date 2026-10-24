@@ -46,7 +46,10 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
         instance.BeginJob(assignment);
         try
         {
-            await instance.Pipe.SendAsync(new JobMessage { JobId = jobId, PayloadJson = assignment.PayloadJson, TimeoutMinutes = assignment.TimeoutMinutes });
+            await instance.Pipe.SendAsync(new JobMessage
+            {
+                JobId = jobId, ModuleKind = assignment.ModuleKind, PayloadJson = assignment.PayloadJson, TimeoutMinutes = assignment.TimeoutMinutes
+            });
 
             while (true)
             {
@@ -79,7 +82,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
                 {
                     await FlushAsync();
                     if (cancelSentAt is not null) return new JobCompletionDto(jobId, JobOutcome.Cancelled, "отменено пользователем", null);
-                    var reason = instance.KillReason is { } killed ? $"Revit {killed}" : "Revit завершился во время выгрузки";
+                    var reason = instance.KillReason is { } killed ? $"Revit {killed}" : "Revit завершился во время задания";
                     return Failure(reason);
                 }
 

@@ -1,14 +1,17 @@
 using Alexpivo394.Revit.Export.Core;
+using Alexpivo394.Revit.ParamCheck.Core;
 using ToadFlow.Contracts.Pipe;
 
 namespace ToadFlow.Revit.Addin;
 
 /// <summary>
-///     Ход выгрузки — агенту. Каждый вызов из потока Revit API отмечает «Revit жив» (<see cref="LastActivityAt" />):
+///     Ход задания — агенту. Каждый вызов из потока Revit API отмечает «Revit жив» (<see cref="LastActivityAt" />):
 ///     по этому времени агент отличает долгую операцию от зависания. В пайп уходит только смена шага и строки журнала.
 /// </summary>
-internal sealed class PipeProgress : IExportProgress, IExportLog
+internal sealed class PipeProgress : IExportProgress, IExportLog, ICheckProgress, ICheckLog
 {
+    private readonly object _sync = new();
+    private readonly HashSet<Guid> _cancelled = [];
     private long _lastActivityTicks = DateTimeOffset.UtcNow.UtcTicks;
     private Guid _jobId;
     private string? _stage;
@@ -23,15 +26,25 @@ internal sealed class PipeProgress : IExportProgress, IExportLog
 
     public void Begin(Guid jobId)
     {
-        _jobId = jobId;
-        _stage = null;
-        _abort = false;
+        lock (_sync)
+        {
+            _jobId = jobId;
+            _stage = null;
+            // Отмена могла прийти, пока задание ждало потока Revit: тогда оно бросается сразу, не начавшись.
+            _abort = _cancelled.Remove(jobId);
+        }
+
         Touch();
     }
 
+    /// <summary>Попросить бросить задание — текущее или ещё ждущее своей очереди в потоке Revit.</summary>
     public void RequestAbort(Guid jobId)
     {
-        if (jobId == _jobId) _abort = true;
+        lock (_sync)
+        {
+            if (jobId == _jobId) _abort = true;
+            else _cancelled.Add(jobId);
+        }
     }
 
     public void Status(string? status)
@@ -48,6 +61,12 @@ internal sealed class PipeProgress : IExportProgress, IExportLog
     {
         Touch();
         Post(_stage ?? "Журнал", text);
+    }
+
+    public void Error(string model, string text, Exception exception)
+    {
+        Touch();
+        Post(_stage ?? "Журнал", $"{text}: {exception.Message} ({exception.GetType().Name})");
     }
 
     public void Touch() => Interlocked.Exchange(ref _lastActivityTicks, DateTimeOffset.UtcNow.UtcTicks);

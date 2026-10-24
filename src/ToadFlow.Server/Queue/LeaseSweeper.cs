@@ -34,7 +34,7 @@ public sealed class LeaseSweeper(IServiceScopeFactory scopes, TimeProvider time,
         var now = time.GetUtcNow();
 
         var expired = await db.Jobs.Where(j => j.Status == JobStatus.Running && j.LeaseUntil < now).ToListAsync(ct);
-        foreach (var job in expired) await queue.FailInfrastructureAsync(job, "агент потерял связь во время выгрузки", Actor.System);
+        foreach (var job in expired) await queue.FailInfrastructureAsync(job, "агент потерял связь во время задания", Actor.System);
     }
 }
 

@@ -68,6 +68,7 @@ export function SchedulesPage() {
                         </Box>
                       </Table.Td>
                       <Table.Td>
+                        {s.moduleKind === 'loi' && <Badge color="grape" variant="light" mr={6}>LOI</Badge>}
                         {s.modelCount} {pluralRu(s.modelCount, ['модель', 'модели', 'моделей'])}
                         {s.selection.folders.length > 0 && <Text span c="dimmed"> + {s.selection.folders.length} папк.</Text>}
                       </Table.Td>

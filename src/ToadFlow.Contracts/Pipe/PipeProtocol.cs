@@ -23,12 +23,16 @@ public sealed class HelloMessage : PipeMessage
     public string AddinVersion { get; set; } = "";
 }
 
-/// <summary>Агент → аддин: выгрузить модель.</summary>
+/// <summary>Агент → аддин: выполнить задание над моделью.</summary>
 public sealed class JobMessage : PipeMessage
 {
     public const string Kind = "job";
     public override string Type => Kind;
     public Guid JobId { get; set; }
+
+    /// <summary>Вид задания (<see cref="ModuleKinds" />). Пусто — выгрузка: так шлёт задания агент до 1.1.</summary>
+    public string ModuleKind { get; set; } = "";
+
     public string PayloadJson { get; set; } = "";
     public int TimeoutMinutes { get; set; }
 }

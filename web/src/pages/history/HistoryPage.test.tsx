@@ -48,3 +48,22 @@ describe('HistoryPage', () => {
     expect(await screen.findByText('Вручную убит Revit #2 на BIM-FARM-01')).toBeTruthy();
   });
 });
+
+describe('HistoryPage for LOI', () => {
+  it('LOI jobs show completeness and fill rate per rule', async () => {
+    const checked = {
+      ...job, id: 'j3', moduleKind: 'loi', modelName: 'АР_К1.rvt', status: 'Succeeded', note: null, requiresNwc: false,
+      result: {
+        elements: 120, completeElements: 102, completeness: 0.85, values: 240, filled: 228, empty: 10, missing: 2, fillRate: 0.95,
+        reportPath: '\\nas\loi\АР_К1_LOIReport.xlsx', rules: [{ title: 'Стены', elements: 120, completeElements: 102, completeness: 0.85, fillRate: 0.95 }],
+      },
+    };
+    renderApp('/history/runs/r1', { '/api/runs/r1': { run, jobs: [checked] }, '/api/jobs/j3/log': [] });
+
+    expect(await screen.findByText('Полнота')).toBeTruthy();
+    expect(screen.getAllByText('85,0 %').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText('АР_К1.rvt'));
+    expect(await screen.findByText('Стены')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Скопировать путь к отчёту' })).toBeTruthy();
+  });
+});

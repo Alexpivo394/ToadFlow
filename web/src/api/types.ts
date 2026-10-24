@@ -154,7 +154,7 @@ export interface ScheduleView {
   sourceRevitYear: number | null;
   outputFolderTemplate: string;
   selection: Selection;
-  moduleSettings: ExportScheduleSettings;
+  moduleSettings: ModuleSettings;
   recurrenceKind: RecurrenceKind;
   daysOfWeekMask: number;
   timeOfDay: string;
@@ -180,7 +180,7 @@ export interface ScheduleRequest {
   sourceId: string;
   outputFolderTemplate: string;
   selection: Selection;
-  moduleSettings: ExportScheduleSettings;
+  moduleSettings: ModuleSettings;
   recurrenceKind: RecurrenceKind;
   daysOfWeekMask: number;
   timeOfDay: string;
@@ -251,7 +251,7 @@ export interface JobRow {
   finishedAt: string | null;
   durationSeconds: number | null;
   note: string | null;
-  result: ExportJobResult | null;
+  result: JobResult | null;
   waitingForRevit: number | null;
   cancelRequested: boolean;
 }
@@ -304,4 +304,133 @@ export interface Dashboard {
   daily: { date: string; succeeded: number; failed: number }[];
   upcoming: { scheduleId: string; name: string; at: string; modelCount: number }[];
   recentErrors: { at: string; modelName: string; note: string | null; agentName: string | null; revitYear: number | null; jobId: string; runId: string }[];
+}
+
+// ── Проверка LOI ──────────────────────────────────────────────────────────────────────────────────────────────
+
+export type ModuleKind = 'export' | 'loi' | 'loi-catalog';
+
+/** Настройки LOI в расписании: null у вида и РН — как в профиле. */
+export interface LoiScheduleSettings {
+  profileId: string;
+  viewName: string | null;
+  worksetKeyword: string | null;
+  skipLinks: boolean;
+  problemsOnly: boolean;
+  historyFile: string;
+}
+
+export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings;
+
+export interface LoiRuleResult {
+  title: string;
+  elements: number;
+  completeElements: number;
+  completeness: number | null;
+  fillRate: number | null;
+}
+
+export interface LoiJobResult {
+  elements: number;
+  completeElements: number;
+  completeness: number | null;
+  values: number;
+  filled: number;
+  empty: number;
+  missing: number;
+  fillRate: number | null;
+  reportPath: string | null;
+  rules: LoiRuleResult[];
+}
+
+export interface LoiCategory {
+  key: string;
+  name: string;
+  isModel: boolean;
+}
+
+export interface LoiCatalogResult {
+  categories: LoiCategory[];
+  parameters: string[];
+  hasSharedParameterFile: boolean;
+}
+
+export type JobResult = ExportJobResult | LoiJobResult | LoiCatalogResult;
+
+export interface LoiProfileSummary {
+  id: string;
+  name: string;
+  ruleCount: number;
+  viewName: string;
+  worksetKeyword: string;
+  updatedAt: string;
+  updatedBy: string;
+  problems: string[];
+}
+
+export interface LoiProfileDetails {
+  id: string;
+  name: string;
+  updatedAt: string;
+  updatedBy: string;
+  profile: CheckProfile;
+  problems: string[];
+}
+
+export interface LoiCatalogSummary {
+  revitYear: number;
+  updatedAt: string;
+  categories: number;
+  parameters: number;
+  hasSharedParameterFile: boolean;
+}
+
+export interface LoiCatalogOverview {
+  catalogs: LoiCatalogSummary[];
+  agentYears: number[];
+}
+
+export interface LoiCatalogView {
+  revitYear: number;
+  updatedAt: string;
+  catalog: LoiCatalogResult;
+}
+
+// Профиль — в формате файлов ParamChecker (Newtonsoft: имена с заглавной буквы, пустые поля опускаются). Так он без
+// переделок уходит в плагин и обратно.
+
+export type SelectionMode = 'CategoriesOnly' | 'ParametersOnly' | 'CategoriesOrParameters' | 'CategoriesAndParameters';
+export type ConditionLogic = 'And' | 'Or';
+export type ConditionOperator =
+  | 'Equals' | 'NotEquals' | 'GreaterThan' | 'GreaterThanOrEquals' | 'LessThan' | 'LessThanOrEquals'
+  | 'Contains' | 'NotContains' | 'Exists' | 'NotExists' | 'IsFilled' | 'IsEmpty' | 'StartsWith' | 'EndsWith';
+
+/** Условие на параметр или группа условий (Group), связанных через «И». */
+export interface Condition {
+  Parameter?: string;
+  Operator?: ConditionOperator;
+  Value?: string;
+  Group?: Condition[];
+}
+
+export interface RuleFilter {
+  Categories: string[];
+  Mode: SelectionMode;
+  Logic: ConditionLogic;
+  Conditions: Condition[];
+}
+
+export interface CheckRule {
+  Title: string;
+  Filter: RuleFilter;
+  Parameters: string[];
+}
+
+export interface CheckProfile {
+  Name: string;
+  IsEnabled?: boolean;
+  ViewName: string;
+  WorksetKeyword: string;
+  Models?: unknown[];
+  Rules: CheckRule[];
 }

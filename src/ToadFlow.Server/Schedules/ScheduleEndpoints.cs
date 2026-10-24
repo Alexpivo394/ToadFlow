@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
+using ToadFlow.Server.Agents;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
@@ -95,7 +96,7 @@ public static class ScheduleEndpoints
 
         var source = await db.Sources.AsNoTracking().SingleOrDefaultAsync(s => s.Id == request.SourceId);
         var errors = Validate(request, source);
-        if (services.GetRequiredService<ServerModuleRegistry>().Find(request.ModuleKind) is not { } module) errors.Add($"Неизвестный вид выгрузки «{request.ModuleKind}»");
+        if (services.GetRequiredService<ServerModuleRegistry>().Find(request.ModuleKind) is not { } module) errors.Add($"Неизвестный вид задачи «{request.ModuleKind}»");
         else errors.AddRange(await module.ValidateSettingsAsync(request.ModuleSettings, services, http.RequestAborted));
         if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors), errors });
 
@@ -213,9 +214,12 @@ public static class ScheduleEndpoints
         var warnings = new List<string>();
         if (source.RevitYear is { } year)
         {
-            var agents = await db.Agents.AsNoTracking().Where(a => a.State != AgentState.Disabled).ToListAsync();
-            if (!agents.Any(a => a.Revits.Any(r => r.Year == year)))
+            var agents = (await db.Agents.AsNoTracking().Where(a => a.State != AgentState.Disabled).ToListAsync())
+                .Where(a => a.Revits.Any(r => r.Year == year)).ToList();
+            if (agents.Count == 0)
                 warnings.Add($"Для Revit {year} нет ни одного агента — задания будут ждать, пока он появится");
+            else if (!agents.Any(a => AgentCapabilities.CanRun(a.AgentVersion, schedule.ModuleKind)))
+                warnings.Add($"Агенты с Revit {year} старой версии и не умеют эту задачу — задания будут ждать, пока агента обновят до 1.1 или новее");
         }
 
         var duplicates = schedule.Selection.Models.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1)

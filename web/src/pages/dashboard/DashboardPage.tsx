@@ -105,10 +105,10 @@ export function DashboardPage() {
     <>
       <PageTitle>{t.nav.dashboard}</PageTitle>
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }} mb="md">
-        <Kpi title="За 24 часа" value={kpi?.exported24h ?? '—'} hint={`${pluralRu(kpi?.exported24h ?? 0, ['модель выгружена', 'модели выгружено', 'моделей выгружено'])}`} />
+        <Kpi title="За 24 часа" value={kpi?.exported24h ?? '—'} hint={`${pluralRu(kpi?.exported24h ?? 0, ['модель обработана', 'модели обработано', 'моделей обработано'])}`} />
         <Kpi title="Ошибки" value={kpi?.failed24h ?? '—'} color={kpi?.failed24h ? 'red' : undefined} hint={`за 24 часа · ${kpi?.failedPercent ?? 0}%`} />
         <Kpi title="Очередь" value={kpi?.queued ?? '—'} hint={`ждут · ${kpi?.running ?? 0} в работе`} />
-        <Kpi title="Среднее время" value={formatDuration(kpi?.avgDurationSeconds24h)} hint="на модель (RVT+NWC)" />
+        <Kpi title="Среднее время" value={formatDuration(kpi?.avgDurationSeconds24h)} hint="на модель" />
         <Kpi
           title="Агенты"
           value={kpi ? `${kpi.agentsOnline} / ${kpi.agentsTotal}` : '—'}
@@ -122,7 +122,7 @@ export function DashboardPage() {
           <AgentsPanel agents={agents.data ?? []} silence={settings.data?.silenceTimeoutMinutes ?? 10} />
         </Panel>
         <Stack>
-          <Panel title="Выгрузки по дням (14 дней)">
+          <Panel title="Модели по дням (14 дней)">
             <BarChart
               h={160}
               data={(data?.daily ?? []).map((d) => ({ date: d.date.slice(8, 10) + '.' + d.date.slice(5, 7), Успешно: d.succeeded, 'С ошибкой': d.failed }))}

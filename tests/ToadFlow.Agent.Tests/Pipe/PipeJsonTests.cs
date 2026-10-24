@@ -13,7 +13,7 @@ public class PipeJsonTests
     public static IEnumerable<Func<PipeMessage>> Messages() =>
     [
         () => new HelloMessage { InstanceId = Guid.NewGuid(), RevitYear = 2024, Pid = 42, HasNwcExporter = true, AddinVersion = "1.0.0" },
-        () => new JobMessage { JobId = JobId, PayloadJson = """{"modelName":"АР.rvt"}""", TimeoutMinutes = 30 },
+        () => new JobMessage { JobId = JobId, ModuleKind = ModuleKinds.Loi, PayloadJson = """{"modelName":"АР.rvt"}""", TimeoutMinutes = 30 },
         () => new ProgressMessage { JobId = JobId, Stage = "Открытие", Text = "открытие модели", At = DateTimeOffset.Parse("2026-10-23T12:00:00Z") },
         () => new AliveMessage { LastActivityAt = DateTimeOffset.Parse("2026-10-23T12:00:05Z") },
         () => new ResultMessage { JobId = JobId, Outcome = JobOutcome.Failed, Note = "RVT: нет доступа", ResultJson = """{"rvt":"Failed"}""" },

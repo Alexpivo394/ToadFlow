@@ -4,6 +4,7 @@ import { PageTitle } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { AgentsSettings } from './AgentsSettings';
 import { GeneralSettingsForm } from './GeneralSettingsForm';
+import { LoiSettings } from './loi/LoiSettings';
 import { PresetsSettings } from './PresetsSettings';
 import { SourcesSettings } from './SourcesSettings';
 import { UsersSettings } from './UsersSettings';
@@ -16,6 +17,7 @@ export function SettingsPage() {
     agents: <AgentsSettings />,
     sources: <SourcesSettings />,
     presets: <PresetsSettings />,
+    loi: <LoiSettings />,
     users: can('Admin') ? <UsersSettings /> : null,
     general: <GeneralSettingsForm />,
   }[section ?? ''];

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { defaultExportSettings } from '../../components/ExportSettingsForm';
 import { renderApp } from '../../test/renderApp';
@@ -57,5 +57,29 @@ describe('SchedulesPage for a viewer', () => {
     expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Запустить сейчас' })).toBeNull();
     expect((screen.getByDisplayValue('ЖК «Север» — все') as HTMLInputElement).disabled).toBe(true);
+  });
+});
+
+describe('SchedulesPage for LOI', () => {
+  const loi = {
+    ...schedule, id: 's2', name: 'LOI ЖК «Север»', moduleKind: 'loi', updatedAt: '2026-10-24T12:00:00Z',
+    selection: { models: [{ name: 'АР_К1.rvt', modelPath: 'RSN://rs22/ЖК/АР_К1.rvt', rvt: true, nwc: false }], folders: [] },
+    moduleSettings: { profileId: 'p1', viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '' },
+  };
+  const loiResponses = {
+    ...responses,
+    '/api/schedules': [loi],
+    '/api/schedules/s2/changes': [],
+    '/api/loi/profiles': [{ id: 'p1', name: 'ОВ', ruleCount: 2, viewName: 'Navisworks', worksetKeyword: '', updatedAt: loi.updatedAt, updatedBy: 'А. Борисов', problems: [] }],
+  };
+
+  it('marks LOI schedules and shows the LOI settings tab', async () => {
+    renderApp('/schedules/s2', loiResponses);
+
+    expect(await screen.findByText('Расписание «LOI ЖК «Север»»')).toBeTruthy();
+    expect(screen.getByText('LOI')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Проверка LOI' }));
+    expect(await screen.findByText('как в профиле: «Navisworks»')).toBeTruthy();
+    expect(screen.getByLabelText('База для дашбордов')).toBeTruthy();
   });
 });

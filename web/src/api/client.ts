@@ -75,3 +75,13 @@ async function errorText(response: Response): Promise<string> {
   if (response.status === 404) return 'Не найдено';
   return `Ошибка сервера (${response.status})`;
 }
+
+/** Скачать файл с сервера (с токеном) и отдать браузеру под именем <c>fileName</c>. */
+export async function downloadFile(path: string, fileName: string): Promise<void> {
+  const response = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) throw new ApiError(response.status, await errorText(response));
+  const url = URL.createObjectURL(await response.blob());
+  const link = Object.assign(document.createElement('a'), { href: url, download: fileName });
+  link.click();
+  URL.revokeObjectURL(url);
+}

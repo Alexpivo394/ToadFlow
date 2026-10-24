@@ -78,4 +78,10 @@ public sealed record JobCompletionDto(Guid JobId, JobOutcome Outcome, string? No
 public static class ModuleKinds
 {
     public const string Export = "export";
+
+    /// <summary>Проверка заполнения параметров (LOI) по профилю ParamChecker.</summary>
+    public const string Loi = "loi";
+
+    /// <summary>Снять в Revit категории и имена параметров для редактора правил LOI. Задание без модели и без расписания.</summary>
+    public const string LoiCatalog = "loi-catalog";
 }

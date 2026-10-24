@@ -28,13 +28,24 @@ public static class RunCommandEndpoints
         if (run is null) return Results.NotFound();
         if (run.State is RunState.Completed or RunState.Cancelled) return Results.Conflict(new { error = "Запуск уже закончился" });
 
-        run.CancelRequested = true;
         if (run.State == RunState.Expanding)
         {
-            run.State = RunState.Cancelled;
-            run.FinishedAt = time.GetUtcNow();
+            // Список моделей ещё строится: отменяем, только если задания так и не появились, — иначе отменяем их, как обычно.
+            var now = time.GetUtcNow();
+            if (await db.Runs.Where(r => r.Id == id && r.State == RunState.Expanding).ExecuteUpdateAsync(r => r
+                    .SetProperty(x => x.State, RunState.Cancelled)
+                    .SetProperty(x => x.CancelRequested, true)
+                    .SetProperty(x => x.FinishedAt, now)) > 0)
+            {
+                events.Publish(new RunChanged(http.User.Actor(), id));
+                return Results.NoContent();
+            }
+
+            await db.Entry(run).ReloadAsync();
+            if (run.State is RunState.Completed or RunState.Cancelled) return Results.Conflict(new { error = "Запуск уже закончился" });
         }
 
+        run.CancelRequested = true;
         var jobs = await db.Jobs.Where(j => j.RunId == id && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running)).ToListAsync();
         foreach (var job in jobs) Cancel(job, time);
         await db.SaveChangesAsync();

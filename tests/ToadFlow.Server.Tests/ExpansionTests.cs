@@ -118,6 +118,31 @@ public class ExpansionTests : ServerTest
     }
 
     [Test]
+    public async Task Expansion_CancelledWhileAgentLists_CreatesNoJobs()
+    {
+        var (admin, schedule) = await ScheduleAsync();
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        using var asked = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        agent.ExpandSelection = (_, _) =>
+        {
+            asked.Set();
+            release.Wait(TimeSpan.FromSeconds(20));
+            return [new ExpandedModelDto("АР.rvt", "RSN://rs22/ЖК/АР.rvt", true, null, true, true)];
+        };
+        await agent.ConnectAsync();
+
+        var runId = (await (await admin.PostAsync($"/api/schedules/{schedule.Id}/run", null)).ReadJsonAsync<RunCreated>()).RunId;
+        asked.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+        (await admin.PostAsync($"/api/runs/{runId}/cancel", null)).EnsureSuccessStatusCode();
+        release.Set();
+
+        await Task.Delay(1500); // агент ответил — построитель заданий доделывает запуск в фоне
+        (await DbAsync(db => db.Runs.SingleAsync(r => r.Id == runId))).State.ShouldBe(RunState.Cancelled);
+        (await JobsAsync(runId)).ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task Expansion_DuplicateNames_RunWarning()
     {
         var (admin, schedule) = await ScheduleAsync();

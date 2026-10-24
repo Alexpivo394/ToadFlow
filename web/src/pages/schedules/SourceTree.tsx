@@ -12,6 +12,8 @@ interface Props {
   selection: SelectionState;
   includeNew: boolean;
   readOnly?: boolean;
+  /** Галки RVT и NWC у отмеченных — только у выгрузки; другим задачам формат не нужен. */
+  formats?: boolean;
   onChange: (selection: SelectionState) => void;
 }
 
@@ -19,7 +21,7 @@ interface Props {
  * Дерево источника с галками. Папки загружаются по раскрытию — через агента, потому что сервер сетевые папки не видит.
  * Нет агентов — показывается сообщение, а уже отмеченное остаётся и сохраняется.
  */
-export function SourceTree({ sourceId, rootPath, selection, includeNew, readOnly, onChange }: Props) {
+export function SourceTree({ sourceId, rootPath, selection, includeNew, readOnly, formats = true, onChange }: Props) {
   const [expanded, setExpanded] = useState<string[]>([rootPath]);
   const results = useQueries({
     queries: expanded.map((path) => ({
@@ -82,7 +84,7 @@ export function SourceTree({ sourceId, rootPath, selection, includeNew, readOnly
             <Text size="sm" truncate style={{ flex: 1 }}>
               {entry.name}
             </Text>
-            {own && (
+            {own && formats && (
               <Group gap={6} wrap="nowrap">
                 <Checkbox size="xs" label="RVT" checked={own.rvt} disabled={readOnly} onChange={(e) => onChange(setFormats(selection, key, { rvt: e.currentTarget.checked, nwc: own.nwc }))} />
                 <Checkbox size="xs" label="NWC" checked={own.nwc} disabled={readOnly} onChange={(e) => onChange(setFormats(selection, key, { rvt: own.rvt, nwc: e.currentTarget.checked }))} />

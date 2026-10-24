@@ -23,7 +23,7 @@ describe('DashboardPage', () => {
     renderApp('/', { '/api/dashboard': dashboard, '/api/agents': agents, '/api/settings': { silenceTimeoutMinutes: 10 } });
 
     expect(await screen.findByText('142')).toBeTruthy();
-    expect(await screen.findByText(/Выгружает ЖК-Север_АР_К1\.rvt/)).toBeTruthy();
+    expect(await screen.findByText(/Обрабатывает ЖК-Север_АР_К1\.rvt/)).toBeTruthy();
     expect(await screen.findByText('ЖК «Север» — все')).toBeTruthy();
     expect(await screen.findByText('ЖК-Юг_ВК.rvt')).toBeTruthy();
     expect(screen.getByText('BIM-FARM-01')).toBeTruthy();

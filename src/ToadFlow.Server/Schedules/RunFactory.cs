@@ -121,7 +121,7 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
         models = models.Where(m => m.Rvt || m.Nwc).ToList();
         if (models.Count == 0)
         {
-            await CompleteEmptyAsync(db, events, time, run, AppendWarning(run.Warning, "нет моделей для выгрузки"), ct);
+            await CompleteEmptyAsync(db, events, time, run, AppendWarning(run.Warning, "нет моделей для обработки"), ct);
             return;
         }
 
@@ -132,6 +132,7 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
         var settings = await services.GetRequiredService<ISettingsStore>().GetAsync(ct);
         var module = services.GetRequiredService<ServerModuleRegistry>().Get(schedule.ModuleKind);
         var outputFolder = OutputFolderTemplate.Render(schedule.OutputFolderTemplate, run.CreatedAt, settings.TimeZone, schedule.Name);
+        var runStartedAt = TimeZoneInfo.ConvertTime(run.CreatedAt, settings.TimeZone);
         using var moduleSettings = JsonDocument.Parse(schedule.ModuleSettingsJson);
         var now = time.GetUtcNow();
 
@@ -157,7 +158,7 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
             if (year is { } knownYear)
             {
                 job.PayloadJson = await module.BuildPayloadAsync(
-                    new JobBuildContext(schedule.Id, moduleSettings.RootElement, model, knownYear, outputFolder), services, ct);
+                    new JobBuildContext(schedule.Id, moduleSettings.RootElement, model, knownYear, outputFolder, runStartedAt), services, ct);
             }
             else
             {
@@ -169,20 +170,35 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
             db.Jobs.Add(job);
         }
 
-        run.State = RunState.Queued;
+        // Пока агент строил список, запуск могли отменить. Задания появляются, только если он всё ещё «разворачивается»:
+        // условное обновление блокирует строку запуска до конца транзакции, и отмена дождётся заданий, чтобы отменить их.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var warning = run.Warning;
+        if (await db.Runs.Where(r => r.Id == run.Id && r.State == RunState.Expanding)
+                .ExecuteUpdateAsync(r => r.SetProperty(x => x.State, RunState.Queued).SetProperty(x => x.Warning, warning), ct) == 0)
+            return;
+
+        db.Entry(run).State = EntityState.Unchanged;
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         events.Publish(new RunChanged(Actor.System, run.Id));
         await services.GetRequiredService<RunProgress>().UpdateAsync(run.Id);
     }
 
+    /// <summary>Завершает запуск без заданий — если его тем временем не отменили.</summary>
     private static async Task CompleteEmptyAsync(ToadFlowDb db, IDomainEvents events, TimeProvider time, Run run, string warning, CancellationToken ct)
     {
-        run.State = RunState.Completed;
-        run.Warning = AppendWarning(run.Warning, warning);
-        run.StartedAt ??= time.GetUtcNow();
-        run.FinishedAt = time.GetUtcNow();
-        await db.SaveChangesAsync(ct);
-        events.Publish(new RunFinished(Actor.System, run.Id, run.Name, 0, 0, 0, 0));
+        db.Entry(run).State = EntityState.Unchanged;
+        await db.SaveChangesAsync(ct); // последний список моделей расписания
+
+        var now = time.GetUtcNow();
+        var text = AppendWarning(run.Warning, warning);
+        var finished = await db.Runs.Where(r => r.Id == run.Id && r.State == RunState.Expanding).ExecuteUpdateAsync(r => r
+            .SetProperty(x => x.State, RunState.Completed)
+            .SetProperty(x => x.Warning, text)
+            .SetProperty(x => x.StartedAt, x => x.StartedAt ?? now)
+            .SetProperty(x => x.FinishedAt, now), ct);
+        if (finished > 0) events.Publish(new RunFinished(Actor.System, run.Id, run.Name, 0, 0, 0, 0));
     }
 
     private static string AppendWarning(string? existing, string warning) =>

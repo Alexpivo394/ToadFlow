@@ -11,6 +11,7 @@
     <Project Path="src/ToadFlow.Server/ToadFlow.Server.csproj" />
     <Project Path="src/ToadFlow.Server.Export/ToadFlow.Server.Export.csproj" />
     <Project Path="src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj" />
+    <Project Path="src/ToadFlow.Server.Loi/ToadFlow.Server.Loi.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ToadFlow.Agent.Tests/ToadFlow.Agent.Tests.csproj" />

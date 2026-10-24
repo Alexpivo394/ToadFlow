@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <!-- Логика аддина без Revit: файлы подключаются ссылками, пакет экспорта — сборка для Revit 2027 (только его Revit-независимые типы). -->
+    <!-- Логика аддина без Revit: файлы подключаются ссылками, пакеты модулей — сборки для Revit 2027 (только их Revit-независимые типы). -->
     <PropertyGroup>
         <TargetFramework>net10.0-windows</TargetFramework>
         <OutputType>Exe</OutputType>
@@ -13,6 +13,7 @@
         <PackageReference Include="Shouldly"/>
         <PackageReference Include="Newtonsoft.Json"/>
         <PackageReference Include="Alexpivo394.Revit.Export"/>
+        <PackageReference Include="Alexpivo394.Revit.ParamCheck"/>
     </ItemGroup>
 
     <ItemGroup>

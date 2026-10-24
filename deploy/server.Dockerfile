@@ -6,6 +6,7 @@ COPY global.json Directory.Build.props Directory.Packages.props NuGet.Config ./
 COPY src/ToadFlow.Contracts/ToadFlow.Contracts.csproj src/ToadFlow.Contracts/
 COPY src/ToadFlow.Server/ToadFlow.Server.csproj src/ToadFlow.Server/
 COPY src/ToadFlow.Server.Export/ToadFlow.Server.Export.csproj src/ToadFlow.Server.Export/
+COPY src/ToadFlow.Server.Loi/ToadFlow.Server.Loi.csproj src/ToadFlow.Server.Loi/
 COPY src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj src/ToadFlow.Server.Host/
 RUN dotnet restore src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj
 

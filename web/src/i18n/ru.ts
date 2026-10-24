@@ -11,6 +11,7 @@ export const t = {
     agents: 'Агенты',
     sources: 'Источники',
     presets: 'Пресеты выгрузки',
+    loi: 'Профили LOI',
     users: 'Пользователи',
     general: 'Общие',
   },

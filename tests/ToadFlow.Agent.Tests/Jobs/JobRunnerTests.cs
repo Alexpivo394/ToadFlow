@@ -67,6 +67,22 @@ public class JobRunnerTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task Run_PassesModuleKindToAddin()
+    {
+        string? kind = null;
+        _launcher.Then(async (addin, job, _) =>
+        {
+            kind = job.ModuleKind;
+            await addin.ResultAsync(job, JobOutcome.Succeeded);
+        });
+
+        var (completion, _) = await RunAsync(Assignment() with { ModuleKind = ModuleKinds.Loi }, InstanceManagerTests.Settings());
+
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
+        kind.ShouldBe(ModuleKinds.Loi);
+    }
+
+    [Test]
     public async Task Run_Ok_ReturnsAddinResultAndForwardsProgress()
     {
         _launcher.Then(FakeBehaviors.Ok(resultJson: """{"rvt":"Done"}"""));

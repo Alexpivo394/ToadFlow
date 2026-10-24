@@ -23,7 +23,7 @@ public static class ScheduleChangeSummary
         Add(parts, "таймаут на модель", $"{old.ModelTimeoutMinutes} мин", $"{current.ModelTimeoutMinutes} мин");
         Add(parts, "повторов упавших", old.MaxRetries.ToString(), current.MaxRetries.ToString());
         Add(parts, "моделей и папок", Count(old.Selection), Count(current.Selection));
-        if (old.ModuleSettingsJson != current.ModuleSettingsJson) parts.Add("изменены параметры выгрузки");
+        if (old.ModuleSettingsJson != current.ModuleSettingsJson) parts.Add("изменены параметры задачи");
         if (old.IsEnabled != current.IsEnabled) parts.Add(current.IsEnabled ? "включено" : "выключено");
 
         return parts.Count == 0 ? "без изменений" : string.Join("; ", parts);

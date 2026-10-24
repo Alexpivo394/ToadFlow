@@ -51,6 +51,30 @@ public class QueueTests : ServerTest
     }
 
     [Test]
+    public async Task Claim_AgentBeforeModules_GetsOnlyExport()
+    {
+        await using var old = await FakeAgent.RegisterAsync(Server, await AdminAsync(), "FARM-OLD");
+        await old.ConnectAsync("1.0.3", new InstalledRevitDto(2022, true));
+        await using var fresh = await AgentAsync("FARM-NEW", new InstalledRevitDto(2022, true));
+        var jobId = await SeedJobAsync();
+        await DbAsync(db => db.Jobs.Where(j => j.Id == jobId).ExecuteUpdateAsync(j => j.SetProperty(x => x.ModuleKind, ModuleKinds.Loi)));
+
+        // Аддин агента 1.0.x принял бы проверку за выгрузку без форматов и отчитался бы «успешно», ничего не сделав.
+        (await old.RequestJobAsync(1, 2022)).ShouldBeNull();
+        (await fresh.RequestJobAsync(1, 2022)).ShouldNotBeNull().JobId.ShouldBe(jobId);
+    }
+
+    [Test]
+    [Arguments("1.0.3", false)]
+    [Arguments("1.0.0", false)]
+    [Arguments("1.1.0", true)]
+    [Arguments("2.0.0-beta.1", true)]
+    [Arguments("0.1.0", true)]
+    [Arguments("", true)]
+    public void AgentVersion_KnowsModuleKind(string version, bool knows) =>
+        Agents.AgentCapabilities.KnowsModuleKind(version).ShouldBe(knows);
+
+    [Test]
     public async Task Claim_NwcJobNeedsExporter()
     {
         await using var agent = await AgentAsync();
@@ -213,6 +237,22 @@ public class QueueTests : ServerTest
 
         await EventuallyAsync(async () => (await JobAsync(jobId)).Status == JobStatus.Failed);
         (await JobAsync(jobId)).Note.ShouldNotBeNull().ShouldContain("потерял связь");
+    }
+
+    [Test]
+    public async Task LeaseSweeper_CancelRequested_CancelsInsteadOfRequeue()
+    {
+        await using var agent = await AgentAsync();
+        var jobId = await SeedJobAsync(maxAttempts: 2);
+        await agent.RequestJobAsync(1, 2022);
+        await DbAsync(db => db.Jobs.Where(j => j.Id == jobId).ExecuteUpdateAsync(j => j.SetProperty(x => x.CancelRequested, true)));
+
+        _time.Advance(TimeSpan.FromMinutes(3));
+
+        // В очередь отменённое не вернуть: оттуда оно не выдаётся, и запуск висел бы вечно.
+        await EventuallyAsync(async () => (await JobAsync(jobId)).Status == JobStatus.Cancelled);
+        var run = await DbAsync(async db => await db.Runs.SingleAsync(r => r.Id == db.Jobs.Single(j => j.Id == jobId).RunId));
+        run.State.ShouldBe(RunState.Cancelled);
     }
 
     [Test]

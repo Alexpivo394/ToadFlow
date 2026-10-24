@@ -4,6 +4,7 @@ using ToadFlow.Server.Agents;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Modules;
 
 namespace ToadFlow.Server.Queue;
 
@@ -11,7 +12,8 @@ namespace ToadFlow.Server.Queue;
 ///     Очередь заданий в Postgres. Задание выдаётся одним атомарным запросом (<c>FOR UPDATE SKIP LOCKED</c>), поэтому
 ///     два агента никогда не получат одно и то же. Агент держит аренду, продлевая её heartbeat'ом.
 /// </summary>
-public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents events, TimeProvider time) : IAgentJobs
+public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents events, TimeProvider time, IServiceProvider services,
+    ILogger<JobQueue> logger) : IAgentJobs
 {
     public async Task<JobAssignmentDto?> ClaimAsync(Guid agentId, JobRequestDto request)
     {
@@ -26,13 +28,15 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         var lease = now + AgentHub.Lease;
         var running = nameof(JobStatus.Running);
         var queued = nameof(JobStatus.Queued);
+        var export = ModuleKinds.Export;
+        var anyModule = AgentCapabilities.KnowsModuleKind(agent.AgentVersion);
         var claimed = await db.Jobs.FromSql($"""
             UPDATE jobs SET status = {running}, agent_id = {agentId}, instance_slot = {request.Slot}, attempt = attempt + 1,
                             started_at = {now}, lease_until = {lease}
             WHERE id = (
                 SELECT id FROM jobs
                 WHERE status = {queued} AND revit_year = {request.Year} AND (NOT requires_nwc OR {request.HasNwcExporter})
-                      AND NOT cancel_requested
+                      AND (module_kind = {export} OR {anyModule}) AND NOT cancel_requested
                 ORDER BY priority DESC, created_at
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED)
@@ -81,6 +85,22 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         await db.SaveChangesAsync();
         await runs.UpdateAsync(job.RunId);
         events.Publish(new JobChanged(AgentActor(agent), job.Id, job.RunId));
+        await NotifyModulesAsync(job);
+    }
+
+    private async Task NotifyModulesAsync(Job job)
+    {
+        foreach (var module in services.GetServices<IServerModule>())
+        {
+            try
+            {
+                await module.OnJobCompletedAsync(job, services, CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Модуль {Module} не обработал итог задания {Job}", module.Kind, job.Id);
+            }
+        }
     }
 
     /// <summary>
@@ -97,7 +117,15 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
             Text = $"попытка {job.Attempt} из {job.MaxAttempts} не удалась: {reason}"
         });
 
-        if (job.Attempt < job.MaxAttempts)
+        if (job.CancelRequested)
+        {
+            // Задание отменили, а Revit или агент пропали раньше, чем аддин ответил: в очередь его не вернуть — оттуда
+            // отменённые не выдаются, и запуск висел бы «выполняется» вечно.
+            job.Status = JobStatus.Cancelled;
+            job.Note = "отменено пользователем";
+            Finish(job);
+        }
+        else if (job.Attempt < job.MaxAttempts)
         {
             job.Status = JobStatus.Queued;
             job.AgentId = null;

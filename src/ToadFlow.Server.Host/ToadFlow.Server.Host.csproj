@@ -13,6 +13,7 @@
     <ItemGroup>
         <ProjectReference Include="..\ToadFlow.Server\ToadFlow.Server.csproj"/>
         <ProjectReference Include="..\ToadFlow.Server.Export\ToadFlow.Server.Export.csproj"/>
+        <ProjectReference Include="..\ToadFlow.Server.Loi\ToadFlow.Server.Loi.csproj"/>
     </ItemGroup>
 
 </Project>

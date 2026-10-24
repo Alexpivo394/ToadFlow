@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import type { JobRow, StepStatus } from '../../api/types';
 import { JobStatusBadge } from '../../components/ui';
 import { formatBytes, formatDuration } from '../../lib/format';
+import { formatShare, isCatalogResult, isExportResult, isLoiResult } from '../../lib/loi';
 import { JobLog } from './JobLog';
 
 function Step({ status, size }: { status: StepStatus | undefined; size: number | null | undefined }) {
@@ -13,9 +14,67 @@ function Step({ status, size }: { status: StepStatus | undefined; size: number |
   return <Text c="red">✗</Text>;
 }
 
-/** Модели запуска: результат по форматам, где выгружалась, сколько заняла; клик раскрывает лог. */
+/** Доля с цветом: от 95 % — зелёный, от 70 % — жёлтый, ниже — красный. */
+function Share({ value }: { value: number | null | undefined }) {
+  if (value == null) return <Text c="dimmed">—</Text>;
+  return <Text c={value >= 0.95 ? 'green' : value >= 0.7 ? 'yellow.7' : 'red'}>{formatShare(value)}</Text>;
+}
+
+/** Колонки результата: у выгрузки — RVT и NWC, у проверки LOI — полнота и заполненность, вперемешку — одна общая. */
+type Columns = 'export' | 'loi' | 'mixed';
+
+function columnsOf(jobs: JobRow[]): Columns {
+  if (jobs.every((job) => job.moduleKind === 'export')) return 'export';
+  if (jobs.every((job) => job.moduleKind !== 'export')) return 'loi';
+  return 'mixed';
+}
+
+/** Итог задания одной строкой — для общей колонки и каталога. */
+function summary(job: JobRow): string | null {
+  const result = job.result;
+  if (isExportResult(result)) {
+    const parts = [result.rvt === 'Done' && `RVT ${formatBytes(result.rvtSizeBytes)}`, result.nwc === 'Done' && `NWC ${formatBytes(result.nwcSizeBytes)}`];
+    return parts.filter(Boolean).join(' · ') || null;
+  }
+  if (isLoiResult(result)) return `полнота ${formatShare(result.completeness)} · заполненность ${formatShare(result.fillRate)}`;
+  if (isCatalogResult(result)) return `категорий ${result.categories.length}, параметров ${result.parameters.length}`;
+  return null;
+}
+
+function ResultCells({ job, columns }: { job: JobRow; columns: Columns }) {
+  const result = job.result;
+  if (columns === 'export') {
+    const exported = isExportResult(result) ? result : null;
+    return (
+      <>
+        <Table.Td><Step status={exported?.rvt} size={exported?.rvtSizeBytes} /></Table.Td>
+        <Table.Td><Step status={exported?.nwc} size={exported?.nwcSizeBytes} /></Table.Td>
+      </>
+    );
+  }
+  if (columns === 'loi' && !isCatalogResult(result)) {
+    const checked = isLoiResult(result) ? result : null;
+    return (
+      <>
+        <Table.Td><Share value={checked?.completeness} /></Table.Td>
+        <Table.Td><Share value={checked?.fillRate} /></Table.Td>
+      </>
+    );
+  }
+  return <Table.Td colSpan={2}><Text size="sm" c="dimmed">{summary(job) ?? '—'}</Text></Table.Td>;
+}
+
+const headers: Record<Columns, [string, string] | [string]> = {
+  export: ['RVT', 'NWC'],
+  loi: ['Полнота', 'Заполненность'],
+  mixed: ['Результат'],
+};
+
+/** Модели запуска: результат, где обрабатывалась, сколько заняла; клик раскрывает лог. */
 export function JobsTable({ jobs, showRun, initiallyOpen }: { jobs: JobRow[]; showRun?: boolean; initiallyOpen?: string | null }) {
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null);
+  const columns = columnsOf(jobs);
+  const titles = headers[columns];
 
   return (
     <Table.ScrollContainer minWidth={900}>
@@ -25,8 +84,11 @@ export function JobsTable({ jobs, showRun, initiallyOpen }: { jobs: JobRow[]; sh
             {showRun && <Table.Th>Запуск</Table.Th>}
             <Table.Th>Модель</Table.Th>
             <Table.Th>Статус</Table.Th>
-            <Table.Th>RVT</Table.Th>
-            <Table.Th>NWC</Table.Th>
+            {titles.map((title) => (
+              <Table.Th key={title} colSpan={titles.length === 1 ? 2 : undefined}>
+                {title}
+              </Table.Th>
+            ))}
             <Table.Th>Где</Table.Th>
             <Table.Th>Время</Table.Th>
             <Table.Th>Примечание</Table.Th>
@@ -49,8 +111,7 @@ export function JobsTable({ jobs, showRun, initiallyOpen }: { jobs: JobRow[]; sh
                   <JobStatusBadge status={job.status} />
                   {job.waitingForRevit && <Badge ml={4} color="yellow" variant="light">ждёт Revit {job.waitingForRevit}</Badge>}
                 </Table.Td>
-                <Table.Td><Step status={job.result?.rvt} size={job.result?.rvtSizeBytes} /></Table.Td>
-                <Table.Td><Step status={job.result?.nwc} size={job.result?.nwcSizeBytes} /></Table.Td>
+                <ResultCells job={job} columns={columns} />
                 <Table.Td c="dimmed">
                   {[job.agentName, job.revitYear ? `R${job.revitYear}` : null, job.slot ? `#${job.slot}` : null].filter(Boolean).join(' · ')}
                 </Table.Td>

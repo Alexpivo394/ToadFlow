@@ -14,7 +14,7 @@ export function describeInstance(
 
   switch (instance.state) {
     case 'Busy':
-      return { tone: 'busy', text: ['Выгружает ' + model, instance.stage, formatDuration(since)].filter(Boolean).join(' · ') };
+      return { tone: 'busy', text: ['Обрабатывает ' + model, instance.stage, formatDuration(since)].filter(Boolean).join(' · ') };
     case 'Unresponsive': {
       const silent = Math.floor((since ?? 0) / 60);
       const left = Math.max(0, silenceTimeoutMinutes - silent);
