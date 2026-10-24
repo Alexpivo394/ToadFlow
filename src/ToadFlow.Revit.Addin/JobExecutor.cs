@@ -132,7 +132,7 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
             }
         }
 
-        var (jobOutcome, note, result) = LoiMapping.ToResult(outcome, historyError);
+        var (jobOutcome, note, result) = LoiMapping.ToResult(outcome, ProfileSerializer.Fingerprint(profile), historyError);
         Result(job, jobOutcome, note, result is null ? null : AddinPipeJson.SerializeObject(result));
     }
 

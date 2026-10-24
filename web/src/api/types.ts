@@ -322,25 +322,47 @@ export interface LoiScheduleSettings {
 
 export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings;
 
-export interface LoiRuleResult {
-  title: string;
-  elements: number;
-  completeElements: number;
-  completeness: number | null;
-  fillRate: number | null;
-}
-
-export interface LoiJobResult {
-  elements: number;
-  completeElements: number;
-  completeness: number | null;
+/** Счётчики заполнения: значений проверено, заполнено, пусто, параметра нет. */
+interface FillCounts {
   values: number;
   filled: number;
   empty: number;
   missing: number;
   fillRate: number | null;
+}
+
+export interface ParameterSummary {
+  name: string;
+  filled: number;
+  empty: number;
+  missing: number;
+  total: number;
+  fillRate: number | null;
+}
+
+export interface RuleSummary extends FillCounts {
+  title: string;
+  elements: number;
+  completeElements: number;
+  completeness: number | null;
+  parameters: ParameterSummary[];
+}
+
+/** Итог проверки модели — CheckSummary из ToadParamCheck: тот же формат у заданий сервиса и у плагина ParamChecker. */
+export interface LoiJobResult extends FillCounts {
+  version: number;
+  modelName: string;
+  modelPath: string;
+  profileName: string;
+  profileFingerprint: string;
+  viewName: string;
+  checkedAt: string;
+  durationSeconds: number;
   reportPath: string | null;
-  rules: LoiRuleResult[];
+  elements: number;
+  completeElements: number;
+  completeness: number | null;
+  rules: RuleSummary[];
 }
 
 export interface LoiCategory {

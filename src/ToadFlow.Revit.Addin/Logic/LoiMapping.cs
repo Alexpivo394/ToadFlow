@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using Alexpivo394.Revit.ParamCheck.Core;
 using Alexpivo394.Revit.ParamCheck.Services;
+using Alexpivo394.Revit.ParamCheck.Summaries;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Loi;
 
@@ -37,9 +38,10 @@ public static class LoiMapping
     public static bool GoesToHistory(ModelOutcome outcome) =>
         outcome.Status == ModelStatus.Checked || outcome is { Status: ModelStatus.Failed, RevitFailure: false };
 
-    /// <summary>Итог проверки → итог задания, примечание и результат для истории.</summary>
+    /// <summary>Итог проверки → итог задания, примечание и результат для истории и аналитики.</summary>
+    /// <param name="profileFingerprint">Отпечаток правил профиля (<c>ProfileSerializer.Fingerprint</c>).</param>
     /// <param name="historyError">База для дашбордов не дописалась; null — дописалась или не ведётся.</param>
-    public static (JobOutcome Outcome, string? Note, LoiJobResult? Result) ToResult(ModelOutcome outcome, string? historyError)
+    public static (JobOutcome Outcome, string? Note, CheckSummary? Result) ToResult(ModelOutcome outcome, string profileFingerprint, string? historyError)
     {
         switch (outcome.Status)
         {
@@ -50,10 +52,7 @@ public static class LoiMapping
                 return (outcome.RevitFailure ? JobOutcome.InfrastructureFailure : JobOutcome.Failed, outcome.Error, null);
         }
 
-        var report = outcome.Report!;
-        var result = new LoiJobResult(report.Elements, report.CompleteElements, report.Completeness, report.Values, report.Filled, report.Empty,
-            report.Missing, report.FillRate, outcome.ReportPath,
-            report.Rules.Select(rule => new LoiRuleResultDto(rule.Title, rule.Elements, rule.CompleteElements, rule.Completeness, rule.FillRate)).ToArray());
+        var result = CheckSummaries.From(outcome, profileFingerprint);
         return historyError is null
             ? (JobOutcome.Succeeded, null, result)
             : (JobOutcome.Warning, $"база для дашбордов не дописана: {historyError}", result);

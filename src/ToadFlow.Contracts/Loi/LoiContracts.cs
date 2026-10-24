@@ -20,7 +20,10 @@ public sealed record LoiCheckSettingsDto
     public string HistoryFile { get; init; } = "";
 }
 
-/// <summary>Задание агенту на проверку одной модели.</summary>
+/// <summary>
+///     Задание агенту на проверку одной модели. Результат задания — <c>Alexpivo394.Revit.ParamCheck.Summaries.CheckSummary</c>
+///     в JSON: тот же итог, что присылает плагин ParamChecker, — у истории и аналитики один формат.
+/// </summary>
 /// <param name="RunStartedAt">Начало запуска — общее для всех его строк в базе для дашбордов.</param>
 /// <param name="ProfileJson">Профиль в формате ParamChecker (<c>ProfileSerializer.SerializeProfile</c>), без моделей.</param>
 public sealed record LoiJobPayload(
@@ -32,21 +35,6 @@ public sealed record LoiJobPayload(
     DateTimeOffset RunStartedAt,
     string ProfileJson,
     LoiCheckSettingsDto Settings);
-
-/// <summary>Итоги проверки модели для истории: полнота — доля элементов, где заполнено всё; заполненность — доля значений.</summary>
-public sealed record LoiJobResult(
-    int Elements,
-    int CompleteElements,
-    double? Completeness,
-    int Values,
-    int Filled,
-    int Empty,
-    int Missing,
-    double? FillRate,
-    string? ReportPath,
-    LoiRuleResultDto[] Rules);
-
-public sealed record LoiRuleResultDto(string Title, int Elements, int CompleteElements, double? Completeness, double? FillRate);
 
 /// <summary>Задание агенту: снять каталог категорий и параметров в Revit этого года.</summary>
 public sealed record LoiCatalogPayload(int RevitYear);

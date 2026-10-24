@@ -61,7 +61,7 @@ public class LoiMappingTests
     [Test]
     public void Checked_Succeeded_WithFillStats()
     {
-        var (outcome, note, result) = LoiMapping.ToResult(Checked(), null);
+        var (outcome, note, result) = LoiMapping.ToResult(Checked(), "abc", null);
 
         outcome.ShouldBe(JobOutcome.Succeeded);
         note.ShouldBeNull();
@@ -70,13 +70,14 @@ public class LoiMappingTests
         result.CompleteElements.ShouldBe(1);
         result.FillRate.ShouldBe(0.5);
         result.ReportPath.ShouldBe(@"\\nas\loi\АР_LOIReport.xlsx");
-        result.Rules.ShouldHaveSingleItem().Title.ShouldBe("Стены");
+        result.ProfileFingerprint.ShouldBe("abc");
+        result.Rules.ShouldHaveSingleItem().Parameters.ShouldHaveSingleItem().Filled.ShouldBe(1); // статистика по параметрам — для аналитики
     }
 
     [Test]
     public void HistoryNotWritten_Warning()
     {
-        var (outcome, note, result) = LoiMapping.ToResult(Checked(), "база занята");
+        var (outcome, note, result) = LoiMapping.ToResult(Checked(), "abc", "база занята");
 
         outcome.ShouldBe(JobOutcome.Warning);
         note.ShouldNotBeNull().ShouldContain("база занята");
@@ -90,9 +91,9 @@ public class LoiMappingTests
         var revit = model with { Error = "A managed exception was thrown by Revit", RevitFailure = true };
         var skipped = model with { Status = ModelStatus.Skipped, Error = null };
 
-        LoiMapping.ToResult(model, null).ShouldBe((JobOutcome.Failed, "нет вида «3D»", null));
-        LoiMapping.ToResult(revit, null).Outcome.ShouldBe(JobOutcome.InfrastructureFailure); // сервис повторит модель в новом Revit
-        LoiMapping.ToResult(skipped, null).Outcome.ShouldBe(JobOutcome.Cancelled);
+        LoiMapping.ToResult(model, "abc", null).ShouldBe((JobOutcome.Failed, "нет вида «3D»", null));
+        LoiMapping.ToResult(revit, "abc", null).Outcome.ShouldBe(JobOutcome.InfrastructureFailure); // сервис повторит модель в новом Revit
+        LoiMapping.ToResult(skipped, "abc", null).Outcome.ShouldBe(JobOutcome.Cancelled);
 
         LoiMapping.GoesToHistory(Checked()).ShouldBeTrue();
         LoiMapping.GoesToHistory(model).ShouldBeTrue();
