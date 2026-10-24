@@ -22,21 +22,7 @@ public class CommandLineTests : ServerTest
         exitCode.ShouldBe(0);
         var config = AgentConfigStore.Load().ShouldNotBeNull();
         config.ServerUrl.ShouldBe("http://localhost");
-        config.TrustAddin.ShouldBeFalse(); // без явного согласия Revit спрашивает, как обычно
         output.ToString().ShouldContain("зарегистрирован");
-    }
-
-    [Test]
-    public async Task CommandLine_Register_TrustAddin_Saved()
-    {
-        using var root = new AgentConfigStoreTests.TempRoot();
-        var code = await (await (await AdminAsync()).PostAsync("/api/agents/registration-codes", null)).ReadJsonAsync<CodeBody>();
-
-        var exitCode = await AgentCommandLine.RunAsync(["--register", "--server", "http://localhost", "--code", code.Code, "--trust-addin"],
-            new StringWriter(), new Registration(Server.Server.CreateHandler()));
-
-        exitCode.ShouldBe(0);
-        AgentConfigStore.Load().ShouldNotBeNull().TrustAddin.ShouldBeTrue();
     }
 
     [Test]

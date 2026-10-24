@@ -30,26 +30,17 @@ foreach (var publish in args[2..])
     Console.WriteLine($"Аддин для Revit {year}: {publish}");
 }
 
-// Регистрация после установки, если заданы SERVER и CODE: msiexec /i … SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX [TRUSTADDIN=1].
+// Регистрация после установки, если заданы SERVER и CODE: msiexec /i … SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX.
 // Неверный код не валит установку: агент покажет окно подключения при первом запуске.
 const string register = "--register --server \"[SERVER]\" --code \"[CODE]\"";
-var registration = new[]
+var registration = new InstalledFileAction(agentExeId, register, Return.ignore, When.After, Step.InstallFiles,
+    new Condition("SERVER AND CODE AND NOT REMOVE"))
 {
-    new InstalledFileAction(agentExeId, register, Return.ignore, When.After, Step.InstallFiles,
-        new Condition("SERVER AND CODE AND TRUSTADDIN<>\"1\" AND NOT REMOVE"))
-    {
-        Execute = Execute.deferred,
-        Impersonate = false
-    },
-    new InstalledFileAction(agentExeId, register + " --trust-addin", Return.ignore, When.After, Step.InstallFiles,
-        new Condition("SERVER AND CODE AND TRUSTADDIN=\"1\" AND NOT REMOVE"))
-    {
-        Execute = Execute.deferred,
-        Impersonate = false
-    }
+    Execute = Execute.deferred,
+    Impersonate = false
 };
 
-var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs, .. registration])
+var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs, registration])
 {
     GUID = new Guid("5E1A4B2D-8C73-4F0A-9D61-3B7E2C9F4A18"),
     Version = version,
@@ -69,8 +60,7 @@ var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs
     Properties =
     [
         new Property("SERVER", ""),
-        new Property("CODE", ""),
-        new Property("TRUSTADDIN", "")
+        new Property("CODE", "")
     ],
     // Агент работает в сессии пользователя (Revit не запускается службой): автозапуск при входе любого пользователя.
     RegValues =

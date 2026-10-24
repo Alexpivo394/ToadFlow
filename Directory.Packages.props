@@ -26,7 +26,6 @@
 
     <!-- Agent -->
     <ItemGroup>
-        <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.13"/>
         <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13"/>
         <PackageVersion Include="Alexpivo394.Revit.Export.Sources" Version="1.1.0"/>
     </ItemGroup>

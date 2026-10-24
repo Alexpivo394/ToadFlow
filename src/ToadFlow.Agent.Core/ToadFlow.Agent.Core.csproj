@@ -9,7 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.Security.Cryptography.ProtectedData"/>
         <PackageReference Include="Alexpivo394.Revit.Export.Sources"/>
         <PackageReference Include="Microsoft.Extensions.Hosting"/>
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
@@ -17,6 +16,11 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ToadFlow.Contracts\ToadFlow.Contracts.csproj"/>
+    </ItemGroup>
+
+    <!-- UI Automation (System.Windows.Automation): агент отвечает на окно Revit о неподписанном аддине -->
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF"/>
     </ItemGroup>
 
     <ItemGroup>

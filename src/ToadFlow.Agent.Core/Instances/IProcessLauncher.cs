@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace ToadFlow.Agent.Instances;
 
@@ -20,16 +21,21 @@ public interface IProcessLauncher
     IRevitProcess Start(int year, string exe, IReadOnlyDictionary<string, string> environment);
 }
 
-/// <summary>Запуск настоящего Revit.exe с переменными окружения для аддина; аддин заранее помечен доверенным.</summary>
-public sealed class ProcessLauncher(AddinTrust? trust = null) : IProcessLauncher
+/// <summary>
+///     Запуск настоящего Revit.exe с переменными окружения для аддина. Окно «Надстройка без подписи» на машине с агентом
+///     нажать некому: аддин помечается «Всегда загружать» в реестре, а если Revit всё равно спросит — агент отвечает сам.
+/// </summary>
+public sealed class ProcessLauncher(AddinTrust trust, ILogger<ProcessLauncher> logger) : IProcessLauncher
 {
     public IRevitProcess Start(int year, string exe, IReadOnlyDictionary<string, string> environment)
     {
-        trust?.Ensure(year);
+        trust.Ensure(year);
         var info = new ProcessStartInfo(exe, "/nosplash") { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! };
         foreach (var (name, value) in environment) info.Environment[name] = value;
         var process = Process.Start(info) ?? throw new InvalidOperationException($"Не удалось запустить {exe}");
-        return new RevitProcess(process);
+        var revit = new RevitProcess(process);
+        _ = Task.Run(() => UnsignedAddinDialog.WatchAsync(process.Id, revit.Exited, InstanceManager.StartTimeout, logger));
+        return revit;
     }
 
     private sealed class RevitProcess : IRevitProcess

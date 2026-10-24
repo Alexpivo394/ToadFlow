@@ -2,8 +2,7 @@ namespace ToadFlow.Agent.Config;
 
 /// <summary>
 ///     Команды агента без окна — для установщика и скриптов:
-///     <c>ToadFlow.Agent.exe --register --server http://toadflow:8080 --code TF-XXXX-XXXX [--trust-addin]</c>.
-///     <c>--trust-addin</c> — согласие загружать аддин ToadFlow в Revit без окна «Неподписанная надстройка».
+///     <c>ToadFlow.Agent.exe --register --server http://toadflow:8080 --code TF-XXXX-XXXX</c>.
 /// </summary>
 public static class AgentCommandLine
 {
@@ -16,16 +15,13 @@ public static class AgentCommandLine
         var code = Value(args, "--code");
         if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(code))
         {
-            await output.WriteLineAsync("Использование: ToadFlow.Agent.exe --register --server <адрес сервера> --code <код подключения> [--trust-addin]");
+            await output.WriteLineAsync("Использование: ToadFlow.Agent.exe --register --server <адрес сервера> --code <код подключения>");
             return 2;
         }
 
         try
         {
-            var config = await (registration ?? new Registration()).RegisterAsync(server, code, Environment.MachineName) with
-            {
-                TrustAddin = args.Contains("--trust-addin", StringComparer.OrdinalIgnoreCase)
-            };
+            var config = await (registration ?? new Registration()).RegisterAsync(server, code, Environment.MachineName);
             AgentConfigStore.Save(config);
             await output.WriteLineAsync($"Агент зарегистрирован на {config.ServerUrl}");
             return 0;
