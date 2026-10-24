@@ -52,6 +52,7 @@ internal static class LoiEndpoints
     {
         var loi = api.MapGroup("/loi");
         loi.MapLoiAnalyticsAdmin();
+        loi.MapLoiAnalyticsQueries();
         loi.MapGet("/profiles", async (ToadFlowDb db) => await SummariesAsync(db, null));
         loi.MapGet("/profiles/{id:guid}", GetProfileAsync);
         loi.MapGet("/profiles/{id:guid}/file", DownloadAsync);
