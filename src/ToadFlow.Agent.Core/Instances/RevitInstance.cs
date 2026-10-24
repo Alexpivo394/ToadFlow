@@ -62,6 +62,20 @@ public sealed class RevitInstance
         _ = Task.Run(PumpAsync);
     }
 
+    /// <summary>
+    ///     Задание ждёт, пока этот экземпляр запустится. Heartbeat сообщает его серверу — тот продлевает аренду; иначе
+    ///     через две минуты запуска Revit задание считалось бы брошенным и уходило в очередь заново.
+    /// </summary>
+    internal void Reserve(JobAssignmentDto assignment)
+    {
+        lock (_sync)
+        {
+            JobId = assignment.JobId;
+            ModelName = assignment.ModelName;
+            SetStage("Запуск Revit");
+        }
+    }
+
     internal void BeginJob(JobAssignmentDto assignment)
     {
         lock (_sync)
@@ -70,7 +84,7 @@ public sealed class RevitInstance
             JobId = assignment.JobId;
             ModelName = assignment.ModelName;
             State = InstanceState.Busy;
-            SetStage("Начало выгрузки");
+            SetStage("Начало работы");
             Touch();
         }
     }

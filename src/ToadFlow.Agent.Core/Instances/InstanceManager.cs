@@ -45,8 +45,9 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
     }
 
     /// <summary>Экземпляр Revit этого года под задание: свободный готовый или новый (ждём hello до 5 минут).</summary>
+    /// <param name="job">Задание, под которое запускается Revit: пока он стартует, heartbeat держит аренду задания.</param>
     /// <exception cref="RevitStartException">Revit этого года нет, слотов нет или он не запустился.</exception>
-    public async Task<RevitInstance> AcquireAsync(int year, CancellationToken ct)
+    public async Task<RevitInstance> AcquireAsync(int year, CancellationToken ct, JobAssignmentDto? job = null)
     {
         RevitInstance instance;
         RevitInstallation revit;
@@ -67,6 +68,7 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
             if (slot == 0) throw new RevitStartException($"Уже запущено {MaxSlots} экземпляра Revit — свободного места нет");
 
             instance = new RevitInstance(slot, year, time);
+            if (job is not null) instance.Reserve(job);
             _instances.Add(instance);
         }
 

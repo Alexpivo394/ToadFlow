@@ -95,7 +95,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             RevitInstance? instance = null;
             try
             {
-                instance = await instances.AcquireAsync(year, ct);
+                instance = await instances.AcquireAsync(year, ct, assignment);
             }
             catch (RevitStartException exception)
             {

@@ -58,6 +58,25 @@ public class InstanceManagerTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task Starting_ReportsReservedJob_SoServerKeepsLease()
+    {
+        _launcher.Then(FakeBehaviors.Ok(), hello: false);
+        var job = new JobAssignmentDto(Guid.NewGuid(), ModuleKinds.Export, "АР.rvt", "{}", 30, 1);
+        using var stop = new CancellationTokenSource();
+
+        var acquire = _manager.AcquireAsync(2022, stop.Token, job);
+
+        // Revit ещё стартует, а heartbeat уже несёт задание — сервер продлевает его аренду и не вернёт его в очередь.
+        var status = _manager.Statuses().ShouldHaveSingleItem();
+        status.State.ShouldBe(InstanceState.Starting);
+        status.JobId.ShouldBe(job.JobId);
+        status.Stage.ShouldBe("Запуск Revit");
+
+        await stop.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(() => acquire);
+    }
+
+    [Test]
     public async Task StartTimeout_KillsAndThrows()
     {
         _launcher.Then(FakeBehaviors.Ok(), hello: false);
