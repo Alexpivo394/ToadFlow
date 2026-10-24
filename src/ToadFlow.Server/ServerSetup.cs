@@ -52,6 +52,7 @@ public static class ServerSetup
         var api = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
         api.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
         api.MapAuth();
+        api.MapApiTokens();
         api.MapUsers();
         api.MapEvents();
         api.MapSettings();

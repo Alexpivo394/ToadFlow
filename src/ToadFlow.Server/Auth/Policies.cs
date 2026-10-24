@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using ToadFlow.Contracts;
 
@@ -11,11 +12,14 @@ public static class Policies
     public const string Operator = nameof(Operator);
     public const string Admin = nameof(Admin);
 
+    /// <summary>Пользователь входит паролем (JWT в браузере) или личным токеном (программы вроде плагина ParamChecker).</summary>
+    private static readonly string[] Schemes = [JwtBearerDefaults.AuthenticationScheme, ApiTokenAuthHandler.SchemeName];
+
     public static void Add(AuthorizationOptions options)
     {
-        options.AddPolicy(Viewer, policy => policy.RequireRole(Roles(UserRole.Viewer)));
-        options.AddPolicy(Operator, policy => policy.RequireRole(Roles(UserRole.Operator)));
-        options.AddPolicy(Admin, policy => policy.RequireRole(Roles(UserRole.Admin)));
+        options.AddPolicy(Viewer, policy => policy.AddAuthenticationSchemes(Schemes).RequireRole(Roles(UserRole.Viewer)));
+        options.AddPolicy(Operator, policy => policy.AddAuthenticationSchemes(Schemes).RequireRole(Roles(UserRole.Operator)));
+        options.AddPolicy(Admin, policy => policy.AddAuthenticationSchemes(Schemes).RequireRole(Roles(UserRole.Admin)));
     }
 
     public static Guid UserId(this ClaimsPrincipal principal) =>

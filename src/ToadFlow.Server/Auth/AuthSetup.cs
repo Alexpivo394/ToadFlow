@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +43,7 @@ public static class AuthSetup
                     OnTokenValidated = async context => { if (await IsDisabledAsync(context)) context.Fail("Пользователь отключён"); }
                 };
             });
+        builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, ApiTokenAuthHandler>(ApiTokenAuthHandler.SchemeName, null);
         builder.Services.AddAuthorization(Policies.Add);
     }
 

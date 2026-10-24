@@ -34,13 +34,15 @@ public sealed class LoiCatalog
 /// <param name="ViewName">Вид, с которого собираются элементы; null — как в профиле, пусто — вся модель.</param>
 /// <param name="WorksetKeyword">РН с этим словом не открываются; null — как в профиле.</param>
 /// <param name="HistoryFile">База для дашбордов (.xlsx) с подстановками папки результатов; пусто — не ведётся.</param>
+/// <param name="Analytics">Записывать итоги в аналитику ToadFlow (если она включена в настройках сервиса).</param>
 public sealed record LoiScheduleSettings(
     Guid ProfileId,
     string? ViewName = null,
     string? WorksetKeyword = null,
     bool SkipLinks = true,
     bool ProblemsOnly = false,
-    string HistoryFile = "")
+    string HistoryFile = "",
+    bool Analytics = true)
 {
     public static LoiScheduleSettings? TryParse(JsonElement json)
     {

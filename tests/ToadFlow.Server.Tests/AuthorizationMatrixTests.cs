@@ -13,6 +13,12 @@ public class AuthorizationMatrixTests : ServerTest
 {
     private static readonly string[] Open = ["/api/auth/login", "/api/agents/register"];
 
+    /// <summary>
+    ///     Доступно и наблюдателю: свои токены доступа, своя ручная проверка из ParamChecker и предпросмотр разбора имён — он
+    ///     ничего не сохраняет, POST только из-за тела запроса.
+    /// </summary>
+    private static readonly string[] Personal = ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/loi/checks", "/api/loi/naming/preview"];
+
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()
     {
@@ -20,8 +26,9 @@ public class AuthorizationMatrixTests : ServerTest
         var routes = Server.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
             .SelectMany(endpoint => (endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods ?? [])
-                .Select(method => (method, path: "/" + endpoint.RoutePattern.RawText!.TrimStart('/'))))
-            .Where(route => route.method is "POST" or "PUT" or "DELETE" && route.path.StartsWith("/api/") && !Open.Contains(route.path))
+                .Select(method => (method, path: "/" + endpoint.RoutePattern.RawText!.Trim('/'))))
+            .Where(route => route.method is "POST" or "PUT" or "DELETE" && route.path.StartsWith("/api/") && !Open.Contains(route.path)
+                            && !Personal.Contains(route.path))
             .Distinct()
             .ToList();
 

@@ -12,6 +12,7 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     public DbSet<Agent> Agents => Set<Agent>();
     public DbSet<RegistrationCode> RegistrationCodes => Set<RegistrationCode>();
     public DbSet<Source> Sources => Set<Source>();
@@ -32,6 +33,12 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
     protected override void OnModelCreating(ModelBuilder model)
     {
         model.Entity<User>(user => user.HasIndex(u => u.Login).IsUnique());
+
+        model.Entity<ApiToken>(token =>
+        {
+            token.HasIndex(t => t.Hash).IsUnique();
+            token.HasOne<User>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         model.Entity<Agent>(agent =>
         {

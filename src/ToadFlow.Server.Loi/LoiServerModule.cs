@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Alexpivo394.Revit.ParamCheck.Profiles;
+using Alexpivo394.Revit.ParamCheck.Summaries;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Loi;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Loi.Analytics;
 using ToadFlow.Server.Modules;
 using ToadFlow.Server.Schedules;
 using ToadFlow.Server.Settings;
@@ -20,10 +22,46 @@ public sealed class LoiServerModule : IServerModule
 {
     public string Kind => ModuleKinds.Loi;
 
-    public void AddServices(IServiceCollection services) => services.AddScoped<LoiCatalogRefresher>();
+    public void AddServices(IServiceCollection services)
+    {
+        services.AddScoped<LoiCatalogRefresher>();
+        services.AddScoped<LoiSettingsStore>();
+        services.AddScoped<CheckRecorder>();
+        services.AddHostedService<AnalyticsCleaner>();
+    }
 
     public void ConfigureModel(ModelBuilder model)
     {
+        model.Entity<LoiCheck>(check =>
+        {
+            check.ToTable("loi_checks");
+            check.Property(c => c.Id).ValueGeneratedNever();
+            check.Property(c => c.Fields).AsJson();
+            check.HasIndex(c => c.CheckedAt);
+            check.HasIndex(c => new { c.ModelKey, c.CheckedAt });
+            check.HasIndex(c => new { c.Object, c.Discipline, c.CheckedAt });
+            check.HasMany(c => c.Rules).WithOne().HasForeignKey(r => r.CheckId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<LoiCheckRule>(rule =>
+        {
+            rule.ToTable("loi_check_rules");
+            rule.HasMany(r => r.Parameters).WithOne().HasForeignKey(p => p.RuleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<LoiCheckParameter>(parameter =>
+        {
+            parameter.ToTable("loi_check_parameters");
+            parameter.HasIndex(p => new { p.CheckId, p.Name });
+            parameter.HasIndex(p => p.Name);
+        });
+
+        model.Entity<LoiModelOverride>(manual =>
+        {
+            manual.ToTable("loi_model_overrides");
+            manual.HasKey(o => o.ModelKey);
+        });
+
         model.Entity<LoiProfile>(profile =>
         {
             profile.ToTable("loi_profiles");
@@ -81,10 +119,32 @@ public sealed class LoiServerModule : IServerModule
         return JsonSerializer.Serialize(payload, ToadFlowDb.Json);
     }
 
-    /// <summary>Каталог, снятый Revit, — в таблицу каталогов: редактор правил видит его сразу.</summary>
-    public async Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct)
+    /// <summary>Проверенная модель — в аналитику; каталог, снятый Revit, — в таблицу каталогов, редактор правил видит его сразу.</summary>
+    public Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct) => job.ModuleKind switch
     {
-        if (job is not { ModuleKind: ModuleKinds.LoiCatalog, Status: JobStatus.Succeeded, ResultJson: { } json, RevitYear: { } year }) return;
+        ModuleKinds.Loi => RecordCheckAsync(job, services, ct),
+        ModuleKinds.LoiCatalog => SaveCatalogAsync(job, services, ct),
+        _ => Task.CompletedTask
+    };
+
+    /// <summary>Итог проверки — в аналитику, если её не выключили в расписании (выключена во всём сервисе — решит <see cref="CheckRecorder" />).</summary>
+    private static async Task RecordCheckAsync(Job job, IServiceProvider services, CancellationToken ct)
+    {
+        if (job is not { Status: JobStatus.Succeeded or JobStatus.Warning, ResultJson: { } json }) return;
+        if (JsonSerializer.Deserialize<CheckSummary>(json, ToadFlowDb.Json) is not { } summary) return;
+
+        var db = services.GetRequiredService<ToadFlowDb>();
+        var scheduleId = await db.Runs.Where(r => r.Id == job.RunId).Select(r => r.ScheduleId).SingleOrDefaultAsync(ct);
+        var settings = scheduleId is null ? null : await db.Schedules.Where(s => s.Id == scheduleId).Select(s => s.ModuleSettingsJson).SingleOrDefaultAsync(ct);
+        if (settings is not null && LoiScheduleSettings.TryParse(settings) is { Analytics: false }) return;
+
+        if (await services.GetRequiredService<CheckRecorder>().RecordAsync(job.Id, summary, new CheckOrigin(LoiCheckSource.Schedule, job.RunId, scheduleId), ct))
+            services.GetRequiredService<IDomainEvents>().Publish(new LoiCheckRecorded(Actor.System, job.Id));
+    }
+
+    private static async Task SaveCatalogAsync(Job job, IServiceProvider services, CancellationToken ct)
+    {
+        if (job is not { Status: JobStatus.Succeeded, ResultJson: { } json, RevitYear: { } year }) return;
 
         var result = JsonSerializer.Deserialize<LoiCatalogResult>(json, ToadFlowDb.Json);
         if (result is null) return;

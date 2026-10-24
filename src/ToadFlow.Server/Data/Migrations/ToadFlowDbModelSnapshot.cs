@@ -94,6 +94,53 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("agents", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Data.Entities.ApiToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("hash");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("prefix");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_api_tokens");
+
+                    b.HasIndex("Hash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_api_tokens_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_api_tokens_user_id");
+
+                    b.ToTable("api_tokens", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.Job", b =>
                 {
                     b.Property<Guid>("Id")
@@ -653,6 +700,273 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("export_presets", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_at");
+
+                    b.Property<int>("CompleteElements")
+                        .HasColumnType("integer")
+                        .HasColumnName("complete_elements");
+
+                    b.Property<string>("Customer")
+                        .HasColumnType("text")
+                        .HasColumnName("customer");
+
+                    b.Property<string>("Discipline")
+                        .HasColumnType("text")
+                        .HasColumnName("discipline");
+
+                    b.Property<double>("DurationSeconds")
+                        .HasColumnType("double precision")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<int>("Elements")
+                        .HasColumnType("integer")
+                        .HasColumnName("elements");
+
+                    b.Property<int>("Empty")
+                        .HasColumnType("integer")
+                        .HasColumnName("empty");
+
+                    b.Property<string>("Fields")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("fields");
+
+                    b.Property<int>("Filled")
+                        .HasColumnType("integer")
+                        .HasColumnName("filled");
+
+                    b.Property<int>("Missing")
+                        .HasColumnType("integer")
+                        .HasColumnName("missing");
+
+                    b.Property<string>("ModelKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_key");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_name");
+
+                    b.Property<string>("ModelPath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_path");
+
+                    b.Property<string>("Object")
+                        .HasColumnType("text")
+                        .HasColumnName("object");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("text")
+                        .HasColumnName("part");
+
+                    b.Property<string>("ProfileFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("profile_fingerprint");
+
+                    b.Property<string>("ProfileName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("profile_name");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
+
+                    b.Property<Guid?>("ScheduleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schedule_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("source");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("Values")
+                        .HasColumnType("integer")
+                        .HasColumnName("values");
+
+                    b.Property<string>("ViewName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("view_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loi_checks");
+
+                    b.HasIndex("CheckedAt")
+                        .HasDatabaseName("ix_loi_checks_checked_at");
+
+                    b.HasIndex("ModelKey", "CheckedAt")
+                        .HasDatabaseName("ix_loi_checks_model_key_checked_at");
+
+                    b.HasIndex("Object", "Discipline", "CheckedAt")
+                        .HasDatabaseName("ix_loi_checks_object_discipline_checked_at");
+
+                    b.ToTable("loi_checks", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckParameter", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CheckId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("check_id");
+
+                    b.Property<int>("Empty")
+                        .HasColumnType("integer")
+                        .HasColumnName("empty");
+
+                    b.Property<int>("Filled")
+                        .HasColumnType("integer")
+                        .HasColumnName("filled");
+
+                    b.Property<int>("Missing")
+                        .HasColumnType("integer")
+                        .HasColumnName("missing");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<long>("RuleId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("rule_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loi_check_parameters");
+
+                    b.HasIndex("Name")
+                        .HasDatabaseName("ix_loi_check_parameters_name");
+
+                    b.HasIndex("RuleId")
+                        .HasDatabaseName("ix_loi_check_parameters_rule_id");
+
+                    b.HasIndex("CheckId", "Name")
+                        .HasDatabaseName("ix_loi_check_parameters_check_id_name");
+
+                    b.ToTable("loi_check_parameters", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckRule", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CheckId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("check_id");
+
+                    b.Property<int>("CompleteElements")
+                        .HasColumnType("integer")
+                        .HasColumnName("complete_elements");
+
+                    b.Property<int>("Elements")
+                        .HasColumnType("integer")
+                        .HasColumnName("elements");
+
+                    b.Property<int>("Empty")
+                        .HasColumnType("integer")
+                        .HasColumnName("empty");
+
+                    b.Property<int>("Filled")
+                        .HasColumnType("integer")
+                        .HasColumnName("filled");
+
+                    b.Property<int>("Missing")
+                        .HasColumnType("integer")
+                        .HasColumnName("missing");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<int>("Values")
+                        .HasColumnType("integer")
+                        .HasColumnName("values");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loi_check_rules");
+
+                    b.HasIndex("CheckId")
+                        .HasDatabaseName("ix_loi_check_rules_check_id");
+
+                    b.ToTable("loi_check_rules", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiModelOverride", b =>
+                {
+                    b.Property<string>("ModelKey")
+                        .HasColumnType("text")
+                        .HasColumnName("model_key");
+
+                    b.Property<string>("Customer")
+                        .HasColumnType("text")
+                        .HasColumnName("customer");
+
+                    b.Property<string>("Discipline")
+                        .HasColumnType("text")
+                        .HasColumnName("discipline");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_name");
+
+                    b.Property<string>("Object")
+                        .HasColumnType("text")
+                        .HasColumnName("object");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("text")
+                        .HasColumnName("part");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("ModelKey")
+                        .HasName("pk_loi_model_overrides");
+
+                    b.ToTable("loi_model_overrides", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Loi.LoiCatalog", b =>
                 {
                     b.Property<int>("RevitYear")
@@ -709,6 +1023,16 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("loi_profiles", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Data.Entities.ApiToken", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_api_tokens_users_user_id");
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.Job", b =>
                 {
                     b.HasOne("ToadFlow.Server.Data.Entities.Run", null)
@@ -756,6 +1080,36 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_schedule_changes_schedules_schedule_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckParameter", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Loi.Analytics.LoiCheckRule", null)
+                        .WithMany("Parameters")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_loi_check_parameters_loi_check_rules_rule_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckRule", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Loi.Analytics.LoiCheck", null)
+                        .WithMany("Rules")
+                        .HasForeignKey("CheckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_loi_check_rules_loi_checks_check_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>
+                {
+                    b.Navigation("Rules");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckRule", b =>
+                {
+                    b.Navigation("Parameters");
                 });
 #pragma warning restore 612, 618
         }

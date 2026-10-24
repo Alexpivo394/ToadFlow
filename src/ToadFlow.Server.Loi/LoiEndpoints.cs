@@ -7,6 +7,7 @@ using ToadFlow.Contracts.Loi;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Loi.Analytics;
 
 namespace ToadFlow.Server.Loi;
 
@@ -50,6 +51,7 @@ internal static class LoiEndpoints
     public static void MapLoi(this RouteGroupBuilder api)
     {
         var loi = api.MapGroup("/loi");
+        loi.MapLoiAnalyticsAdmin();
         loi.MapGet("/profiles", async (ToadFlowDb db) => await SummariesAsync(db, null));
         loi.MapGet("/profiles/{id:guid}", GetProfileAsync);
         loi.MapGet("/profiles/{id:guid}/file", DownloadAsync);
