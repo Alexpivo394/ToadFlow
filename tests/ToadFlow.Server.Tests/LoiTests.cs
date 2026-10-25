@@ -233,4 +233,22 @@ public class LoiTests : ServerTest
         overview.Catalogs.ShouldHaveSingleItem().Categories.ShouldBe(1);
         (await DbAsync(db => db.Runs.SingleAsync(r => r.Id == db.Jobs.Single(j => j.Id == assignment.JobId).RunId))).State.ShouldBe(RunState.Completed);
     }
+
+    [Test]
+    public async Task Catalog_ResultOver32Kb_Stored()
+    {
+        var admin = await AdminAsync();
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        await agent.ConnectAsync(new InstalledRevitDto(2024, false));
+        (await admin.PostJsonAsync("/api/loi/catalog/refresh", new { revitYear = (int?)null })).EnsureSuccessStatusCode();
+        var assignment = (await agent.RequestJobAsync(1, 2024, hasNwcExporter: false)).ShouldNotBeNull();
+
+        // каталог настоящей модели — тысячи параметров, больше 32 КБ по умолчанию у SignalR
+        var parameters = Enumerable.Range(0, 5000).Select(i => $"ADSK_Параметр_{i}").ToArray();
+        var result = new LoiCatalogResult([new LoiCategoryDto("OST_Walls", "Стены", true)], parameters, true);
+        await agent.CompleteJobAsync(assignment.JobId, JobOutcome.Succeeded, null, JsonSerializer.Serialize(result, TestJson.Options));
+
+        await EventuallyAsync(async () => (await admin.GetAsync("/api/loi/catalog/2024")).IsSuccessStatusCode);
+        (await admin.GetJsonAsync<LoiCatalogDetailsView>("/api/loi/catalog/2024")).Catalog.Parameters.Length.ShouldBe(5000);
+    }
 }
