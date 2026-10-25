@@ -86,18 +86,16 @@ public sealed class LoiServerModule : IServerModule
         if (LoiScheduleSettings.TryParse(settings) is not { } parsed) return ["Выберите профиль проверки LOI"];
 
         var errors = new List<string>();
-        if (parsed.ProfileId is null)
-        {
-            var routing = await services.GetRequiredService<LoiSettingsStore>().RoutingAsync(ct);
-            if (routing.Disciplines.Count == 0 && routing.FallbackProfileId is null && parsed.ModelProfiles.Count == 0)
-                errors.Add("Профили по разделам не назначены — задайте их в «Настройки → Проверка LOI» или выберите один профиль на расписание");
-        }
+        if (parsed is { ProfileId: null, Disciplines.Count: 0, FallbackProfileId: null, ModelProfiles.Count: 0 })
+            errors.Add("Назначьте профили разделам проекта или выберите один профиль на всё расписание");
+
+        var doubled = parsed.Disciplines.GroupBy(d => d.Discipline, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (doubled.Count > 0) errors.Add($"Раздел назначен дважды: {string.Join(", ", doubled)}");
 
         var duplicates = parsed.ModelProfiles.GroupBy(m => ModelNames.FromPath(m.Model), StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key)
             .ToList();
         if (duplicates.Count > 0) errors.Add($"Модели с двумя профилями: {string.Join(", ", duplicates)}");
 
-        // Профили маршрутов проверяются при запуске: недописанный профиль раздела не должен мешать расписаниям других разделов.
         var ids = parsed.ProfileIds.Distinct().ToList();
         var stored = await services.GetRequiredService<ToadFlowDb>().Set<LoiProfile>().AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(ct);
         if (stored.Count < ids.Count) errors.Add("Профиль проверки LOI не найден");

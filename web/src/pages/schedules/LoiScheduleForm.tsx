@@ -3,10 +3,16 @@ import { ActionIcon, Anchor, Autocomplete, Badge, Button, Checkbox, Group, Selec
 import { IconTrash } from '@tabler/icons-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
-import type { LoiProfileSummary, LoiRoutingPreviewRow, LoiScheduleSettings, ModelProfile, ProfileVia } from '../../api/types';
+import { useApi } from '../../api/queries';
+import type {
+  DisciplineProfile, LoiProfileSummary, LoiRoutingPreviewRow, LoiScheduleSettings, ModelProfile, ModuleSettings, ProfileVia, ScheduleView,
+} from '../../api/types';
 import { profileOptions } from '../../lib/loi';
 
 const byDiscipline = '__discipline__';
+const skip = '__skip__';
+
+const isLoi = (settings: ModuleSettings): settings is LoiScheduleSettings => 'profileId' in settings;
 
 const viaLabels: Record<ProfileVia, { label: string; color: string }> = {
   Model: { label: 'исключение', color: 'grape' },
@@ -61,7 +67,7 @@ function Override({ label, hint, profileValue, value, readOnly, onChange }: {
 /** Какой профиль достанется каждой модели — с ещё не сохранёнными настройками. */
 function Preview({ value, scheduleId, models }: { value: LoiScheduleSettings; scheduleId?: string; models: ModelRef[] }) {
   const preview = useQuery({
-    queryKey: ['loi-routing', 'preview', scheduleId, value.profileId, value.modelProfiles, models],
+    queryKey: ['loi-routing', 'preview', scheduleId, value.profileId, value.disciplines, value.fallbackProfileId, value.modelProfiles, models],
     queryFn: () => apiFetch<LoiRoutingPreviewRow[]>('/api/loi/routing/preview', { method: 'POST', json: { settings: value, scheduleId, models } }),
     placeholderData: keepPreviousData,
   });
@@ -99,10 +105,80 @@ function Preview({ value, scheduleId, models }: { value: LoiScheduleSettings; sc
       </Table>
       {skipped > 0 && (
         <Text size="xs" c="dimmed">
-          Пропускаемые модели не проверяются: назначьте профиль их разделу в{' '}
-          <Anchor component={Link} to="/settings/loi" size="xs">настройках LOI</Anchor> или добавьте исключение.
+          Пропускаемые модели не проверяются: назначьте профиль их разделу в таблице выше, выберите профиль для остальных моделей или добавьте исключение.
         </Text>
       )}
+    </Stack>
+  );
+}
+
+/** Профили разделов проекта: у раздела ОВ в каждом проекте свой профиль. Можно взять таблицу из расписания похожего проекта. */
+function DisciplinesEditor({ value, options, scheduleId, readOnly, onChange }: {
+  value: LoiScheduleSettings;
+  options: { value: string; label: string }[];
+  scheduleId?: string;
+  readOnly?: boolean;
+  onChange: (patch: Partial<LoiScheduleSettings>) => void;
+}) {
+  const known = useApi<string[]>(['loi-analytics', 'disciplines'], '/api/loi/disciplines');
+  const schedules = useApi<ScheduleView[]>(['schedules'], '/api/schedules');
+  const rows = value.disciplines;
+  const used = new Set(rows.map((d) => d.discipline.trim().toUpperCase()));
+  const suggestions = (known.data ?? []).filter((d) => !used.has(d.toUpperCase()));
+  const donors = (schedules.data ?? []).filter((s) => s.id !== scheduleId && s.moduleKind === 'loi' && isLoi(s.moduleSettings) && (s.moduleSettings.disciplines ?? []).length > 0);
+  const setRow = (index: number, patch: Partial<DisciplineProfile>) => onChange({ disciplines: rows.map((d, i) => (i === index ? { ...d, ...patch } : d)) });
+
+  function copyFrom(id: string | null) {
+    const donor = donors.find((s) => s.id === id);
+    if (!donor || !isLoi(donor.moduleSettings)) return;
+    onChange({ disciplines: donor.moduleSettings.disciplines.map((d) => ({ ...d })), fallbackProfileId: donor.moduleSettings.fallbackProfileId ?? null });
+  }
+
+  return (
+    <Stack gap="xs">
+      <Group justify="space-between" align="flex-end">
+        <Text size="sm" fw={500}>Профили разделов проекта</Text>
+        {!readOnly && donors.length > 0 && (
+          <Select size="xs" w={280} placeholder="Скопировать из расписания…" data={donors.map((s) => ({ value: s.id, label: s.name }))} value={null}
+            onChange={copyFrom} />
+        )}
+      </Group>
+      {rows.length === 0 ? (
+        <Text size="sm" c="dimmed">Разделам ещё не назначены профили.</Text>
+      ) : (
+        <Stack gap={8}>
+          {rows.map((row, index) => (
+            <Group key={index} gap="sm" wrap="nowrap">
+              <Autocomplete aria-label="Раздел" placeholder="Раздел, например ОВ" data={suggestions} value={row.discipline} disabled={readOnly} w={200}
+                onChange={(discipline) => setRow(index, { discipline })} />
+              <Select aria-label="Профиль раздела" placeholder="Профиль" data={options} value={row.profileId || null} searchable allowDeselect={false}
+                disabled={readOnly} style={{ flex: 1 }} onChange={(profileId) => setRow(index, { profileId: profileId ?? '' })} />
+              {!readOnly && (
+                <Tooltip label="Убрать">
+                  <ActionIcon variant="subtle" color="red" size="lg" aria-label="Убрать раздел" onClick={() => onChange({ disciplines: rows.filter((_, i) => i !== index) })}>
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
+          ))}
+        </Stack>
+      )}
+      {!readOnly && (
+        <Group>
+          <Button variant="default" size="xs" onClick={() => onChange({ disciplines: [...rows, { discipline: '', profileId: '' }] })}>+ Раздел</Button>
+        </Group>
+      )}
+      <Select
+        label="Остальные модели"
+        description="Раздел не распознан по имени или ему не назначен профиль"
+        data={[{ value: skip, label: 'Пропускать — с пометкой в истории запуска' }, ...options]}
+        value={value.fallbackProfileId ?? skip}
+        allowDeselect={false}
+        disabled={readOnly}
+        maw={420}
+        onChange={(id) => onChange({ fallbackProfileId: !id || id === skip ? null : id })}
+      />
     </Stack>
   );
 }
@@ -116,7 +192,8 @@ export function LoiScheduleForm({ value, profiles, scheduleId, models, readOnly,
   const setException = (index: number, patch: Partial<ModelProfile>) =>
     set({ modelProfiles: exceptions.map((m, i) => (i === index ? { ...m, ...patch } : m)) });
   const knownModels = [...new Set(models.map((m) => modelName(m.name)))];
-  const broken = [profile, ...exceptions.map((m) => profiles.find((p) => p.id === m.profileId))].filter((p) => p && p.problems.length > 0);
+  const referenced = value.profileId !== null ? [value.profileId] : [...value.disciplines.map((d) => d.profileId), value.fallbackProfileId];
+  const broken = profiles.filter((p) => p.problems.length > 0 && [...referenced, ...exceptions.map((m) => m.profileId)].includes(p.id));
 
   return (
     <Stack gap="lg">
@@ -132,16 +209,21 @@ export function LoiScheduleForm({ value, profiles, scheduleId, models, readOnly,
             onChange={(id) => set({ profileId: !id || id === byDiscipline ? null : id })}
           />
           <Anchor component={Link} to="/settings/loi" size="sm" mb={8}>
-            Профили и разделы
+            Профили LOI
           </Anchor>
         </Group>
         {value.profileId === null && (
-          <Text size="sm" c="dimmed">Профиль каждой модели — по её разделу, как назначено в настройках LOI. Исключения ниже главнее.</Text>
+          <Text size="sm" c="dimmed">
+            Профиль каждой модели — по её разделу, как назначено ниже для этого проекта. Раздел берётся из имени модели справочником именования
+            («Настройки → Аналитика LOI»). Исключения главнее.
+          </Text>
         )}
         {broken.map((p) => (
-          <Text key={p!.id} size="sm" c="red">Профиль «{p!.name}» не готов к запуску: {p!.problems.join('; ')}</Text>
+          <Text key={p.id} size="sm" c="red">Профиль «{p.name}» не готов к запуску: {p.problems.join('; ')}</Text>
         ))}
       </Stack>
+
+      {value.profileId === null && <DisciplinesEditor value={value} options={options} scheduleId={scheduleId} readOnly={readOnly} onChange={set} />}
 
       <Stack gap="xs">
         <Text size="sm" fw={500}>Исключения</Text>

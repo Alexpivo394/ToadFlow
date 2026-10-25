@@ -28,7 +28,7 @@ const defaultFolders: Record<string, string> = {
 };
 
 const loiDefaults = (profileId: string | null): LoiScheduleSettings => ({
-  profileId, modelProfiles: [], viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
+  profileId, modelProfiles: [], disciplines: [], fallbackProfileId: null, viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
 });
 
 const isLoiSettings = (settings: ModuleSettings): settings is LoiScheduleSettings => 'profileId' in settings;
@@ -66,7 +66,7 @@ function fromView(view: ScheduleView): ScheduleRequest {
   const { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings, recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority,
     modelTimeoutMinutes, maxRetries, isEnabled } = view;
   const settings: ModuleSettings = isLoiSettings(moduleSettings)
-    ? { ...loiDefaults(null), ...moduleSettings, modelProfiles: moduleSettings.modelProfiles ?? [] }
+    ? { ...loiDefaults(null), ...moduleSettings, modelProfiles: moduleSettings.modelProfiles ?? [], disciplines: moduleSettings.disciplines ?? [] }
     : { presetId: moduleSettings.presetId, overrides: moduleSettings.overrides ?? {} };
   return { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings: settings,
     recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority, modelTimeoutMinutes, maxRetries, isEnabled };

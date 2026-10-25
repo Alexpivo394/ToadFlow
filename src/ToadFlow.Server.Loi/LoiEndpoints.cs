@@ -43,9 +43,6 @@ public sealed record LoiCatalogView(int RevitYear, DateTimeOffset UpdatedAt, Loi
 
 public sealed record LoiRefreshRequest(int? RevitYear);
 
-/// <param name="KnownDisciplines">Разделы из справочника именования и записанных проверок — подсказки для назначения.</param>
-public sealed record LoiRoutingView(IReadOnlyList<DisciplineProfile> Disciplines, Guid? FallbackProfileId, IReadOnlyList<string> KnownDisciplines);
-
 public sealed record LoiModelRef(string Name, string ModelPath);
 
 /// <param name="Settings">Настройки расписания, как в форме, — ещё не сохранённые.</param>
@@ -61,8 +58,6 @@ internal static class LoiEndpoints
     public const string CatalogEntity = "loi-catalog";
 
     public const string ProfilesEntity = "loi-profiles";
-
-    public const string RoutingEntity = "loi-routing";
 
     public static void MapLoi(this RouteGroupBuilder api)
     {
@@ -85,9 +80,8 @@ internal static class LoiEndpoints
             SaveAsync(id, request, db, http, events, time));
         write.MapDelete("/profiles/{id:guid}", DeleteAsync);
         write.MapPost("/profiles/import", ImportAsync);
-        loi.MapGet("/routing", RoutingAsync);
+        loi.MapGet("/disciplines", KnownDisciplinesAsync);
         loi.MapPost("/routing/preview", PreviewRoutingAsync);
-        write.MapPut("/routing", SaveRoutingAsync);
         write.MapPost("/catalog/refresh", async (LoiRefreshRequest request, LoiCatalogRefresher refresher, HttpContext http) =>
         {
             try
@@ -153,13 +147,13 @@ internal static class LoiEndpoints
         return id is null ? Results.Created($"/api/loi/profiles/{stored.Id}", summary) : Results.Ok(summary);
     }
 
-    private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, LoiSettingsStore settings, HttpContext http, IDomainEvents events)
+    private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, HttpContext http, IDomainEvents events)
     {
         var stored = await db.Set<LoiProfile>().FindAsync(id);
         if (stored is null) return Results.NotFound();
 
-        if (await LoiProfileResolver.IsUsedAsync(db, settings, id))
-            return Results.Conflict(new { error = "Профиль используется в расписаниях или назначен разделу — сначала поменяйте его там" });
+        if (await LoiProfileResolver.IsUsedAsync(db, id))
+            return Results.Conflict(new { error = "Профиль используется в расписаниях — сначала поменяйте его там" });
 
         db.Set<LoiProfile>().Remove(stored);
         await db.SaveChangesAsync();
@@ -211,37 +205,13 @@ internal static class LoiEndpoints
         return Results.Ok(new LoiImportResult((await SummariesAsync(db, null)).Where(s => ids.Contains(s.Id)).ToList(), warnings));
     }
 
-    private static async Task<LoiRoutingView> RoutingAsync(LoiSettingsStore settings, ToadFlowDb db, CancellationToken ct)
+    /// <summary>Разделы для подсказок в расписании: из справочника именования и из уже записанных проверок.</summary>
+    private static async Task<IReadOnlyList<string>> KnownDisciplinesAsync(LoiSettingsStore settings, ToadFlowDb db, CancellationToken ct)
     {
-        var routing = await settings.RoutingAsync(ct);
-        // Разделы для подсказок: из справочника именования и из уже записанных проверок.
         var naming = (await settings.NamingAsync(ct)).Entries.Where(e => e.Field == NamingFields.Discipline).Select(e => e.Value);
         var checkedModels = await db.Set<LoiCheck>().Where(c => c.Discipline != null).Select(c => c.Discipline!).Distinct().ToListAsync(ct);
-        var known = naming.Concat(checkedModels).Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)
+        return naming.Concat(checkedModels).Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.CurrentCulture).ToList();
-        return new LoiRoutingView(routing.Disciplines, routing.FallbackProfileId, known);
-    }
-
-    private static async Task<IResult> SaveRoutingAsync(LoiProfileRouting request, LoiSettingsStore settings, ToadFlowDb db, HttpContext http, IDomainEvents events,
-        CancellationToken ct)
-    {
-        var routing = request with
-        {
-            Disciplines = (request.Disciplines ?? []).Select(d => d with { Discipline = d.Discipline?.Trim() ?? "" }).ToList()
-        };
-        var errors = new List<string>();
-        if (routing.Disciplines.Any(d => d.Discipline.Length == 0)) errors.Add("Укажите раздел в каждой строке");
-        var duplicates = routing.Disciplines.GroupBy(d => d.Discipline, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1 && g.Key.Length > 0)
-            .Select(g => g.Key).ToList();
-        if (duplicates.Count > 0) errors.Add($"Раздел назначен дважды: {string.Join(", ", duplicates)}");
-        var ids = routing.ProfileIds.Distinct().ToList();
-        if (await db.Set<LoiProfile>().CountAsync(p => ids.Contains(p.Id), ct) < ids.Count) errors.Add("Профиль не найден — обновите страницу");
-        if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors) });
-
-        await settings.SaveRoutingAsync(routing, ct);
-        events.Publish(new CatalogChanged(http.User.Actor(), RoutingEntity, Guid.Empty,
-            $"Профили LOI по разделам: назначено разделов {routing.Disciplines.Count}, остальные модели — {(routing.FallbackProfileId is null ? "пропускаются" : "общим профилем")}"));
-        return Results.Ok(routing);
     }
 
     /// <summary>Какой профиль получит каждая модель расписания — с ещё не сохранёнными настройками.</summary>

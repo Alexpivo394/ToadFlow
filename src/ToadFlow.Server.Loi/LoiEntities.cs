@@ -31,8 +31,10 @@ public sealed class LoiCatalog
 }
 
 /// <summary>Настройки модуля в расписании (<c>Schedule.ModuleSettingsJson</c>).</summary>
-/// <param name="ProfileId">Один профиль на всё расписание; null — по разделу модели (<see cref="LoiProfileRouting" />).</param>
+/// <param name="ProfileId">Один профиль на всё расписание; null — по разделу модели, профили разделов — в <paramref name="Disciplines" />.</param>
 /// <param name="ModelProfiles">Исключения: у этих моделей свой профиль — и при одном профиле, и по разделу.</param>
+/// <param name="Disciplines">Профили разделов этого расписания (проекта): в разных проектах у раздела разные профили.</param>
+/// <param name="FallbackProfileId">Профиль моделей, раздел которых не распознан или не назначен; null — такие модели пропускаются.</param>
 /// <param name="ViewName">Вид, с которого собираются элементы; null — как в профиле, пусто — вся модель.</param>
 /// <param name="WorksetKeyword">РН с этим словом не открываются; null — как в профиле.</param>
 /// <param name="HistoryFile">База для дашбордов (.xlsx) с подстановками папки результатов; пусто — не ведётся.</param>
@@ -45,11 +47,19 @@ public sealed record LoiScheduleSettings(
     bool ProblemsOnly = false,
     string HistoryFile = "",
     bool Analytics = true,
-    List<ModelProfile>? ModelProfiles = null)
+    List<ModelProfile>? ModelProfiles = null,
+    List<DisciplineProfile>? Disciplines = null,
+    Guid? FallbackProfileId = null)
 {
     public List<ModelProfile> ModelProfiles { get; init; } = ModelProfiles ?? [];
 
-    public IEnumerable<Guid> ProfileIds => ModelProfiles.Select(m => m.ProfileId).Concat(ProfileId is { } id ? [id] : []);
+    public List<DisciplineProfile> Disciplines { get; init; } = Disciplines ?? [];
+
+    /// <summary>Все профили, на которые ссылается расписание: один профиль, разделы, остальные модели, исключения.</summary>
+    public IEnumerable<Guid> ProfileIds => ModelProfiles.Select(m => m.ProfileId)
+        .Concat(ProfileId is { } id ? [id] : [])
+        .Concat(ProfileId is null ? Disciplines.Select(d => d.ProfileId) : [])
+        .Concat(ProfileId is null && FallbackProfileId is { } fallback ? [fallback] : []);
 
     public static LoiScheduleSettings? TryParse(JsonElement json)
     {
@@ -62,7 +72,10 @@ public sealed record LoiScheduleSettings(
                 {
                     ProfileId = settings.ProfileId == Guid.Empty ? null : settings.ProfileId,
                     HistoryFile = settings.HistoryFile ?? "",
-                    ModelProfiles = settings.ModelProfiles.Where(m => !string.IsNullOrWhiteSpace(m.Model)).ToList()
+                    ModelProfiles = settings.ModelProfiles.Where(m => !string.IsNullOrWhiteSpace(m.Model)).ToList(),
+                    Disciplines = settings.Disciplines.Where(d => !string.IsNullOrWhiteSpace(d.Discipline))
+                        .Select(d => d with { Discipline = d.Discipline.Trim() }).ToList(),
+                    FallbackProfileId = settings.FallbackProfileId == Guid.Empty ? null : settings.FallbackProfileId
                 };
         }
         catch (JsonException)

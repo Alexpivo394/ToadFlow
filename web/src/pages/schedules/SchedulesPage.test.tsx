@@ -82,4 +82,19 @@ describe('SchedulesPage for LOI', () => {
     expect(await screen.findByText('как в профиле: «Navisworks»')).toBeTruthy();
     expect(screen.getByLabelText('База для дашбордов')).toBeTruthy();
   });
+
+  it('by discipline: the project has its own discipline profiles', async () => {
+    const byDiscipline = {
+      ...loi,
+      moduleSettings: { ...loi.moduleSettings, profileId: null, disciplines: [{ discipline: 'ОВ', profileId: 'p1' }], fallbackProfileId: null, modelProfiles: [] },
+    };
+    renderApp('/schedules/s2', { ...loiResponses, '/api/schedules': [byDiscipline], '/api/loi/disciplines': ['АР', 'ОВ'], '/api/loi/routing/preview': [] });
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Проверка LOI' }));
+
+    expect(await screen.findByText('Профили разделов проекта')).toBeTruthy();
+    expect(screen.getAllByDisplayValue('ОВ').length).toBe(2); // раздел и его профиль
+    expect(screen.getByDisplayValue('Пропускать — с пометкой в истории запуска')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '+ Раздел' })).toBeTruthy();
+  });
 });

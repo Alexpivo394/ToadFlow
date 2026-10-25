@@ -13,7 +13,6 @@ import { t } from '../../../i18n/ru';
 import { formatDateTime, pluralRu } from '../../../lib/format';
 import { newProfile, normalizeProfile } from '../../../lib/loi';
 import { ProfileEditor } from './ProfileEditor';
-import { RoutingPanel } from './RoutingPanel';
 import { useLoiCatalog, type LoiCatalog } from './useLoiCatalog';
 
 type Editing = { id: string | null; profile: CheckProfile };
@@ -183,7 +182,6 @@ export function LoiSettings() {
         <ProfileEditor key={editing.id ?? 'new'} id={editing.id} initial={editing.profile} catalog={catalog} readOnly={!can('Operator')}
           onDone={() => setEditing(null)} />
       )}
-      <RoutingPanel profiles={profiles.data ?? []} readOnly={!can('Operator')} />
       <CatalogPanel catalog={catalog} />
     </Stack>
   );

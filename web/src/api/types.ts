@@ -321,6 +321,10 @@ export interface LoiScheduleSettings {
   /** Один профиль на расписание; null — по разделу модели. */
   profileId: string | null;
   modelProfiles: ModelProfile[];
+  /** Профили разделов этого проекта — для «по разделу модели». */
+  disciplines: DisciplineProfile[];
+  /** Профиль моделей без назначенного раздела; null — они пропускаются. */
+  fallbackProfileId: string | null;
   viewName: string | null;
   worksetKeyword: string | null;
   skipLinks: boolean;
@@ -335,17 +339,6 @@ export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings;
 export interface DisciplineProfile {
   discipline: string;
   profileId: string;
-}
-
-/** Профили по разделам — общие для расписаний «по разделу модели». */
-export interface LoiRouting {
-  disciplines: DisciplineProfile[];
-  /** Профиль остальных моделей; null — они пропускаются. */
-  fallbackProfileId: string | null;
-}
-
-export interface LoiRoutingView extends LoiRouting {
-  knownDisciplines: string[];
 }
 
 export type ProfileVia = 'Model' | 'Schedule' | 'Discipline' | 'Fallback' | 'None';

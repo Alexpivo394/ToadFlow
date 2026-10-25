@@ -225,12 +225,14 @@ public class LoiTests : ServerTest
         ProfileSerializer.DeserializeProfile(payload.ProfileJson).Rules.ShouldHaveSingleItem().Title.ShouldBe("Стены");
     }
 
-    private static async Task RouteAsync(HttpClient client, Guid? fallback, params (string Discipline, Guid ProfileId)[] routes) =>
-        (await client.PutJsonAsync("/api/loi/routing", new
-        {
-            disciplines = routes.Select(r => new { discipline = r.Discipline, profileId = r.ProfileId }),
-            fallbackProfileId = fallback
-        })).EnsureSuccessStatusCode();
+    /// <summary>Настройки расписания «по разделу модели»: свои профили разделов у каждого проекта.</summary>
+    private static object ByDiscipline(Guid? fallback = null, object[]? exceptions = null, params (string Discipline, Guid ProfileId)[] routes) => new
+    {
+        profileId = (Guid?)null,
+        disciplines = routes.Select(r => new { discipline = r.Discipline, profileId = r.ProfileId }),
+        fallbackProfileId = fallback,
+        modelProfiles = exceptions ?? []
+    };
 
     private async Task<List<Job>> RunAsync(HttpClient admin, Guid scheduleId)
     {
@@ -252,9 +254,8 @@ public class LoiTests : ServerTest
         var ov = await CreateAsync(admin, "ОВ");
         var vk = await CreateAsync(admin, "ВК");
         var smoke = await CreateAsync(admin, "Дымоудаление");
-        await RouteAsync(admin, null, ("ОВ", ov.Id), ("вк", vk.Id));
         var schedule = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId,
-            new { profileId = (Guid?)null, modelProfiles = new[] { new { model = "DON_K1_OV_DU", profileId = smoke.Id } } },
+            ByDiscipline(exceptions: [new { model = "DON_K1_OV_DU", profileId = smoke.Id }], routes: [("ОВ", ov.Id), ("вк", vk.Id)]),
             "DON_K1_OV.rvt", "DON_K1_VK.rvt", "DON_K1_AR.rvt", "DON_K1_OV_DU.rvt"));
 
         var jobs = await RunAsync(admin, schedule.Id);
@@ -264,7 +265,21 @@ public class LoiTests : ServerTest
             ["DON_K1_OV.rvt"] = "ОВ", ["DON_K1_VK.rvt"] = "ВК", ["DON_K1_OV_DU.rvt"] = "Дымоудаление"
         }, ignoreOrder: true);
         var run = await DbAsync(db => db.Runs.SingleAsync(r => r.Id == jobs[0].RunId));
-        run.Warning.ShouldNotBeNull().ShouldContain("DON_K1_AR.rvt — разделу «АР» не назначен профиль LOI");
+        run.Warning.ShouldNotBeNull().ShouldContain("DON_K1_AR.rvt — разделу «АР» в расписании не назначен профиль LOI");
+    }
+
+    [Test]
+    public async Task Expansion_ByDiscipline_EachProjectHasOwnProfiles()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        var donOv = await CreateAsync(admin, "Дон ОВ");
+        var severOv = await CreateAsync(admin, "Север ОВ");
+        var don = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, ByDiscipline(routes: [("ОВ", donOv.Id)]), "DON_K1_OV.rvt"));
+        var sever = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, ByDiscipline(routes: [("ОВ", severOv.Id)]), "SEV_K2_OV.rvt"));
+
+        ProfileOf((await RunAsync(admin, don.Id)).ShouldHaveSingleItem()).ShouldBe("Дон ОВ");
+        ProfileOf((await RunAsync(admin, sever.Id)).ShouldHaveSingleItem()).ShouldBe("Север ОВ");
     }
 
     [Test]
@@ -273,22 +288,34 @@ public class LoiTests : ServerTest
         var admin = await AdminAsync();
         var sourceId = await ScheduleApi.SourceAsync(admin);
         var common = await CreateAsync(admin, "Общий");
-        await RouteAsync(admin, common.Id);
-        var schedule = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, new { profileId = (Guid?)null }, "Модель без раздела.rvt"));
+        var schedule = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, ByDiscipline(fallback: common.Id), "Модель без раздела.rvt"));
 
         ProfileOf((await RunAsync(admin, schedule.Id)).ShouldHaveSingleItem()).ShouldBe("Общий");
     }
 
     [Test]
-    public async Task Schedule_ByDiscipline_NoRouting_400()
+    public async Task Schedule_ByDiscipline_NothingAssigned_400()
     {
         var admin = await AdminAsync();
         var sourceId = await ScheduleApi.SourceAsync(admin);
 
-        var response = await admin.PostJsonAsync("/api/schedules", ScheduleBody(sourceId, new { profileId = (Guid?)null }));
+        var response = await admin.PostJsonAsync("/api/schedules", ScheduleBody(sourceId, ByDiscipline()));
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).ShouldContain("не назначены");
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Назначьте профили разделам");
+    }
+
+    [Test]
+    public async Task Schedule_DuplicateDiscipline_400()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        var ov = await CreateAsync(admin, "ОВ");
+
+        var response = await admin.PostJsonAsync("/api/schedules", ScheduleBody(sourceId, ByDiscipline(routes: [("ОВ", ov.Id), (" ов ", ov.Id)])));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("назначен дважды");
     }
 
     [Test]
@@ -297,11 +324,10 @@ public class LoiTests : ServerTest
         var admin = await AdminAsync();
         var ov = await CreateAsync(admin, "ОВ");
         var smoke = await CreateAsync(admin, "Дымоудаление");
-        await RouteAsync(admin, null, ("ОВ", ov.Id));
 
         var rows = await (await admin.PostJsonAsync("/api/loi/routing/preview", new
         {
-            settings = new { profileId = (Guid?)null, modelProfiles = new[] { new { model = "DON_OV_DU.rvt", profileId = smoke.Id } } },
+            settings = ByDiscipline(exceptions: [new { model = "DON_OV_DU.rvt", profileId = smoke.Id }], routes: [("ОВ", ov.Id)]),
             models = new[] { new { name = "DON_OV.rvt", modelPath = "RSN://rs/DON_OV.rvt" }, new { name = "DON_OV_DU.rvt", modelPath = "RSN://rs/DON_OV_DU.rvt" },
                 new { name = "DON_AR.rvt", modelPath = "RSN://rs/DON_AR.rvt" } }
         })).ReadJsonAsync<PreviewRow[]>();
@@ -311,25 +337,12 @@ public class LoiTests : ServerTest
     }
 
     [Test]
-    public async Task Routing_DuplicateDiscipline_400()
+    public async Task Profile_AssignedToDisciplineInSchedule_DeleteConflict()
     {
         var admin = await AdminAsync();
-        var ov = await CreateAsync(admin, "ОВ");
-
-        var response = await admin.PutJsonAsync("/api/loi/routing", new
-        {
-            disciplines = new[] { new { discipline = "ОВ", profileId = ov.Id }, new { discipline = " ов ", profileId = ov.Id } }
-        });
-
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-    }
-
-    [Test]
-    public async Task Profile_UsedByRouting_DeleteConflict()
-    {
-        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
         var profile = await CreateAsync(admin, "ОВ");
-        await RouteAsync(admin, null, ("ОВ", profile.Id));
+        await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, ByDiscipline(routes: [("ОВ", profile.Id)])));
 
         (await admin.DeleteAsync($"/api/loi/profiles/{profile.Id}")).StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
