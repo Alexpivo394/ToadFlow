@@ -9,6 +9,7 @@
 - [Дашборд](Dashboard)
 - [Расписания](Schedules)
 - [История и логи](History)
+- [Аналитика LOI](Analytics)
 - [Настройки](Settings)
 
 **Справка**
