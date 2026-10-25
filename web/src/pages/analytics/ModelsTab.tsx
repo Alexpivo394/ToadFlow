@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Anchor, Badge, Button, Group, Loader, Table, Text, UnstyledButton } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Loader, Table, Text, UnstyledButton } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { downloadFile } from '../../api/client';
 import { useApi } from '../../api/queries';
@@ -46,6 +46,7 @@ export function ModelsTab() {
     }
   }
 
+  if (models.error) return <Alert color="red">{models.error.message}</Alert>;
   if (!models.data) return <Loader />;
   return (
     <Panel title={`Модели (${rows.length})`} actions={<Button size="xs" variant="default" onClick={exportCsv}>Выгрузить в Excel (CSV)</Button>}>
@@ -99,6 +100,7 @@ export function ParametersTab() {
   const query = toApiQuery(state);
   const parameters = useApi<AnalyticsParameterRow[]>(['loi-analytics', 'parameters', query], `/api/loi/analytics/parameters?${query}`);
 
+  if (parameters.error) return <Alert color="red">{parameters.error.message}</Alert>;
   if (!parameters.data) return <Loader />;
   return (
     <Panel title={`Параметры (${parameters.data.length})`}>

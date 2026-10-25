@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Badge, Button, Group, Paper, Text, Title, type ButtonProps } from '@mantine/core';
 import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import type { JobStatus, RunState } from '../api/types';
 import { t } from '../i18n/ru';
+import { copyText } from '../lib/clipboard';
 
 export const jobStatusColor: Record<JobStatus, string> = {
   Queued: 'gray',
@@ -84,6 +86,30 @@ export function ConfirmButton({ question, onConfirm, children, ...props }: Butto
       }
     >
       {children}
+    </Button>
+  );
+}
+
+/** Кнопка «Скопировать»: копирует и по HTTP, где Mantine CopyButton не работает, и пару секунд показывает, что скопировано. */
+export function CopyTextButton({ value, label, copiedLabel, title }: { value: string; label: string; copiedLabel: string; title?: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <Button
+      size="compact-sm"
+      variant="default"
+      title={title}
+      onClick={async (event) => {
+        if (await copyText(value, event.currentTarget.parentElement ?? undefined)) setCopied(true);
+        else notifications.show({ color: 'red', title: 'Не получилось скопировать', message: 'Выделите текст и скопируйте его вручную (Ctrl+C)' });
+      }}
+    >
+      {copied ? copiedLabel : label}
     </Button>
   );
 }

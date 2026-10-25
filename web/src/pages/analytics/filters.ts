@@ -35,11 +35,14 @@ export function toSearchParams(state: AnalyticsFilterState): URLSearchParams {
   return params;
 }
 
-/** Строка запроса к API: период превращается в «с такого-то момента». */
+/**
+ * Строка запроса к API: период превращается в «с начала такого-то дня». Начало дня, а не текущий момент: строка — часть
+ * ключа запроса, и с миллисекундами она менялась бы на каждом рендере, а запрос перезапускался бы без конца.
+ */
 export function toApiQuery(state: AnalyticsFilterState, now: Date = new Date()): string {
   const query = new URLSearchParams();
   const days = periodDays[state.period];
-  if (days !== null) query.set('from', new Date(now.getTime() - days * 86_400_000).toISOString());
+  if (days !== null) query.set('from', new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days)).toISOString());
   for (const key of keys) if (state[key]) query.set(key, String(state[key]));
   return query.toString();
 }

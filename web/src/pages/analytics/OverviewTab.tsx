@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Anchor, Loader, SimpleGrid, Stack, Table, Text } from '@mantine/core';
+import { Alert, Anchor, Loader, SimpleGrid, Stack, Table, Text } from '@mantine/core';
 import { BarChart, LineChart } from '@mantine/charts';
 import { useApi } from '../../api/queries';
 import type { AnalyticsOverview, GroupStats, MatrixCell } from '../../api/types';
@@ -107,6 +107,7 @@ export function OverviewTab() {
   const overview = useApi<AnalyticsOverview>(['loi-analytics', 'overview', query], `/api/loi/analytics/overview?${query}`);
   const data = overview.data;
 
+  if (overview.error) return <Alert color="red">{overview.error.message}</Alert>;
   if (!data) return <Loader />;
   if (data.models === 0) return <Empty>За выбранный период проверок нет</Empty>;
 

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Alert, Anchor, Badge, Button, Code, CopyButton, Group, List, Modal, NumberInput, Stack, Table, Text } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Code, Group, List, Modal, NumberInput, Stack, Table, Text } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { AgentView, VersionLimit } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
-import { ConfirmButton, Empty, Panel, YearBadge } from '../../components/ui';
+import { ConfirmButton, CopyTextButton, Empty, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { validateLimits } from './limits';
@@ -56,13 +56,7 @@ function ConnectAgentModal({ onClose }: { onClose: () => void }) {
           {create.data ? (
             <Group gap="xs" mt={6}>
               <Code fz="lg">{create.data.code}</Code>
-              <CopyButton value={create.data.code}>
-                {({ copied, copy }) => (
-                  <Button size="compact-sm" variant="default" onClick={copy}>
-                    {copied ? 'Скопировано' : 'Копировать'}
-                  </Button>
-                )}
-              </CopyButton>
+              <CopyTextButton value={create.data.code} label="Копировать" copiedLabel="Скопировано" />
               <Text size="xs" c="dimmed">действует до {formatDateTime(create.data.expiresAt)}</Text>
             </Group>
           ) : (

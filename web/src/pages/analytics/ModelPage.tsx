@@ -16,6 +16,7 @@ export function ModelPage() {
   const key = params.get('key') ?? '';
   const history = useApi<ModelHistory>(['loi-analytics', 'model', key], key ? `/api/loi/analytics/model?key=${encodeURIComponent(key)}` : null);
 
+  if (!key) return <Alert color="yellow">Не указана модель — выберите её на вкладке «Модели».</Alert>;
   if (history.error) return <Alert color="red">{history.error.message}</Alert>;
   const data = history.data;
   if (!data) return <Loader />;

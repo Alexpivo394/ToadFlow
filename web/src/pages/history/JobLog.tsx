@@ -1,8 +1,9 @@
-import { Box, Button, Code, CopyButton, Group, Loader, Table } from '@mantine/core';
+import { Box, Button, Code, Group, Loader, Table } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import { downloadFile } from '../../api/client';
 import type { JobRow, LogLine } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
+import { CopyTextButton } from '../../components/ui';
 import { formatTime } from '../../lib/format';
 import { formatShare, isExportResult, isLoiResult } from '../../lib/loi';
 
@@ -26,13 +27,7 @@ function downloadLog(job: JobRow) {
 
 function CopyPath({ value, label }: { value: string; label: string }) {
   return (
-    <CopyButton value={value}>
-      {({ copied, copy }) => (
-        <Button size="compact-sm" variant="default" onClick={copy} title={value}>
-          {copied ? 'Путь скопирован' : label}
-        </Button>
-      )}
-    </CopyButton>
+    <CopyTextButton value={value} label={label} copiedLabel="Путь скопирован" title={value} />
   );
 }
 

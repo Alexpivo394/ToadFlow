@@ -11,6 +11,8 @@ describe('analytics filters', () => {
   it('period becomes from', () => {
     const query = new URLSearchParams(toApiQuery({ period: '30d', customer: 'ГК Пионер' }, new Date('2026-10-31T00:00:00Z')));
     expect(query.get('from')).toBe('2026-10-01T00:00:00.000Z');
+    // в течение дня строка не меняется — иначе ключ запроса новый на каждом рендере
+    expect(toApiQuery({ period: '30d' }, new Date('2026-10-31T17:45:12.345Z'))).toBe(toApiQuery({ period: '30d' }, new Date('2026-10-31T00:00:00Z')));
     expect(query.get('customer')).toBe('ГК Пионер');
     expect(new URLSearchParams(toApiQuery({ period: 'all' })).has('from')).toBe(false);
   });

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Alert, Button, Code, CopyButton, Group, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Code, Group, Stack, Table, Text, TextInput } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { ApiToken } from '../../api/types';
-import { ConfirmButton, Empty, Panel } from '../../components/ui';
+import { ConfirmButton, CopyTextButton, Empty, Panel } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 
 /**
@@ -27,9 +27,7 @@ export function TokensSettings() {
           <Alert color="green" mb="sm" title="Токен создан — скопируйте его сейчас, больше он показан не будет" withCloseButton onClose={() => setCreated(null)}>
             <Group gap="xs" wrap="nowrap">
               <Code style={{ wordBreak: 'break-all' }}>{created}</Code>
-              <CopyButton value={created}>
-                {({ copied, copy }) => <Button size="compact-sm" variant="default" onClick={copy}>{copied ? 'Скопирован' : 'Скопировать'}</Button>}
-              </CopyButton>
+              <CopyTextButton value={created} label="Скопировать" copiedLabel="Скопирован" />
             </Group>
           </Alert>
         )}
