@@ -28,7 +28,7 @@ const defaultFolders: Record<string, string> = {
 };
 
 const loiDefaults = (profileId: string): LoiScheduleSettings => ({
-  profileId, viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '',
+  profileId, viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
 });
 
 const isLoiSettings = (settings: ModuleSettings): settings is LoiScheduleSettings => 'profileId' in settings;

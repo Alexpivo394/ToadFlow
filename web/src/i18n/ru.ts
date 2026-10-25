@@ -12,6 +12,8 @@ export const t = {
     sources: 'Источники',
     presets: 'Пресеты выгрузки',
     loi: 'Профили LOI',
+    analytics: 'Аналитика LOI',
+    tokens: 'Токены доступа',
     users: 'Пользователи',
     general: 'Общие',
   },

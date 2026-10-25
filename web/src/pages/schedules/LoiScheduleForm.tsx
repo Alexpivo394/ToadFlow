@@ -71,6 +71,9 @@ export function LoiScheduleForm({ value, profiles, readOnly, onChange }: Props) 
           checked={value.problemsOnly} disabled={readOnly} onChange={(e) => set({ problemsOnly: e.currentTarget.checked })} />
       </Stack>
 
+      <Checkbox label="Записывать итоги в аналитику ToadFlow" description="Страница «Аналитика LOI»: история по объектам, разделам и моделям"
+        checked={value.analytics} disabled={readOnly} onChange={(e) => set({ analytics: e.currentTarget.checked })} />
+
       <TextInput
         label="База для дашбордов"
         description="Книга Excel, куда каждая модель дописывает итоги (как в ParamChecker) — для Power BI. Пусто — не ведётся. Подстановки: {дата}, {время}, {расписание}"

@@ -4,9 +4,11 @@ import { PageTitle } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { AgentsSettings } from './AgentsSettings';
 import { GeneralSettingsForm } from './GeneralSettingsForm';
+import { AnalyticsSettings } from './loi/AnalyticsSettings';
 import { LoiSettings } from './loi/LoiSettings';
 import { PresetsSettings } from './PresetsSettings';
 import { SourcesSettings } from './SourcesSettings';
+import { TokensSettings } from './TokensSettings';
 import { UsersSettings } from './UsersSettings';
 
 export function SettingsPage() {
@@ -18,6 +20,8 @@ export function SettingsPage() {
     sources: <SourcesSettings />,
     presets: <PresetsSettings />,
     loi: <LoiSettings />,
+    analytics: <AnalyticsSettings />,
+    tokens: <TokensSettings />,
     users: can('Admin') ? <UsersSettings /> : null,
     general: <GeneralSettingsForm />,
   }[section ?? ''];

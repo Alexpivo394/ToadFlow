@@ -26,3 +26,5 @@ class ResizeObserverStub {
 (window as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 window.HTMLElement.prototype.scrollIntoView = () => {};
 Object.defineProperty(window, 'getComputedStyle', { value: () => ({ getPropertyValue: () => '' }) });
+// Textarea с autosize подписывается на загрузку шрифтов.
+Object.defineProperty(document, 'fonts', { value: { addEventListener: () => {}, removeEventListener: () => {} } });

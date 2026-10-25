@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
 import { AppShell } from './layout/AppShell';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { HistoryPage } from './pages/history/HistoryPage';
 import { SchedulesPage } from './pages/schedules/SchedulesPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -33,6 +34,7 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="schedules/:id?" element={<SchedulesPage />} />
         <Route path="history/*" element={<HistoryPage />} />
+        <Route path="analytics/*" element={<AnalyticsPage />} />
         <Route path="settings">
           <Route index element={<Navigate to="agents" replace />} />
           <Route path=":section" element={<SettingsPage />} />

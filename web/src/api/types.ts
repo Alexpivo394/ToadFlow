@@ -318,6 +318,8 @@ export interface LoiScheduleSettings {
   skipLinks: boolean;
   problemsOnly: boolean;
   historyFile: string;
+  /** Записывать итоги в аналитику ToadFlow. */
+  analytics: boolean;
 }
 
 export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings;
@@ -455,4 +457,159 @@ export interface CheckProfile {
   WorksetKeyword: string;
   Models?: unknown[];
   Rules: CheckRule[];
+}
+
+// ── Аналитика LOI ─────────────────────────────────────────────────────────────────────────────────────────────
+
+export type LoiCheckSource = 'Schedule' | 'Manual';
+
+export interface AnalyticsSettings {
+  enabled: boolean;
+  /** 0 — хранить всегда. */
+  retentionYears: number;
+}
+
+export interface NamingEntry {
+  field: string;
+  /** Куски имени через «+», например DON+BNK-DOO. */
+  tokens: string;
+  value: string;
+  customer?: string | null;
+}
+
+export interface NamingPattern {
+  field: string;
+  pattern: string;
+  value: string;
+}
+
+export interface NamingConfig {
+  separators: string;
+  entries: NamingEntry[];
+  patterns: NamingPattern[];
+  nameExpressions: string[];
+}
+
+export interface ModelClassification {
+  customer: string | null;
+  object: string | null;
+  discipline: string | null;
+  part: string | null;
+  fields: Record<string, string>;
+  unrecognized: string[];
+}
+
+export interface NamingPreviewRow {
+  name: string;
+  result: ModelClassification;
+}
+
+export interface KnownModel {
+  name: string;
+  path: string;
+}
+
+export interface ModelOverride {
+  modelKey: string;
+  modelName: string;
+  customer: string | null;
+  object: string | null;
+  discipline: string | null;
+  part: string | null;
+  updatedAt: string;
+}
+
+export interface AnalyticsFilters {
+  customers: string[];
+  objects: { name: string; customer: string | null }[];
+  disciplines: string[];
+  parts: string[];
+  profiles: string[];
+  first: string | null;
+  last: string | null;
+}
+
+export interface GroupStats {
+  key: string | null;
+  customer: string | null;
+  models: number;
+  fillRate: number | null;
+  completeness: number | null;
+}
+
+export interface MatrixCell {
+  object: string | null;
+  discipline: string | null;
+  models: number;
+  fillRate: number | null;
+}
+
+export interface TrendPoint {
+  bucket: string;
+  series: string | null;
+  checks: number;
+  fillRate: number | null;
+  completeness: number | null;
+}
+
+export interface AnalyticsModelRow {
+  modelKey: string;
+  modelName: string;
+  modelPath: string;
+  customer: string | null;
+  object: string | null;
+  discipline: string | null;
+  part: string | null;
+  checkedAt: string;
+  source: LoiCheckSource;
+  profileName: string;
+  elements: number;
+  fillRate: number | null;
+  completeness: number | null;
+  previousFillRate: number | null;
+  profileChanged: boolean;
+}
+
+export interface AnalyticsParameterRow {
+  name: string;
+  models: number;
+  total: number;
+  filled: number;
+  empty: number;
+  missing: number;
+  fillRate: number | null;
+  worstModels: string[];
+}
+
+export interface AnalyticsOverview {
+  models: number;
+  checks: number;
+  manualChecks: number;
+  fillRate: number | null;
+  completeness: number | null;
+  byObject: GroupStats[];
+  byDiscipline: GroupStats[];
+  matrix: MatrixCell[];
+  granularity: 'day' | 'week';
+  trend: TrendPoint[];
+  trendByObject: TrendPoint[];
+  worstModels: AnalyticsModelRow[];
+  worstParameters: AnalyticsParameterRow[];
+}
+
+export interface ModelHistory {
+  model: AnalyticsModelRow;
+  checks: { id: string; checkedAt: string; source: LoiCheckSource; userName: string | null; profileName: string; profileFingerprint: string; elements: number; fillRate: number | null; completeness: number | null }[];
+  rules: { checkId: string; position: number; title: string; elements: number; fillRate: number | null; completeness: number | null }[];
+  parameters: { rule: string; name: string; filled: number; empty: number; missing: number; fillRate: number | null }[];
+}
+
+// ── Личные токены ────────────────────────────────────────────────────────────────────────────────────────────
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 }

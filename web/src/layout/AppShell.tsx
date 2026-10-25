@@ -1,7 +1,7 @@
 import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
 import { ActionIcon, AppShell as Shell, Box, Burger, Group, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCalendarTime, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
+import { IconCalendarTime, IconChartBar, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
 import { Brand } from '../components/ui';
 import { t } from '../i18n/ru';
@@ -12,8 +12,10 @@ const settingsLinks = [
   { to: '/settings/sources', label: t.nav.sources },
   { to: '/settings/presets', label: t.nav.presets },
   { to: '/settings/loi', label: t.nav.loi },
+  { to: '/settings/analytics', label: t.nav.analytics },
   { to: '/settings/users', label: t.nav.users, admin: true },
   { to: '/settings/general', label: t.nav.general },
+  { to: '/settings/tokens', label: t.nav.tokens },
 ];
 
 export function AppShell() {
@@ -44,6 +46,7 @@ export function AppShell() {
           <NavLink component={RouterLink} to="/" end label={t.nav.dashboard} leftSection={<IconLayoutDashboard size={18} />} onClick={close} />
           <NavLink component={RouterLink} to="/schedules" label={t.nav.schedules} leftSection={<IconCalendarTime size={18} />} onClick={close} />
           <NavLink component={RouterLink} to="/history" label={t.nav.history} leftSection={<IconHistory size={18} />} onClick={close} />
+          <NavLink component={RouterLink} to="/analytics" label={t.nav.analytics} leftSection={<IconChartBar size={18} />} onClick={close} />
           <NavLink label={t.nav.settings} leftSection={<IconSettings size={18} />} defaultOpened={inSettings} active={inSettings} childrenOffset={28}>
             {settingsLinks
               .filter((link) => !link.admin || can('Admin'))
