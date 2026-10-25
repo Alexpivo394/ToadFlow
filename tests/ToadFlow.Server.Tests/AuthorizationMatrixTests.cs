@@ -14,10 +14,11 @@ public class AuthorizationMatrixTests : ServerTest
     private static readonly string[] Open = ["/api/auth/login", "/api/agents/register"];
 
     /// <summary>
-    ///     Доступно и наблюдателю: свои токены доступа, своя ручная проверка из ParamChecker и предпросмотр разбора имён — он
-    ///     ничего не сохраняет, POST только из-за тела запроса.
+    ///     Доступно и наблюдателю: свои токены доступа, своя ручная проверка из ParamChecker и предпросмотры разбора имён и
+    ///     профилей моделей — они ничего не сохраняют, POST только из-за тела запроса.
     /// </summary>
-    private static readonly string[] Personal = ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/loi/checks", "/api/loi/naming/preview"];
+    private static readonly string[] Personal =
+        ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/loi/checks", "/api/loi/naming/preview", "/api/loi/routing/preview"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()

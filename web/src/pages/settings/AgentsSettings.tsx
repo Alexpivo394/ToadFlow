@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Anchor, Badge, Button, Code, Group, List, Modal, NumberInput, Stack, Table, Text } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Code, Group, List, Menu, Modal, NumberInput, Stack, Table, Text } from '@mantine/core';
+import { IconChevronDown } from '@tabler/icons-react';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { AgentView, VersionLimit } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
-import { ConfirmButton, CopyTextButton, Empty, Panel, YearBadge } from '../../components/ui';
+import { askConfirm, CopyTextButton, Empty, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { validateLimits } from './limits';
@@ -96,7 +97,7 @@ export function AgentsSettings() {
       {agents.data && agents.data.length === 0 ? (
         <Empty>Агентов пока нет — нажмите «Подключить агента»</Empty>
       ) : (
-        <Table.ScrollContainer minWidth={900}>
+        <Table.ScrollContainer minWidth={680}>
           <Table>
             <Table.Thead>
               <Table.Tr>
@@ -116,7 +117,7 @@ export function AgentsSettings() {
                     <Text size="xs" c="dimmed">{[agent.ip, agent.totalRamMb ? `${Math.round(agent.totalRamMb / 1024)} ГБ RAM` : null].filter(Boolean).join(' · ')}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text c={stateColor[agent.state]} size="sm">
+                    <Text c={stateColor[agent.state]} size="sm" style={{ whiteSpace: 'nowrap' }}>
                       {t.agentState[agent.state]}
                       {agent.state === 'Offline' && ` ${formatRelative(agent.lastSeenAt)}`}
                     </Text>
@@ -134,26 +135,31 @@ export function AgentsSettings() {
                   </Table.Td>
                   <Table.Td>
                     <RequireRole role="Admin">
-                      <Group gap={4} wrap="nowrap">
-                        {agent.state !== 'Disabled' && (
-                          <>
-                            <Button size="compact-xs" variant="default" onClick={() => setEditing(agent)} disabled={agent.revits.length === 0}>
-                              {t.common.edit}
-                            </Button>
-                            <Button size="compact-xs" variant="default" onClick={() => drain.mutate({ id: agent.id, draining: !agent.isDraining })}>
-                              {agent.isDraining ? 'Брать новые' : 'Не брать новые'}
-                            </Button>
-                            <ConfirmButton size="compact-xs" variant="default" question={`Отключить агента ${agent.machineName}? Он больше не сможет подключиться.`}
-                              onConfirm={() => disable.mutate(agent.id)}>
-                              Отключить
-                            </ConfirmButton>
-                          </>
-                        )}
-                        {(agent.state === 'Offline' || agent.state === 'Disabled') && (
-                          <ConfirmButton size="compact-xs" variant="subtle" question={`Удалить агента ${agent.machineName}?`} onConfirm={() => remove.mutate(agent.id)}>
-                            {t.common.delete}
-                          </ConfirmButton>
-                        )}
+                      {/* Действия — меню: строка таблицы не расползается и ничего не обрезается на узком экране */}
+                      <Group justify="flex-end">
+                        <Menu position="bottom-end" withinPortal>
+                          <Menu.Target>
+                            <Button size="compact-sm" variant="default" rightSection={<IconChevronDown size={14} />}>Действия</Button>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            {agent.state !== 'Disabled' && (
+                              <>
+                                <Menu.Item onClick={() => setEditing(agent)} disabled={agent.revits.length === 0}>Лимиты экземпляров</Menu.Item>
+                                <Menu.Item onClick={() => drain.mutate({ id: agent.id, draining: !agent.isDraining })}>
+                                  {agent.isDraining ? 'Брать новые задания' : 'Не брать новые задания'}
+                                </Menu.Item>
+                                <Menu.Item onClick={() => askConfirm(`Отключить агента ${agent.machineName}? Он больше не сможет подключиться.`, () => disable.mutate(agent.id))}>
+                                  Отключить
+                                </Menu.Item>
+                              </>
+                            )}
+                            {(agent.state === 'Offline' || agent.state === 'Disabled') && (
+                              <Menu.Item color="red" onClick={() => askConfirm(`Удалить агента ${agent.machineName}?`, () => remove.mutate(agent.id))}>
+                                {t.common.delete}
+                              </Menu.Item>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
                       </Group>
                     </RequireRole>
                   </Table.Td>

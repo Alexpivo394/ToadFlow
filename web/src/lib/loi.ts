@@ -1,4 +1,4 @@
-import type { CheckProfile, CheckRule, Condition, ConditionLogic, ConditionOperator, ExportJobResult, JobResult, LoiCatalogResult, LoiJobResult, SelectionMode } from '../api/types';
+import type { CheckProfile, CheckRule, Condition, ConditionLogic, ConditionOperator, ExportJobResult, JobResult, LoiCatalogResult, LoiJobResult, LoiProfileSummary, SelectionMode } from '../api/types';
 
 // Повторяет правила Alexpivo394.Revit.ParamCheck.Profiles (ConditionRules, RunValidator) — для подсказок прямо в редакторе.
 // Окончательно профиль проверяет сервер.
@@ -81,6 +81,10 @@ export function normalizeProfile(profile: Partial<CheckProfile>): CheckProfile {
     })),
   };
 }
+
+/** Варианты выбора профиля; недописанные помечены. */
+export const profileOptions = (profiles: LoiProfileSummary[]) =>
+  profiles.map((p) => ({ value: p.id, label: p.problems.length ? `${p.name} (не готов)` : p.name }));
 
 /** Доля — «85,2 %»; null — «—» (нечего было проверять). */
 export function formatShare(share: number | null | undefined): string {

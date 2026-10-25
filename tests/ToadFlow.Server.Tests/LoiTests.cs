@@ -15,13 +15,15 @@ public sealed record LoiSummaryView(Guid Id, string Name, int RuleCount, string 
 
 public sealed record LoiDetailsView(Guid Id, string Name, JsonElement Profile, string[] Problems);
 
-public sealed record LoiImportView(LoiSummaryView[] Created);
+public sealed record LoiImportView(LoiSummaryView[] Created, string[] Warnings);
 
 public sealed record LoiCatalogSummaryView(int RevitYear, int Categories, int Parameters, bool HasSharedParameterFile);
 
 public sealed record LoiCatalogOverviewView(LoiCatalogSummaryView[] Catalogs, int[] AgentYears);
 
 public sealed record LoiCatalogDetailsView(int RevitYear, LoiCatalogResult Catalog);
+
+public sealed record PreviewRow(string Name, string? Discipline, string? ProfileName, string Via);
 
 public class LoiTests : ServerTest
 {
@@ -44,13 +46,13 @@ public class LoiTests : ServerTest
         return await response.ReadJsonAsync<LoiSummaryView>();
     }
 
-    private static object ScheduleBody(Guid sourceId, object moduleSettings) => new
+    private static object ScheduleBody(Guid sourceId, object moduleSettings, params string[] models) => new
     {
         name = "LOI ЖК Север",
         moduleKind = ModuleKinds.Loi,
         sourceId,
         outputFolderTemplate = @"\\nas\loi\{расписание}\{дата}",
-        selection = new SelectionDto([new ModelSelectionDto("АР.rvt", "RSN://rs22/ЖК/АР.rvt", true, false)], []),
+        selection = new SelectionDto((models.Length == 0 ? ["АР.rvt"] : models).Select(m => new ModelSelectionDto(m, $"RSN://rs22/ЖК/{m}", true, false)).ToArray(), []),
         moduleSettings,
         recurrenceKind = RecurrenceKind.Weekly,
         daysOfWeekMask = 0b0011111,
@@ -125,6 +127,40 @@ public class LoiTests : ServerTest
         (await operatorClient.GetJsonAsync<LoiSummaryView[]>("/api/loi/profiles")).Length.ShouldBe(3);
     }
 
+    /// <summary>Файл ParamChecker прежних версий: корень — массив, фильтр — JSON-строкой, категории — числами BuiltInCategory.</summary>
+    private static string LegacyFile(params int[] categories) => JsonSerializer.Serialize(new[]
+    {
+        new
+        {
+            ProfileName = "ОВ старый",
+            Models = Array.Empty<object>(),
+            Rules = new[]
+            {
+                new
+                {
+                    Title = "Воздуховоды",
+                    FilterConfigJson = JsonSerializer.Serialize(new { SelectedCategories = categories, CategoryParameterLogic = 0 }),
+                    ParameterConfigJson = JsonSerializer.Serialize(new { Parameters = new[] { new { Value = "ADSK_Марка" } } })
+                }
+            }
+        }
+    });
+
+    [Test]
+    public async Task Import_LegacyNumericCategories_Translated()
+    {
+        var operatorClient = await ClientAsync(UserRole.Operator);
+
+        var result = await (await operatorClient.PostJsonAsync("/api/loi/profiles/import", new { json = LegacyFile(-2008000, -2000011, 12345) }))
+            .ReadJsonAsync<LoiImportView>();
+
+        var created = result.Created.ShouldHaveSingleItem();
+        created.Problems.ShouldBeEmpty();
+        var details = await operatorClient.GetJsonAsync<LoiDetailsView>($"/api/loi/profiles/{created.Id}");
+        ProfileSerializer.DeserializeProfile(details.Profile.GetRawText()).Rules.Single().Filter.Categories.ShouldBe(["OST_DuctCurves", "OST_Walls"]);
+        result.Warnings.ShouldHaveSingleItem().ShouldContain("12345");
+    }
+
     [Test]
     public async Task Import_NotAProfilesFile_400()
     {
@@ -187,6 +223,115 @@ public class LoiTests : ServerTest
         payload.Settings.ProblemsOnly.ShouldBeTrue();
         payload.Settings.HistoryFile.ShouldBe(@"\\nas\loi\LOI ЖК Север.xlsx");
         ProfileSerializer.DeserializeProfile(payload.ProfileJson).Rules.ShouldHaveSingleItem().Title.ShouldBe("Стены");
+    }
+
+    private static async Task RouteAsync(HttpClient client, Guid? fallback, params (string Discipline, Guid ProfileId)[] routes) =>
+        (await client.PutJsonAsync("/api/loi/routing", new
+        {
+            disciplines = routes.Select(r => new { discipline = r.Discipline, profileId = r.ProfileId }),
+            fallbackProfileId = fallback
+        })).EnsureSuccessStatusCode();
+
+    private async Task<List<Job>> RunAsync(HttpClient admin, Guid scheduleId)
+    {
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        agent.ExpandSelection = (_, selection) => selection.Models.Select(m => new ExpandedModelDto(m.Name, m.ModelPath, true, null, m.Rvt, m.Nwc)).ToArray();
+        await agent.ConnectAsync();
+        var runId = (await (await admin.PostAsync($"/api/schedules/{scheduleId}/run", null)).ReadJsonAsync<RunCreated>()).RunId;
+        await EventuallyAsync(async () => (await DbAsync(db => db.Runs.SingleAsync(r => r.Id == runId))).State != RunState.Expanding);
+        return await DbAsync(db => db.Jobs.Where(j => j.RunId == runId).ToListAsync());
+    }
+
+    private static string ProfileOf(Job job) => ProfileSerializer.DeserializeProfile(JsonSerializer.Deserialize<LoiJobPayload>(job.PayloadJson, TestJson.Options)!.ProfileJson).Name;
+
+    [Test]
+    public async Task Expansion_ByDiscipline_ProfilePerModel_ExceptionWins_UnmappedSkipped()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        var ov = await CreateAsync(admin, "ОВ");
+        var vk = await CreateAsync(admin, "ВК");
+        var smoke = await CreateAsync(admin, "Дымоудаление");
+        await RouteAsync(admin, null, ("ОВ", ov.Id), ("вк", vk.Id));
+        var schedule = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId,
+            new { profileId = (Guid?)null, modelProfiles = new[] { new { model = "DON_K1_OV_DU", profileId = smoke.Id } } },
+            "DON_K1_OV.rvt", "DON_K1_VK.rvt", "DON_K1_AR.rvt", "DON_K1_OV_DU.rvt"));
+
+        var jobs = await RunAsync(admin, schedule.Id);
+
+        jobs.ToDictionary(j => j.ModelName, ProfileOf).ShouldBe(new Dictionary<string, string>
+        {
+            ["DON_K1_OV.rvt"] = "ОВ", ["DON_K1_VK.rvt"] = "ВК", ["DON_K1_OV_DU.rvt"] = "Дымоудаление"
+        }, ignoreOrder: true);
+        var run = await DbAsync(db => db.Runs.SingleAsync(r => r.Id == jobs[0].RunId));
+        run.Warning.ShouldNotBeNull().ShouldContain("DON_K1_AR.rvt — разделу «АР» не назначен профиль LOI");
+    }
+
+    [Test]
+    public async Task Expansion_ByDiscipline_FallbackProfile_ForUnrecognized()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        var common = await CreateAsync(admin, "Общий");
+        await RouteAsync(admin, common.Id);
+        var schedule = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, new { profileId = (Guid?)null }, "Модель без раздела.rvt"));
+
+        ProfileOf((await RunAsync(admin, schedule.Id)).ShouldHaveSingleItem()).ShouldBe("Общий");
+    }
+
+    [Test]
+    public async Task Schedule_ByDiscipline_NoRouting_400()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+
+        var response = await admin.PostJsonAsync("/api/schedules", ScheduleBody(sourceId, new { profileId = (Guid?)null }));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("не назначены");
+    }
+
+    [Test]
+    public async Task Routing_Preview_ShowsProfileAndReason()
+    {
+        var admin = await AdminAsync();
+        var ov = await CreateAsync(admin, "ОВ");
+        var smoke = await CreateAsync(admin, "Дымоудаление");
+        await RouteAsync(admin, null, ("ОВ", ov.Id));
+
+        var rows = await (await admin.PostJsonAsync("/api/loi/routing/preview", new
+        {
+            settings = new { profileId = (Guid?)null, modelProfiles = new[] { new { model = "DON_OV_DU.rvt", profileId = smoke.Id } } },
+            models = new[] { new { name = "DON_OV.rvt", modelPath = "RSN://rs/DON_OV.rvt" }, new { name = "DON_OV_DU.rvt", modelPath = "RSN://rs/DON_OV_DU.rvt" },
+                new { name = "DON_AR.rvt", modelPath = "RSN://rs/DON_AR.rvt" } }
+        })).ReadJsonAsync<PreviewRow[]>();
+
+        rows.Select(r => (r.Name, r.ProfileName, r.Via)).ShouldBe([("DON_AR.rvt", null, "None"), ("DON_OV.rvt", "ОВ", "Discipline"), ("DON_OV_DU.rvt", "Дымоудаление", "Model")], ignoreOrder: true);
+        rows.Single(r => r.Name == "DON_AR.rvt").Discipline.ShouldBe("АР");
+    }
+
+    [Test]
+    public async Task Routing_DuplicateDiscipline_400()
+    {
+        var admin = await AdminAsync();
+        var ov = await CreateAsync(admin, "ОВ");
+
+        var response = await admin.PutJsonAsync("/api/loi/routing", new
+        {
+            disciplines = new[] { new { discipline = "ОВ", profileId = ov.Id }, new { discipline = " ов ", profileId = ov.Id } }
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Test]
+    public async Task Profile_UsedByRouting_DeleteConflict()
+    {
+        var admin = await AdminAsync();
+        var profile = await CreateAsync(admin, "ОВ");
+        await RouteAsync(admin, null, ("ОВ", profile.Id));
+
+        (await admin.DeleteAsync($"/api/loi/profiles/{profile.Id}")).StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
 
     [Test]

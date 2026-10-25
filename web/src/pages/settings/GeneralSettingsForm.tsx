@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, NumberInput, Select, SimpleGrid, Stack } from '@mantine/core';
+import { Button, Group, NumberInput, Select, SimpleGrid, Stack } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { GeneralSettings } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
@@ -34,14 +34,16 @@ export function GeneralSettingsForm() {
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           {number('defaultModelTimeoutMinutes', 'Таймаут на модель по умолчанию, мин', 1)}
           {number('silenceTimeoutMinutes', 'Молчание Revit до перезапуска, мин', 1)}
+          {number('recycleAfterModels', 'Перезапускать Revit после, моделей', 1, 'Плановый перезапуск — чтобы не копились утечки памяти')}
+          {number('recycleMemoryMb', 'Или когда Revit занял, МБ', 1000, 'Что наступит раньше')}
           {number('logRetentionDays', 'Хранить логи, дней', 1)}
-          {number('recycleAfterModels', 'Перезапускать Revit после, моделей', 1, 'Чтобы не копились утечки памяти')}
-          {number('recycleMemoryMb', 'Или когда Revit занял, МБ', 1000)}
         </SimpleGrid>
         {!readOnly && (
-          <Button w={160} loading={save.isPending} onClick={() => save.mutate(draft)}>
-            {t.common.save}
-          </Button>
+          <Group>
+            <Button loading={save.isPending} onClick={() => save.mutate(draft)}>
+              {t.common.save}
+            </Button>
+          </Group>
         )}
       </Stack>
     </Panel>

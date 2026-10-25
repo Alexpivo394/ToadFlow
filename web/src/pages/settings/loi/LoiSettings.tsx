@@ -13,6 +13,7 @@ import { t } from '../../../i18n/ru';
 import { formatDateTime, pluralRu } from '../../../lib/format';
 import { newProfile, normalizeProfile } from '../../../lib/loi';
 import { ProfileEditor } from './ProfileEditor';
+import { RoutingPanel } from './RoutingPanel';
 import { useLoiCatalog, type LoiCatalog } from './useLoiCatalog';
 
 type Editing = { id: string | null; profile: CheckProfile };
@@ -104,8 +105,11 @@ export function LoiSettings() {
   async function importFile(file: File | null) {
     if (!file) return;
     try {
-      const result = await apiFetch<{ created: LoiProfileSummary[] }>('/api/loi/profiles/import', { method: 'POST', json: { json: await file.text() } });
+      const result = await apiFetch<{ created: LoiProfileSummary[]; warnings: string[] }>('/api/loi/profiles/import',
+        { method: 'POST', json: { json: await file.text() } });
       notifications.show({ color: 'green', message: `Загружено профилей: ${result.created.length} — ${result.created.map((p) => `«${p.name}»`).join(', ')}` });
+      for (const warning of result.warnings ?? [])
+        notifications.show({ color: 'yellow', title: 'Перенеслось не всё', message: warning, autoClose: false });
       await queryClient.invalidateQueries({ queryKey: ['loi-profiles'] });
     } catch (error) {
       notifications.show({ color: 'red', title: 'Файл не загружен', message: (error as Error).message });
@@ -179,6 +183,7 @@ export function LoiSettings() {
         <ProfileEditor key={editing.id ?? 'new'} id={editing.id} initial={editing.profile} catalog={catalog} readOnly={!can('Operator')}
           onDone={() => setEditing(null)} />
       )}
+      <RoutingPanel profiles={profiles.data ?? []} readOnly={!can('Operator')} />
       <CatalogPanel catalog={catalog} />
     </Stack>
   );

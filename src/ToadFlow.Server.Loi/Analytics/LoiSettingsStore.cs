@@ -13,11 +13,12 @@ public sealed record AnalyticsSettings(bool Enabled = true, int RetentionYears =
     public IReadOnlyList<string> Validate() => RetentionYears is < 0 or > 100 ? ["Срок хранения аналитики — от 0 (всегда) до 100 лет"] : [];
 }
 
-/// <summary>Настройки модуля LOI в общей таблице настроек: справочник именования и аналитика.</summary>
+/// <summary>Настройки модуля LOI в общей таблице настроек: справочник именования, аналитика, профили по разделам.</summary>
 public sealed class LoiSettingsStore(ToadFlowDb db)
 {
     private const string NamingKey = "loi.naming";
     private const string AnalyticsKey = "loi.analytics";
+    private const string RoutingKey = "loi.routing";
 
     public async Task<NamingConfig> NamingAsync(CancellationToken ct = default) => await ReadAsync<NamingConfig>(NamingKey, ct) ?? NamingDefaults.Create();
 
@@ -26,6 +27,10 @@ public sealed class LoiSettingsStore(ToadFlowDb db)
     public async Task<AnalyticsSettings> AnalyticsAsync(CancellationToken ct = default) => await ReadAsync<AnalyticsSettings>(AnalyticsKey, ct) ?? new AnalyticsSettings();
 
     public Task SaveAnalyticsAsync(AnalyticsSettings settings, CancellationToken ct = default) => WriteAsync(AnalyticsKey, settings, ct);
+
+    public async Task<LoiProfileRouting> RoutingAsync(CancellationToken ct = default) => await ReadAsync<LoiProfileRouting>(RoutingKey, ct) ?? LoiProfileRouting.Empty;
+
+    public Task SaveRoutingAsync(LoiProfileRouting routing, CancellationToken ct = default) => WriteAsync(RoutingKey, routing, ct);
 
     private async Task<T?> ReadAsync<T>(string key, CancellationToken ct) where T : class
     {

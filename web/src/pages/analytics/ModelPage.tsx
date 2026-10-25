@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router';
-import { Alert, Anchor, Badge, Group, Loader, SimpleGrid, Stack, Table, Text } from '@mantine/core';
+import { Alert, Anchor, Badge, Group, Loader, Paper, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
 import { useApi } from '../../api/queries';
 import type { ModelHistory } from '../../api/types';
@@ -29,12 +29,14 @@ export function ModelPage() {
   return (
     <Stack>
       <Anchor component={Link} to="/analytics/models" size="sm">← К моделям</Anchor>
-      <Panel title={model.modelName}>
-        <Group gap="lg">
+      {/* Имя модели — заголовком как есть: подпись панели набрана капслоком, а в именах моделей регистр значим. */}
+      <Paper withBorder p="md" radius="md">
+        <Title order={3}>{model.modelName}</Title>
+        <Group gap="lg" mt={4}>
           <Text size="sm">{[model.customer, orNone(model.object), orNone(model.discipline), model.part].filter(Boolean).join(' · ')}</Text>
           <Text size="sm" c="dimmed">{model.modelPath}</Text>
         </Group>
-      </Panel>
+      </Paper>
       <SimpleGrid cols={{ base: 2, md: 4 }}>
         <Stat title="Заполненность" value={<Share value={model.fillRate} size="xl" />} />
         <Stat title="Полнота" value={<Share value={model.completeness} size="xl" />} />

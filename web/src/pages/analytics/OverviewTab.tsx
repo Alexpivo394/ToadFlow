@@ -5,7 +5,7 @@ import { useApi } from '../../api/queries';
 import type { AnalyticsOverview, GroupStats, MatrixCell } from '../../api/types';
 import { Empty, Panel } from '../../components/ui';
 import { formatShare } from '../../lib/loi';
-import { shareColor, toApiQuery, toPercent } from './filters';
+import { noneValue, shareColor, toApiQuery, toPercent } from './filters';
 import { Delta, orNone, Share, Stat, useAnalyticsFilters } from './parts';
 
 const percent = (value: number) => `${value.toString().replace('.', ',')} %`;
@@ -73,11 +73,13 @@ function Matrix({ cells }: { cells: MatrixCell[] }) {
 
 function Trend({ data }: { data: AnalyticsOverview }) {
   const label = (bucket: string) => `${bucket.slice(8, 10)}.${bucket.slice(5, 7)}`;
-  const series = [...new Set(data.trendByObject.map((p) => p.series ?? ''))];
+  // Объект, не распознанный справочником, сервер называет «(нет)» — на графике он подписан так же, как в остальной аналитике.
+  const name = (series: string | null) => orNone(series === noneValue ? null : series);
+  const series = [...new Set(data.trendByObject.map((p) => name(p.series)))];
   const buckets = [...new Set(data.trendByObject.map((p) => p.bucket))].sort();
   const byObject = buckets.map((bucket) => ({
     bucket: label(bucket),
-    ...Object.fromEntries(series.map((s) => [s, toPercent(data.trendByObject.find((p) => p.bucket === bucket && (p.series ?? '') === s)?.fillRate)])),
+    ...Object.fromEntries(series.map((s) => [s, toPercent(data.trendByObject.find((p) => p.bucket === bucket && name(p.series) === s)?.fillRate)])),
   }));
   const colors = ['blue.6', 'grape.6', 'orange.6', 'teal.6', 'red.6', 'lime.7'];
 
@@ -132,11 +134,11 @@ export function OverviewTab() {
               {data.worstModels.map((m) => (
                 <Table.Tr key={m.modelKey}>
                   <Table.Td>
-                    <Anchor component={Link} to={`/analytics/model?key=${encodeURIComponent(m.modelKey)}`}>{m.modelName}</Anchor>
+                    <Anchor component={Link} to={`/analytics/model?key=${encodeURIComponent(m.modelKey)}`} size="sm" fw={500}>{m.modelName}</Anchor>
                     <Text size="xs" c="dimmed">{[m.object, m.discipline, m.part].filter(Boolean).join(' · ')}</Text>
                   </Table.Td>
-                  <Table.Td ta="right"><Share value={m.fillRate} /></Table.Td>
-                  <Table.Td ta="right"><Delta now={m.fillRate} before={m.previousFillRate} profileChanged={m.profileChanged} /></Table.Td>
+                  <Table.Td ta="right" w={80} style={{ whiteSpace: 'nowrap' }}><Share value={m.fillRate} /></Table.Td>
+                  <Table.Td ta="right" w={70} style={{ whiteSpace: 'nowrap' }}><Delta now={m.fillRate} before={m.previousFillRate} profileChanged={m.profileChanged} /></Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -151,8 +153,8 @@ export function OverviewTab() {
                     <Text size="sm" fw={500}>{p.name}</Text>
                     {p.worstModels.length > 0 && <Text size="xs" c="dimmed">хуже всего: {p.worstModels.join(', ')}</Text>}
                   </Table.Td>
-                  <Table.Td c="dimmed" ta="right">моделей {p.models}</Table.Td>
-                  <Table.Td ta="right"><Share value={p.fillRate} /></Table.Td>
+                  <Table.Td c="dimmed" ta="right" w={110} style={{ whiteSpace: 'nowrap' }}>моделей {p.models}</Table.Td>
+                  <Table.Td ta="right" w={80} style={{ whiteSpace: 'nowrap' }}><Share value={p.fillRate} /></Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>

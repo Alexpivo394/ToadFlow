@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { defaultExportSettings } from '../../components/ExportSettingsForm';
 import { renderApp } from '../../test/renderApp';
@@ -16,7 +16,8 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('BIM-FARM-03')).toBeTruthy();
     expect(screen.getByText('устарел')).toBeTruthy();
     expect(screen.getByText('R2020: 1 · R2023: 1')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Удалить' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
+    expect(await screen.findByRole('menuitem', { name: 'Удалить' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Подключить агента' })).toBeTruthy();
   });
 

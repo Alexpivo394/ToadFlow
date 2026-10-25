@@ -101,7 +101,7 @@ export function JobsTable({ jobs, showRun, initiallyOpen }: { jobs: JobRow[]; sh
                 bg={open === job.id ? 'var(--mantine-color-default-hover)' : undefined}>
                 {showRun && (
                   <Table.Td>
-                    <Anchor component={Link} to={`/history/runs/${job.runId}`} onClick={(e) => e.stopPropagation()}>
+                    <Anchor component={Link} to={`/history/runs/${job.runId}`} size="sm" onClick={(e) => e.stopPropagation()}>
                       {job.runName}
                     </Anchor>
                   </Table.Td>

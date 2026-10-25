@@ -63,14 +63,24 @@ export function SchedulesPage() {
                       bg={s.id === id ? 'var(--mantine-color-default-hover)' : undefined}>
                       <Table.Td fw={600}>{s.name}</Table.Td>
                       <Table.Td>
-                        <Box style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <YearBadge year={s.sourceRevitYear} muted={!s.isEnabled} /> {s.sourceName}
+                        {/* Метки фиксированной ширины — названия источников и счётчики моделей начинаются с одной линии */}
+                        <Box style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <Box miw={64} style={{ flexShrink: 0 }}>
+                            {s.sourceRevitYear ? <YearBadge year={s.sourceRevitYear} muted={!s.isEnabled} /> : <Badge variant="light" color="gray" radius="sm">папка</Badge>}
+                          </Box>
+                          {s.sourceName}
                         </Box>
                       </Table.Td>
                       <Table.Td>
-                        {s.moduleKind === 'loi' && <Badge color="grape" variant="light" mr={6}>LOI</Badge>}
-                        {s.modelCount} {pluralRu(s.modelCount, ['модель', 'модели', 'моделей'])}
-                        {s.selection.folders.length > 0 && <Text span c="dimmed"> + {s.selection.folders.length} папк.</Text>}
+                        <Box style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <Box miw={92} style={{ flexShrink: 0 }}>
+                            {s.moduleKind === 'loi' ? <Badge color="grape" variant="light">LOI</Badge> : <Badge color="blue" variant="light">RVT / NWC</Badge>}
+                          </Box>
+                          <span>
+                            {s.modelCount} {pluralRu(s.modelCount, ['модель', 'модели', 'моделей'])}
+                            {s.selection.folders.length > 0 && <Text span c="dimmed"> + {s.selection.folders.length} папк.</Text>}
+                          </span>
+                        </Box>
                       </Table.Td>
                       <Table.Td>{describeRecurrence(s)}</Table.Td>
                       <Table.Td>{s.isEnabled ? formatDateTime(s.nextRunAt) : <Badge color="gray" variant="light">выключено</Badge>}</Table.Td>

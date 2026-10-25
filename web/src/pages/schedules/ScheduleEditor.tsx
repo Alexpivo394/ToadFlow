@@ -27,8 +27,8 @@ const defaultFolders: Record<string, string> = {
   loi: '\\\\nas\\loi\\{расписание}\\{дата}',
 };
 
-const loiDefaults = (profileId: string): LoiScheduleSettings => ({
-  profileId, viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
+const loiDefaults = (profileId: string | null): LoiScheduleSettings => ({
+  profileId, modelProfiles: [], viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
 });
 
 const isLoiSettings = (settings: ModuleSettings): settings is LoiScheduleSettings => 'profileId' in settings;
@@ -66,7 +66,7 @@ function fromView(view: ScheduleView): ScheduleRequest {
   const { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings, recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority,
     modelTimeoutMinutes, maxRetries, isEnabled } = view;
   const settings: ModuleSettings = isLoiSettings(moduleSettings)
-    ? { ...loiDefaults(''), ...moduleSettings }
+    ? { ...loiDefaults(null), ...moduleSettings, modelProfiles: moduleSettings.modelProfiles ?? [] }
     : { presetId: moduleSettings.presetId, overrides: moduleSettings.overrides ?? {} };
   return { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings: settings,
     recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority, modelTimeoutMinutes, maxRetries, isEnabled };
@@ -107,11 +107,10 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
   /** Другая задача — свои настройки; папка результатов меняется, только если её не трогали. */
   function setModule(moduleKind: string) {
     if (moduleKind === form.moduleKind) return;
-    const ready = profiles.data?.find((p) => p.problems.length === 0) ?? profiles.data?.[0];
     set({
       moduleKind,
       outputFolderTemplate: form.outputFolderTemplate === defaultFolders[form.moduleKind] ? defaultFolders[moduleKind] : form.outputFolderTemplate,
-      moduleSettings: moduleKind === 'loi' ? loiDefaults(ready?.id ?? '') : { presetId: defaultPreset, overrides: {} },
+      moduleSettings: moduleKind === 'loi' ? loiDefaults(null) : { presetId: defaultPreset, overrides: {} },
     });
   }
 
@@ -263,7 +262,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
             </Stack>
           )}
           {loiSettings && (
-            <LoiScheduleForm value={loiSettings} profiles={profiles.data ?? []} readOnly={readOnly} onChange={(moduleSettings) => set({ moduleSettings })} />
+            <LoiScheduleForm value={loiSettings} profiles={profiles.data ?? []} scheduleId={schedule?.id} models={selected.models} readOnly={readOnly} onChange={(moduleSettings) => set({ moduleSettings })} />
           )}
         </Tabs.Panel>
 

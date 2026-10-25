@@ -31,25 +31,39 @@ public sealed class LoiCatalog
 }
 
 /// <summary>Настройки модуля в расписании (<c>Schedule.ModuleSettingsJson</c>).</summary>
+/// <param name="ProfileId">Один профиль на всё расписание; null — по разделу модели (<see cref="LoiProfileRouting" />).</param>
+/// <param name="ModelProfiles">Исключения: у этих моделей свой профиль — и при одном профиле, и по разделу.</param>
 /// <param name="ViewName">Вид, с которого собираются элементы; null — как в профиле, пусто — вся модель.</param>
 /// <param name="WorksetKeyword">РН с этим словом не открываются; null — как в профиле.</param>
 /// <param name="HistoryFile">База для дашбордов (.xlsx) с подстановками папки результатов; пусто — не ведётся.</param>
 /// <param name="Analytics">Записывать итоги в аналитику ToadFlow (если она включена в настройках сервиса).</param>
 public sealed record LoiScheduleSettings(
-    Guid ProfileId,
+    Guid? ProfileId,
     string? ViewName = null,
     string? WorksetKeyword = null,
     bool SkipLinks = true,
     bool ProblemsOnly = false,
     string HistoryFile = "",
-    bool Analytics = true)
+    bool Analytics = true,
+    List<ModelProfile>? ModelProfiles = null)
 {
+    public List<ModelProfile> ModelProfiles { get; init; } = ModelProfiles ?? [];
+
+    public IEnumerable<Guid> ProfileIds => ModelProfiles.Select(m => m.ProfileId).Concat(ProfileId is { } id ? [id] : []);
+
     public static LoiScheduleSettings? TryParse(JsonElement json)
     {
         try
         {
             var settings = json.Deserialize<LoiScheduleSettings>(ToadFlowDb.Json);
-            return settings is null || settings.ProfileId == Guid.Empty ? null : settings with { HistoryFile = settings.HistoryFile ?? "" };
+            return settings is null
+                ? null
+                : settings with
+                {
+                    ProfileId = settings.ProfileId == Guid.Empty ? null : settings.ProfileId,
+                    HistoryFile = settings.HistoryFile ?? "",
+                    ModelProfiles = settings.ModelProfiles.Where(m => !string.IsNullOrWhiteSpace(m.Model)).ToList()
+                };
         }
         catch (JsonException)
         {

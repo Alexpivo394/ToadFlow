@@ -70,20 +70,24 @@ export function PageTitle({ children, actions }: { children: ReactNode; actions?
   );
 }
 
+/** Спросить «Вы уверены?» перед необратимым действием. */
+export function askConfirm(question: string, onConfirm: () => void, color = 'red') {
+  modals.openConfirmModal({
+    title: t.common.confirm,
+    children: <Text size="sm">{question}</Text>,
+    labels: { confirm: t.common.yes, cancel: t.common.no },
+    confirmProps: { color },
+    onConfirm,
+  });
+}
+
 /** Кнопка с подтверждением — для необратимых действий («Убить», «Удалить», «Отменить запуск»). */
 export function ConfirmButton({ question, onConfirm, children, ...props }: ButtonProps & { question: string; onConfirm: () => void; children: ReactNode }) {
   return (
     <Button
+      color="red"
       {...props}
-      onClick={() =>
-        modals.openConfirmModal({
-          title: t.common.confirm,
-          children: <Text size="sm">{question}</Text>,
-          labels: { confirm: t.common.yes, cancel: t.common.no },
-          confirmProps: { color: props.color ?? 'red' },
-          onConfirm,
-        })
-      }
+      onClick={() => askConfirm(question, onConfirm, props.color ?? 'red')}
     >
       {children}
     </Button>

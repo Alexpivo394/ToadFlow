@@ -27,6 +27,7 @@ public sealed class LoiServerModule : IServerModule
         services.AddScoped<LoiCatalogRefresher>();
         services.AddScoped<LoiSettingsStore>();
         services.AddScoped<CheckRecorder>();
+        services.AddScoped<LoiProfileResolver>();
         services.AddHostedService<AnalyticsCleaner>();
     }
 
@@ -84,10 +85,24 @@ public sealed class LoiServerModule : IServerModule
     {
         if (LoiScheduleSettings.TryParse(settings) is not { } parsed) return ["Выберите профиль проверки LOI"];
 
-        var stored = await services.GetRequiredService<ToadFlowDb>().Set<LoiProfile>().AsNoTracking().SingleOrDefaultAsync(p => p.Id == parsed.ProfileId, ct);
-        if (stored is null) return ["Профиль проверки LOI не найден"];
+        var errors = new List<string>();
+        if (parsed.ProfileId is null)
+        {
+            var routing = await services.GetRequiredService<LoiSettingsStore>().RoutingAsync(ct);
+            if (routing.Disciplines.Count == 0 && routing.FallbackProfileId is null && parsed.ModelProfiles.Count == 0)
+                errors.Add("Профили по разделам не назначены — задайте их в «Настройки → Проверка LOI» или выберите один профиль на расписание");
+        }
 
-        var errors = RunValidator.RuleProblems(stored.ToProfile()).Select(problem => problem.TrimEnd('.')).ToList();
+        var duplicates = parsed.ModelProfiles.GroupBy(m => ModelNames.FromPath(m.Model), StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key)
+            .ToList();
+        if (duplicates.Count > 0) errors.Add($"Модели с двумя профилями: {string.Join(", ", duplicates)}");
+
+        // Профили маршрутов проверяются при запуске: недописанный профиль раздела не должен мешать расписаниям других разделов.
+        var ids = parsed.ProfileIds.Distinct().ToList();
+        var stored = await services.GetRequiredService<ToadFlowDb>().Set<LoiProfile>().AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+        if (stored.Count < ids.Count) errors.Add("Профиль проверки LOI не найден");
+        errors.AddRange(stored.SelectMany(p => RunValidator.RuleProblems(p.ToProfile())).Select(problem => problem.TrimEnd('.')));
+
         var history = parsed.HistoryFile.Trim();
         if (history.Length > 0)
         {
@@ -102,8 +117,15 @@ public sealed class LoiServerModule : IServerModule
     {
         var parsed = LoiScheduleSettings.TryParse(context.ModuleSettings) ?? throw new InvalidOperationException("Не выбран профиль проверки LOI");
         var db = services.GetRequiredService<ToadFlowDb>();
-        var stored = await db.Set<LoiProfile>().AsNoTracking().SingleAsync(p => p.Id == parsed.ProfileId, ct);
+        var model = context.Model;
+        var choice = await services.GetRequiredService<LoiProfileResolver>().ChooseAsync(parsed, model.Name, model.ModelPath, ct);
+        if (choice.ProfileId is not { } profileId) throw new ModelSkippedException(LoiProfileResolver.SkipReason(choice));
+
+        var stored = await db.Set<LoiProfile>().AsNoTracking().SingleOrDefaultAsync(p => p.Id == profileId, ct)
+                     ?? throw new ModelSkippedException("назначенный профиль LOI удалён");
         var profile = stored.ToProfile();
+        if (RunValidator.RuleProblems(profile) is { Count: > 0 } problems)
+            throw new ModelSkippedException($"профиль не готов к запуску: {string.Join(" ", problems)}");
 
         var history = parsed.HistoryFile.Trim();
         if (history.Length > 0)
@@ -113,7 +135,6 @@ public sealed class LoiServerModule : IServerModule
             history = OutputFolderTemplate.Render(history, context.RunStartedAt, timeZone, scheduleName);
         }
 
-        var model = context.Model;
         var payload = new LoiJobPayload(model.Name, model.ModelPath, model.IsServer, context.RevitYear, context.OutputFolder, context.RunStartedAt,
             stored.ProfileJson, parsed.Resolve(profile, history));
         return JsonSerializer.Serialize(payload, ToadFlowDb.Json);

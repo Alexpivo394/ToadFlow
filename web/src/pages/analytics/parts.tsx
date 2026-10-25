@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router';
-import { Group, Paper, Select, Text, TextInput, Tooltip } from '@mantine/core';
+import { Paper, Select, SimpleGrid, Text, TextInput, Tooltip } from '@mantine/core';
 import { useDebouncedCallback } from '@mantine/hooks';
 import { IconSearch } from '@tabler/icons-react';
 import { useApi } from '../../api/queries';
@@ -59,24 +59,25 @@ export function AnalyticsFiltersBar() {
   const data = filters.data;
   const objects = (data?.objects ?? []).filter((o) => !state.customer || o.customer === state.customer).map((o) => o.name);
 
+  // Сетка в четыре колонки — фильтры ровными рядами над четырьмя карточками итогов.
   return (
-    <Group mb="md" gap="sm">
-      <Select w={140} value={state.period} allowDeselect={false} onChange={(v) => update({ period: v as AnalyticsPeriod })}
+    <SimpleGrid mb="md" spacing="sm" verticalSpacing="sm" cols={{ base: 2, sm: 4 }}>
+      <Select value={state.period} allowDeselect={false} onChange={(v) => update({ period: v as AnalyticsPeriod })}
         data={[{ value: '30d', label: '30 дней' }, { value: '90d', label: '90 дней' }, { value: '365d', label: 'Год' }, { value: 'all', label: 'Всё время' }]} />
-      <Select w={170} placeholder="Все заказчики" clearable searchable value={state.customer ?? null} data={withNone(data?.customers ?? [])}
+      <Select placeholder="Все заказчики" clearable searchable value={state.customer ?? null} data={withNone(data?.customers ?? [])}
         onChange={(v) => update({ customer: v ?? undefined, object: undefined })} />
-      <Select w={190} placeholder="Все объекты" clearable searchable value={state.object ?? null} data={withNone(objects)}
+      <Select placeholder="Все объекты" clearable searchable value={state.object ?? null} data={withNone(objects)}
         onChange={(v) => update({ object: v ?? undefined })} />
-      <Select w={150} placeholder="Все разделы" clearable searchable value={state.discipline ?? null} data={withNone(data?.disciplines ?? [])}
+      <Select placeholder="Все разделы" clearable searchable value={state.discipline ?? null} data={withNone(data?.disciplines ?? [])}
         onChange={(v) => update({ discipline: v ?? undefined })} />
-      <Select w={150} placeholder="Все части" clearable searchable value={state.part ?? null} data={withNone(data?.parts ?? [])}
+      <Select placeholder="Все части" clearable searchable value={state.part ?? null} data={withNone(data?.parts ?? [])}
         onChange={(v) => update({ part: v ?? undefined })} />
-      <Select w={160} placeholder="Все профили" clearable value={state.profile ?? null} data={data?.profiles ?? []}
+      <Select placeholder="Все профили" clearable value={state.profile ?? null} data={data?.profiles ?? []}
         onChange={(v) => update({ profile: v ?? undefined })} />
-      <Select w={160} placeholder="Любой источник" clearable value={state.source ?? null}
+      <Select placeholder="Любой источник" clearable value={state.source ?? null}
         data={[{ value: 'Schedule', label: 'По расписанию' }, { value: 'Manual', label: 'Вручную' }]}
         onChange={(v) => update({ source: (v as AnalyticsFilterState['source']) ?? undefined })} />
-      <TextInput w={200} placeholder="Модель" leftSection={<IconSearch size={14} />} defaultValue={state.search} onChange={(e) => search(e.currentTarget.value)} />
-    </Group>
+      <TextInput placeholder="Модель" leftSection={<IconSearch size={14} />} defaultValue={state.search} onChange={(e) => search(e.currentTarget.value)} />
+    </SimpleGrid>
   );
 }

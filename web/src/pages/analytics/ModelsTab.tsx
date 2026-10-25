@@ -68,7 +68,7 @@ export function ModelsTab() {
               {rows.map((m) => (
                 <Table.Tr key={m.modelKey}>
                   <Table.Td>
-                    <Anchor component={Link} to={`/analytics/model?key=${encodeURIComponent(m.modelKey)}`} fw={500}>{m.modelName}</Anchor>
+                    <Anchor component={Link} to={`/analytics/model?key=${encodeURIComponent(m.modelKey)}`} size="sm" fw={500}>{m.modelName}</Anchor>
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" c={m.object ? undefined : 'red'}>{orNone(m.object)}</Text>

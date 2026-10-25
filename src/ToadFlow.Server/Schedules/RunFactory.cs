@@ -135,6 +135,7 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
         var runStartedAt = TimeZoneInfo.ConvertTime(run.CreatedAt, settings.TimeZone);
         using var moduleSettings = JsonDocument.Parse(schedule.ModuleSettingsJson);
         var now = time.GetUtcNow();
+        var skipped = new List<string>();
 
         foreach (var model in models)
         {
@@ -157,8 +158,16 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
 
             if (year is { } knownYear)
             {
-                job.PayloadJson = await module.BuildPayloadAsync(
-                    new JobBuildContext(schedule.Id, moduleSettings.RootElement, model, knownYear, outputFolder, runStartedAt), services, ct);
+                try
+                {
+                    job.PayloadJson = await module.BuildPayloadAsync(
+                        new JobBuildContext(schedule.Id, moduleSettings.RootElement, model, knownYear, outputFolder, runStartedAt), services, ct);
+                }
+                catch (ModelSkippedException skip)
+                {
+                    skipped.Add($"{model.Name} — {skip.Message}");
+                    continue;
+                }
             }
             else
             {
@@ -168,6 +177,13 @@ public sealed class RunExpander(RunExpansionQueue queue, IServiceScopeFactory sc
             }
 
             db.Jobs.Add(job);
+        }
+
+        if (skipped.Count > 0) run.Warning = AppendWarning(run.Warning, $"пропущены модели: {string.Join("; ", skipped)}");
+        if (skipped.Count == models.Count)
+        {
+            await CompleteEmptyAsync(db, events, time, run, "нет моделей для обработки", ct);
+            return;
         }
 
         // Пока агент строил список, запуск могли отменить. Задания появляются, только если он всё ещё «разворачивается»:

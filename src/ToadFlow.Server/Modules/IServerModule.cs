@@ -24,6 +24,7 @@ public interface IServerModule
     Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct);
 
     /// <summary>Payload задания для агента. Строится один раз при создании задания.</summary>
+    /// <exception cref="ModelSkippedException">Модель этой задаче не подлежит — задание не создаётся, причина попадает в предупреждение запуска.</exception>
     Task<string> BuildPayloadAsync(JobBuildContext context, IServiceProvider services, CancellationToken ct);
 
     /// <summary>
@@ -36,3 +37,7 @@ public interface IServerModule
 /// <param name="RunStartedAt">Начало запуска по часовому поясу из «Общих» — общее для всех заданий запуска.</param>
 public sealed record JobBuildContext(Guid ScheduleId, JsonElement ModuleSettings, ExpandedModelDto Model, int RevitYear, string OutputFolder,
     DateTimeOffset RunStartedAt);
+
+/// <summary>Модель не для этой задачи (например, проверке LOI не нашлось профиля): задание не создаётся.</summary>
+/// <param name="reason">Почему — со строчной буквы, попадает в предупреждение запуска после имени модели.</param>
+public sealed class ModelSkippedException(string reason) : Exception(reason);

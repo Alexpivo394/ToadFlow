@@ -43,6 +43,18 @@ describe('LoiSettings', () => {
     expect(screen.getByRole('button', { name: '+ Правило' })).toBeTruthy();
   });
 
+  it('shows profiles assigned to disciplines', async () => {
+    renderApp('/settings/loi', {
+      ...responses,
+      '/api/loi/routing': { disciplines: [{ discipline: 'ОВ', profileId: 'p1' }], fallbackProfileId: null, knownDisciplines: ['АР', 'ОВ'] },
+    });
+
+    expect(await screen.findByText('Профили по разделам')).toBeTruthy();
+    expect((await screen.findAllByDisplayValue('ОВ')).length).toBe(2); // раздел и его профиль
+    expect(screen.getByDisplayValue('Пропускать — с пометкой в истории запуска')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '+ Раздел' })).toBeTruthy();
+  });
+
   it('viewer sees profiles but cannot change them', async () => {
     renderApp('/settings/loi', { ...responses, '/api/auth/me': { id: 'u3', login: 'gip', displayName: 'ГИП', role: 'Viewer', isDisabled: false, lastLoginAt: null } });
 

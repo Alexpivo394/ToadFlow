@@ -104,7 +104,7 @@ export function DashboardPage() {
   return (
     <>
       <PageTitle>{t.nav.dashboard}</PageTitle>
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }} mb="md">
+      <SimpleGrid cols={{ base: 2, md: 5 }} mb="md">
         <Kpi title="За 24 часа" value={kpi?.exported24h ?? '—'} hint={`${pluralRu(kpi?.exported24h ?? 0, ['модель обработана', 'модели обработано', 'моделей обработано'])}`} />
         <Kpi title="Ошибки" value={kpi?.failed24h ?? '—'} color={kpi?.failed24h ? 'red' : undefined} hint={`за 24 часа · ${kpi?.failedPercent ?? 0}%`} />
         <Kpi title="Очередь" value={kpi?.queued ?? '—'} hint={`ждут · ${kpi?.running ?? 0} в работе`} />
@@ -147,7 +147,7 @@ export function DashboardPage() {
                     <Table.Tr key={u.scheduleId}>
                       <Table.Td>{formatDateTime(u.at)}</Table.Td>
                       <Table.Td>
-                        <Anchor component={Link} to={`/schedules/${u.scheduleId}`}>
+                        <Anchor component={Link} to={`/schedules/${u.scheduleId}`} size="sm">
                           {u.name}
                         </Anchor>
                       </Table.Td>
@@ -172,7 +172,7 @@ export function DashboardPage() {
                   <Table.Tr key={e.jobId}>
                     <Table.Td c="dimmed">{formatDateTime(e.at)}</Table.Td>
                     <Table.Td>
-                      <Anchor component={Link} to={`/history/runs/${e.runId}?job=${e.jobId}`}>
+                      <Anchor component={Link} to={`/history/runs/${e.runId}?job=${e.jobId}`} size="sm">
                         {e.modelName}
                       </Anchor>
                     </Table.Td>

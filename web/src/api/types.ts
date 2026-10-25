@@ -311,8 +311,16 @@ export interface Dashboard {
 export type ModuleKind = 'export' | 'loi' | 'loi-catalog';
 
 /** Настройки LOI в расписании: null у вида и РН — как в профиле. */
-export interface LoiScheduleSettings {
+/** Исключение расписания: этой модели (имя без расширения) — этот профиль. */
+export interface ModelProfile {
+  model: string;
   profileId: string;
+}
+
+export interface LoiScheduleSettings {
+  /** Один профиль на расписание; null — по разделу модели. */
+  profileId: string | null;
+  modelProfiles: ModelProfile[];
   viewName: string | null;
   worksetKeyword: string | null;
   skipLinks: boolean;
@@ -323,6 +331,33 @@ export interface LoiScheduleSettings {
 }
 
 export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings;
+
+export interface DisciplineProfile {
+  discipline: string;
+  profileId: string;
+}
+
+/** Профили по разделам — общие для расписаний «по разделу модели». */
+export interface LoiRouting {
+  disciplines: DisciplineProfile[];
+  /** Профиль остальных моделей; null — они пропускаются. */
+  fallbackProfileId: string | null;
+}
+
+export interface LoiRoutingView extends LoiRouting {
+  knownDisciplines: string[];
+}
+
+export type ProfileVia = 'Model' | 'Schedule' | 'Discipline' | 'Fallback' | 'None';
+
+export interface LoiRoutingPreviewRow {
+  name: string;
+  modelPath: string;
+  discipline: string | null;
+  profileId: string | null;
+  profileName: string | null;
+  via: ProfileVia;
+}
 
 /** Счётчики заполнения: значений проверено, заполнено, пусто, параметра нет. */
 interface FillCounts {

@@ -18,4 +18,9 @@
         <InternalsVisibleTo Include="ToadFlow.Server.Tests"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- Числа BuiltInCategory из RevitAPI 2020–2024: по ним переводятся категории старых файлов ParamChecker -->
+        <EmbeddedResource Include="BuiltInCategories.json" LogicalName="BuiltInCategories.json"/>
+    </ItemGroup>
+
 </Project>
