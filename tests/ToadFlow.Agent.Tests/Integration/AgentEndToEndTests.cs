@@ -187,7 +187,8 @@ public class AgentEndToEndTests : ServerTest
         _launcher.Then(FakeBehaviors.Ok(delay: TimeSpan.FromSeconds(4)));
         var agent = await AgentAsync();
         var runId = await RunNowAsync();
-        await UntilAsync(runId, d => d.Jobs.Any(j => j.Status == JobStatus.Running));
+        // «Выполняется» на сервере ставится, когда задание выдано, а не когда агент его получил: рвать связь — когда Revit уже занят им.
+        await EventuallyAsync(async () => (await _admin.GetJsonAsync<AgentRow[]>("/api/agents")).Single().Instances.Any(i => i.State == InstanceState.Busy));
 
         Server.Services.GetRequiredService<AgentRegistry>().Abort(agent.Config.AgentId); // обрыв связи посреди выгрузки
 

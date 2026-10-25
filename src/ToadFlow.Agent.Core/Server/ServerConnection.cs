@@ -20,18 +20,29 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)];
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    ///     Сколько ждать ответа сервера. Если связь рвётся, пока ответ в пути, вызов SignalR может не завершиться никогда —
+    ///     и рабочий цикл агента замер бы: ни heartbeat, ни переподключения.
+    /// </summary>
+    private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Результат может быть большим (итоги проверки LOI) — ему дольше.</summary>
+    private static readonly TimeSpan CompleteTimeout = TimeSpan.FromMinutes(2);
+
     private readonly HubConnection _hub;
     private readonly InstanceManager _instances;
     private readonly AgentOptions _options;
     private readonly ILogger<ServerConnection> _logger;
 
     public ServerConnection(AgentConfig config, AgentOptions options, SourceBrowser browser, InstanceManager instances, JobRunner runner,
-        ILogger<ServerConnection> logger)
+        ILogger<ServerConnection> logger, ILoggerFactory loggers)
     {
         _instances = instances;
         _options = options;
         _logger = logger;
-        _hub = new HubConnectionBuilder()
+        var builder = new HubConnectionBuilder();
+        builder.Services.AddSingleton(loggers); // предупреждения клиента SignalR — в журнал агента
+        _hub = builder
             .WithUrl($"{config.ServerUrl.TrimEnd('/')}/hubs/agent", http =>
             {
                 http.Headers["X-Agent-Id"] = config.AgentId.ToString();
@@ -52,7 +63,21 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
         });
         _hub.On<Guid>(nameof(IAgentClient.CancelJob), runner.Cancel);
         _hub.On<AgentSettingsDto>(nameof(IAgentClient.ApplySettings), settings => Settings = settings);
-        _hub.Reconnected += async _ => await HelloAsync(CancellationToken.None);
+        _hub.Reconnecting += exception =>
+        {
+            _logger.LogWarning("Связь с сервером потеряна ({Error}) — переподключаюсь", exception?.Message ?? "соединение закрыто");
+            return Task.CompletedTask;
+        };
+        _hub.Reconnected += async _ =>
+        {
+            _logger.LogInformation("Связь с сервером восстановлена");
+            await HelloAsync(CancellationToken.None);
+        };
+        _hub.Closed += exception =>
+        {
+            _logger.LogWarning("Соединение с сервером закрыто ({Error})", exception?.Message ?? "без ошибки");
+            return Task.CompletedTask;
+        };
     }
 
     /// <summary>Последние настройки от сервера: лимиты экземпляров, таймауты, «не брать новые». null — ещё не представились.</summary>
@@ -92,7 +117,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
         if (_hub.State != HubConnectionState.Connected) return;
         try
         {
-            await _hub.InvokeAsync(nameof(IAgentHub.Heartbeat), beat);
+            await CallAsync(token => _hub.InvokeAsync(nameof(IAgentHub.Heartbeat), beat, token), CallTimeout);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -101,7 +126,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
     }
 
     public async Task<JobAssignmentDto?> RequestJobAsync(JobRequestDto request) =>
-        IsConnected ? await _hub.InvokeAsync<JobAssignmentDto?>(nameof(IAgentHub.RequestJob), request) : null;
+        IsConnected ? await CallAsync(token => _hub.InvokeAsync<JobAssignmentDto?>(nameof(IAgentHub.RequestJob), request, token), CallTimeout) : null;
 
     /// <summary>Сдать результат; при обрыве — повторять, пока не дойдёт. Если сервер уже вернул задание в очередь, он ответ проигнорирует.</summary>
     public async Task CompleteJobAsync(JobCompletionDto completion, CancellationToken ct)
@@ -112,7 +137,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
             {
                 if (_hub.State == HubConnectionState.Connected)
                 {
-                    await _hub.InvokeAsync(nameof(IAgentHub.CompleteJob), completion, ct);
+                    await CallAsync(token => _hub.InvokeAsync(nameof(IAgentHub.CompleteJob), completion, token), CompleteTimeout, ct);
                     return;
                 }
             }
@@ -127,12 +152,13 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
 
     public async Task ProgressAsync(JobProgressDto progress)
     {
-        if (_hub.State == HubConnectionState.Connected) await _hub.InvokeAsync(nameof(IAgentHub.ReportProgress), progress);
+        if (_hub.State == HubConnectionState.Connected) await CallAsync(token => _hub.InvokeAsync(nameof(IAgentHub.ReportProgress), progress, token), CallTimeout);
     }
 
     public async Task InstanceKilledAsync(int slot, string reason)
     {
-        if (_hub.State == HubConnectionState.Connected) await _hub.InvokeAsync(nameof(IAgentHub.ReportInstanceKilled), slot, reason);
+        if (_hub.State == HubConnectionState.Connected)
+            await CallAsync(token => _hub.InvokeAsync(nameof(IAgentHub.ReportInstanceKilled), slot, reason, token), CallTimeout);
     }
 
     public async ValueTask DisposeAsync() => await _hub.DisposeAsync();
@@ -141,8 +167,31 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
     {
         var revits = _instances.Revits.Select(r => new InstalledRevitDto(r.Year, HasNwcExporter(r.Year, r.HasNwcExporter))).ToArray();
         var totalMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024);
-        Settings = await _hub.InvokeAsync<AgentSettingsDto>(nameof(IAgentHub.Hello), new AgentHelloDto(_options.MachineName, _options.AgentVersion, totalMb, revits), ct);
+        var hello = new AgentHelloDto(_options.MachineName, _options.AgentVersion, totalMb, revits);
+        Settings = await CallAsync(token => _hub.InvokeAsync<AgentSettingsDto>(nameof(IAgentHub.Hello), hello, token), CallTimeout, ct);
     }
+
+    /// <summary>Вызов с ограничением ожидания. Истёкшее ожидание — <see cref="TimeoutException" />, а не отмена: отмена останавливает агента.</summary>
+    private static async Task<T> CallAsync<T>(Func<CancellationToken, Task<T>> call, TimeSpan timeout, CancellationToken ct = default)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(timeout);
+        try
+        {
+            return await call(limit.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"сервер не ответил за {timeout.TotalSeconds:0} с");
+        }
+    }
+
+    private static Task CallAsync(Func<CancellationToken, Task> call, TimeSpan timeout, CancellationToken ct = default) =>
+        CallAsync(async token =>
+        {
+            await call(token);
+            return true;
+        }, timeout, ct);
 
     /// <summary>Аддин знает точно (сказал в hello); пока Revit этого года не запускался — догадка по манифестам.</summary>
     private bool HasNwcExporter(int year, bool guess) =>
