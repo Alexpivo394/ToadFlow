@@ -17,7 +17,8 @@ public sealed record ModelClassification(
 
 /// <summary>
 ///     Разбирает имя модели по <see cref="NamingConfig" />. Куски сравниваются без учёта регистра, пробелов и раскладки:
-///     русская «К» в <c>K1-К3</c> — то же, что латинская. Значение поля задаёт первый подошедший кусок.
+///     русская «К» в <c>K1-К3</c> — то же, что латинская, а русское <c>АР</c> — то же, что <c>AR</c>. Значение поля задаёт
+///     первый подошедший кусок.
 /// </summary>
 public sealed class ModelNameParser
 {
@@ -30,8 +31,17 @@ public sealed class ModelNameParser
         ['У'] = 'Y', ['Х'] = 'X'
     };
 
+    /// <summary>Транслитерация: коды, набранные по-русски (<c>АР</c>, <c>ОВ</c>, <c>КЖ</c>), совпадают с латинскими (<c>AR</c>, <c>OV</c>, <c>KZH</c>).</summary>
+    private static readonly Dictionary<char, string> Translit = new()
+    {
+        ['А'] = "A", ['Б'] = "B", ['В'] = "V", ['Г'] = "G", ['Д'] = "D", ['Е'] = "E", ['Ё'] = "E", ['Ж'] = "ZH", ['З'] = "Z", ['И'] = "I",
+        ['Й'] = "Y", ['К'] = "K", ['Л'] = "L", ['М'] = "M", ['Н'] = "N", ['О'] = "O", ['П'] = "P", ['Р'] = "R", ['С'] = "S", ['Т'] = "T",
+        ['У'] = "U", ['Ф'] = "F", ['Х'] = "KH", ['Ц'] = "TS", ['Ч'] = "CH", ['Ш'] = "SH", ['Щ'] = "SCH", ['Ъ'] = "", ['Ы'] = "Y", ['Ь'] = "",
+        ['Э'] = "E", ['Ю'] = "YU", ['Я'] = "YA"
+    };
+
     private readonly char[] _separators;
-    private readonly List<(string[] Keys, NamingEntry Entry)> _combined;
+    private readonly List<(string[][] Parts, NamingEntry Entry)> _combined;
     private readonly Dictionary<string, NamingEntry> _single = new();
     private readonly Dictionary<(string Field, string Key), NamingEntry> _byField = new();
     private readonly List<(Regex Regex, NamingPattern Pattern)> _patterns = [];
@@ -41,12 +51,18 @@ public sealed class ModelNameParser
     {
         _separators = config.Separators.Length > 0 ? config.Separators.ToCharArray() : ['_'];
 
-        var entries = config.Entries.Where(e => !string.IsNullOrWhiteSpace(e.Tokens)).Select(e => (Keys: Keys(e.Tokens), Entry: e)).ToList();
-        _combined = entries.Where(e => e.Keys.Length > 1).OrderByDescending(e => e.Keys.Length).ToList();
-        foreach (var (keys, entry) in entries.Where(e => e.Keys.Length == 1))
+        var entries = config.Entries.Where(e => !string.IsNullOrWhiteSpace(e.Tokens)).Select(e => (Parts: Parts(e.Tokens), Entry: e)).ToList();
+        _combined = entries.Where(e => e.Parts.Length > 1).OrderByDescending(e => e.Parts.Length).ToList();
+
+        // Сначала основные написания всех записей, потом запасные: запись «P» важнее запасного написания русской «Р».
+        var single = entries.Where(e => e.Parts.Length == 1).ToList();
+        for (var form = 0; form < 2; form++)
         {
-            _single.TryAdd(keys[0], entry);
-            _byField.TryAdd((entry.Field, keys[0]), entry);
+            foreach (var (parts, entry) in single.Where(e => e.Parts[0].Length > form))
+            {
+                _single.TryAdd(parts[0][form], entry);
+                _byField.TryAdd((entry.Field, parts[0][form]), entry);
+            }
         }
 
         foreach (var pattern in config.Patterns)
@@ -63,7 +79,7 @@ public sealed class ModelNameParser
         foreach (var entry in config.Entries)
         {
             if (string.IsNullOrWhiteSpace(entry.Field)) errors.Add($"У записи «{entry.Tokens}» не указано поле");
-            if (Keys(entry.Tokens).Length == 0) errors.Add($"У записи «{entry.Value}» не указаны куски имени");
+            if (Parts(entry.Tokens).Length == 0) errors.Add($"У записи «{entry.Value}» не указаны куски имени");
             if (entry.Field != NamingFields.Ignore && string.IsNullOrWhiteSpace(entry.Value)) errors.Add($"У записи «{entry.Tokens}» не указано значение");
         }
 
@@ -80,13 +96,28 @@ public sealed class ModelNameParser
     }
 
     /// <summary>Кусок имени для сравнения: без пробелов, заглавными, латиницей вместо похожих русских букв.</summary>
-    public static string Normalize(string token)
+    public static string Normalize(string token) => Convert(token, c => Lookalikes.TryGetValue(c, out var latin) ? latin.ToString() : null);
+
+    /// <summary>
+    ///     Написания куска для сравнения: латиница вместо похожих русских букв и транслитерация. Кусок, набранный
+    ///     целиком по-русски, скорее транслитерируется (<c>АР</c> — это <c>AR</c>), а в куске с латиницей русские буквы —
+    ///     скорее опечатка (<c>К1-K3</c>), поэтому основным считается соответствующее написание.
+    /// </summary>
+    public static string[] Forms(string token)
+    {
+        var lookalike = Normalize(token);
+        var translit = Convert(token, c => Translit.GetValueOrDefault(c));
+        string[] forms = token.Any(char.IsAsciiLetter) ? [lookalike, translit] : [translit, lookalike];
+        return forms.Where(f => f.Length > 0).Distinct().ToArray();
+    }
+
+    private static string Convert(string token, Func<char, string?> replace)
     {
         var builder = new StringBuilder(token.Length);
         foreach (var c in token.ToUpperInvariant())
         {
             if (char.IsWhiteSpace(c)) continue;
-            builder.Append(Lookalikes.GetValueOrDefault(c, c));
+            builder.Append(replace(c) ?? c.ToString());
         }
 
         return builder.ToString();
@@ -108,14 +139,17 @@ public sealed class ModelNameParser
 
             if (!match.Success) continue;
 
+            NamingEntry? Find(string field, string text) =>
+                Forms(text).Select(form => _byField.GetValueOrDefault((field, form))).FirstOrDefault(entry => entry is not null);
+
             string? Group(string field)
             {
                 var group = match.Groups[field];
                 if (!group.Success || group.Value.Trim().Length == 0) return null;
-                return _byField.TryGetValue((field, Normalize(group.Value)), out var entry) ? entry.Value : group.Value.Trim();
+                return Find(field, group.Value)?.Value ?? group.Value.Trim();
             }
 
-            var objectEntry = match.Groups[NamingFields.Object] is { Success: true } o ? _byField.GetValueOrDefault((NamingFields.Object, Normalize(o.Value))) : null;
+            var objectEntry = match.Groups[NamingFields.Object] is { Success: true } o ? Find(NamingFields.Object, o.Value) : null;
             return new ModelClassification(Group("customer") ?? objectEntry?.Customer, Group(NamingFields.Object), Group(NamingFields.Discipline),
                 Group(NamingFields.Part), new Dictionary<string, string>(), []);
         }
@@ -126,7 +160,7 @@ public sealed class ModelNameParser
     private ModelClassification ParseTokens(string name)
     {
         var tokens = name.Split(_separators).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
-        var keys = tokens.Select(Normalize).ToList();
+        var forms = tokens.Select(Forms).ToList();
         var used = new bool[tokens.Count];
         var values = new Dictionary<string, string>();
         string? customer = null;
@@ -141,8 +175,15 @@ public sealed class ModelNameParser
         // Записи из нескольких кусков первыми: «DON+BNK-DOO» важнее, чем просто «DON».
         foreach (var (parts, entry) in _combined)
         {
-            var positions = parts.Select(part => Enumerable.Range(0, keys.Count).FirstOrDefault(i => !used[i] && keys[i] == part, -1)).ToList();
-            if (positions.Any(p => p < 0)) continue;
+            var positions = new List<int>();
+            foreach (var part in parts)
+            {
+                var position = Enumerable.Range(0, tokens.Count).FirstOrDefault(i => !used[i] && !positions.Contains(i) && forms[i].Intersect(part).Any(), -1);
+                if (position < 0) break;
+                positions.Add(position);
+            }
+
+            if (positions.Count < parts.Length) continue;
             foreach (var position in positions) used[position] = true;
             Assign(entry, entry.Value);
         }
@@ -151,13 +192,13 @@ public sealed class ModelNameParser
         for (var i = 0; i < tokens.Count; i++)
         {
             if (used[i]) continue;
-            if (_single.TryGetValue(keys[i], out var entry))
+            if (forms[i].Select(form => _single.GetValueOrDefault(form)).FirstOrDefault(entry => entry is not null) is { } entry)
             {
                 Assign(entry, entry.Value);
                 continue;
             }
 
-            if (MatchPattern(keys[i]) is { } found) Assign(new NamingEntry(found.Pattern.Field, ""), found.Value);
+            if (MatchPattern(forms[i]) is { } found) Assign(new NamingEntry(found.Pattern.Field, ""), found.Value);
             else unrecognized.Add(tokens[i]);
         }
 
@@ -166,25 +207,29 @@ public sealed class ModelNameParser
             values.GetValueOrDefault(NamingFields.Part), custom, unrecognized);
     }
 
-    private (NamingPattern Pattern, string Value)? MatchPattern(string key)
+    private (NamingPattern Pattern, string Value)? MatchPattern(string[] forms)
     {
         foreach (var (regex, pattern) in _patterns)
         {
-            try
+            foreach (var form in forms)
             {
-                var match = regex.Match(key);
-                if (match.Success) return (pattern, pattern.Value.Length == 0 ? "" : match.Result(pattern.Value));
-            }
-            catch (RegexMatchTimeoutException)
-            {
-                // шаблон слишком тяжёлый для этого куска — считаем, что не подошёл
+                try
+                {
+                    var match = regex.Match(form);
+                    if (match.Success) return (pattern, pattern.Value.Length == 0 ? "" : match.Result(pattern.Value));
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    // шаблон слишком тяжёлый для этого куска — считаем, что не подошёл
+                }
             }
         }
 
         return null;
     }
 
-    private static string[] Keys(string tokens) => tokens.Split('+').Select(Normalize).Where(t => t.Length > 0).ToArray();
+    /// <summary>Куски записи (через «+»), у каждого — его написания.</summary>
+    private static string[][] Parts(string tokens) => tokens.Split('+').Select(Forms).Where(f => f.Length > 0).ToArray();
 
     private static Regex? TryCompile(string pattern, RegexOptions options)
     {

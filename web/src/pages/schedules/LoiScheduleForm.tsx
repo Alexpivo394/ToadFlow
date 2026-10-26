@@ -115,7 +115,7 @@ function Preview({ value, scheduleId, models }: { value: LoiScheduleSettings; sc
 /** Профили разделов проекта: у раздела ОВ в каждом проекте свой профиль. Можно взять таблицу из расписания похожего проекта. */
 function DisciplinesEditor({ value, options, scheduleId, readOnly, onChange }: {
   value: LoiScheduleSettings;
-  options: { value: string; label: string }[];
+  options: ReturnType<typeof profileOptions>;
   scheduleId?: string;
   readOnly?: boolean;
   onChange: (patch: Partial<LoiScheduleSettings>) => void;
@@ -172,9 +172,10 @@ function DisciplinesEditor({ value, options, scheduleId, readOnly, onChange }: {
       <Select
         label="Остальные модели"
         description="Раздел не распознан по имени или ему не назначен профиль"
-        data={[{ value: skip, label: 'Пропускать — с пометкой в истории запуска' }, ...options]}
+        data={[{ group: 'Не проверять', items: [{ value: skip, label: 'Пропускать — с пометкой в истории запуска' }] }, ...options]}
         value={value.fallbackProfileId ?? skip}
         allowDeselect={false}
+        searchable
         disabled={readOnly}
         maw={420}
         onChange={(id) => onChange({ fallbackProfileId: !id || id === skip ? null : id })}
@@ -201,9 +202,11 @@ export function LoiScheduleForm({ value, profiles, scheduleId, models, readOnly,
         <Group align="flex-end" gap="sm">
           <Select
             label="Профиль проверки"
-            data={[{ group: 'Для каждой модели', items: [{ value: byDiscipline, label: 'По разделу модели' }] }, { group: 'Один на всё расписание', items: options }]}
+            data={[{ group: 'Для каждой модели', items: [{ value: byDiscipline, label: 'По разделу модели' }] },
+              ...options.map((g) => ({ group: `Один на всё расписание — ${g.group}`, items: g.items }))]}
             value={value.profileId ?? byDiscipline}
             allowDeselect={false}
+            searchable
             disabled={readOnly}
             w={360}
             onChange={(id) => set({ profileId: !id || id === byDiscipline ? null : id })}

@@ -12,6 +12,8 @@ export interface AnalyticsFilterState {
   profile?: string;
   source?: LoiCheckSource;
   search?: string;
+  /** Свои поля справочника: имя → значение (или «(нет)»). */
+  fields?: Record<string, string>;
 }
 
 const periodDays: Record<AnalyticsPeriod, number | null> = { '30d': 30, '90d': 90, '365d': 365, all: null };
@@ -25,13 +27,30 @@ export function fromSearchParams(params: URLSearchParams): AnalyticsFilterState 
     const value = params.get(key);
     if (value) (state as unknown as Record<string, string>)[key] = value;
   }
+  const fields = parseFields(params.getAll('field'));
+  if (Object.keys(fields).length > 0) state.fields = fields;
   return state;
+}
+
+/** Свои поля в адресе и в запросе к API — повторяющийся параметр field=Имя=Значение. */
+function parseFields(values: string[]): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const value of values) {
+    const cut = value.indexOf('=');
+    if (cut > 0 && cut < value.length - 1) fields[value.slice(0, cut)] = value.slice(cut + 1);
+  }
+  return fields;
+}
+
+function appendFields(params: URLSearchParams, fields: Record<string, string> | undefined) {
+  for (const [name, value] of Object.entries(fields ?? {})) if (value) params.append('field', `${name}=${value}`);
 }
 
 export function toSearchParams(state: AnalyticsFilterState): URLSearchParams {
   const params = new URLSearchParams();
   if (state.period !== '90d') params.set('period', state.period);
   for (const key of keys) if (state[key]) params.set(key, String(state[key]));
+  appendFields(params, state.fields);
   return params;
 }
 
@@ -44,6 +63,7 @@ export function toApiQuery(state: AnalyticsFilterState, now: Date = new Date()):
   const days = periodDays[state.period];
   if (days !== null) query.set('from', new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days)).toISOString());
   for (const key of keys) if (state[key]) query.set(key, String(state[key]));
+  appendFields(query, state.fields);
   return query.toString();
 }
 

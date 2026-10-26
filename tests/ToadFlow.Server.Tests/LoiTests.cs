@@ -25,6 +25,10 @@ public sealed record LoiCatalogDetailsView(int RevitYear, LoiCatalogResult Catal
 
 public sealed record PreviewRow(string Name, string? Discipline, string? ProfileName, string Via);
 
+public sealed record LoiGroupedView(Guid Id, string Name, string Group);
+
+public sealed record LoiGroupedImportView(LoiGroupedView[] Created);
+
 public class LoiTests : ServerTest
 {
     /// <summary>Профиль так, как его отдаёт редактор в браузере, — в формате файлов ParamChecker.</summary>
@@ -280,6 +284,31 @@ public class LoiTests : ServerTest
 
         ProfileOf((await RunAsync(admin, don.Id)).ShouldHaveSingleItem()).ShouldBe("Дон ОВ");
         ProfileOf((await RunAsync(admin, sever.Id)).ShouldHaveSingleItem()).ShouldBe("Север ОВ");
+    }
+
+    [Test]
+    public async Task Groups_SameNameInEachProject_QualifiedInJobs_RenameChecksClashes()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        async Task<LoiGroupedView> Create(string group) =>
+            await (await admin.PostJsonAsync("/api/loi/profiles", new { profile = Profile("ОВ"), group })).EnsureSuccessStatusCode().ReadJsonAsync<LoiGroupedView>();
+
+        var donOv = await Create("Дон");
+        var severOv = await Create("Север");
+        (await admin.PostJsonAsync("/api/loi/profiles", new { profile = Profile("ОВ"), group = "Дон" })).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        var don = await ScheduleApi.CreateAsync(admin, ScheduleBody(sourceId, ByDiscipline(routes: [("ОВ", donOv.Id)]), "DON_K1_OV.rvt"));
+        ProfileOf((await RunAsync(admin, don.Id)).ShouldHaveSingleItem()).ShouldBe("Дон · ОВ"); // в отчёт и аналитику — с группой
+
+        (await admin.PutJsonAsync("/api/loi/profile-groups", new { from = "Север", to = "Дон" })).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await admin.PutJsonAsync("/api/loi/profile-groups", new { from = "Север", to = "Северный" })).EnsureSuccessStatusCode();
+        (await admin.GetJsonAsync<LoiGroupedView[]>("/api/loi/profiles")).Single(p => p.Id == severOv.Id).Group.ShouldBe("Северный");
+
+        var file = ProfileSerializer.Serialize(new ProfileSet { Profiles = [new CheckProfile { Name = "ВК" }] });
+        var imported = await (await admin.PostJsonAsync("/api/loi/profiles/import", new { json = file, group = "Дон" })).EnsureSuccessStatusCode()
+            .ReadJsonAsync<LoiGroupedImportView>();
+        imported.Created.ShouldHaveSingleItem().Group.ShouldBe("Дон");
     }
 
     [Test]

@@ -8,6 +8,12 @@ describe('analytics filters', () => {
     expect(toSearchParams({ period: '90d' }).toString()).toBe('');
   });
 
+  it('custom fields round-trip and reach the API', () => {
+    const state = { period: '90d' as const, fields: { Стадия: 'П', Очередь: '(нет)' } };
+    expect(fromSearchParams(toSearchParams(state))).toEqual(state);
+    expect(new URLSearchParams(toApiQuery(state)).getAll('field')).toEqual(['Стадия=П', 'Очередь=(нет)']);
+  });
+
   it('period becomes from', () => {
     const query = new URLSearchParams(toApiQuery({ period: '30d', customer: 'ГК Пионер' }, new Date('2026-10-31T00:00:00Z')));
     expect(query.get('from')).toBe('2026-10-01T00:00:00.000Z');

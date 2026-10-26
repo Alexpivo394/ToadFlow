@@ -82,9 +82,27 @@ export function normalizeProfile(profile: Partial<CheckProfile>): CheckProfile {
   };
 }
 
-/** Варианты выбора профиля; недописанные помечены. */
+/** Имя профиля с группой: «Полковая · ОВ». */
+export const profileDisplayName = (p: Pick<LoiProfileSummary, 'name' | 'group'>) => (p.group ? `${p.group} · ${p.name}` : p.name);
+
+/** Подпись группы профилей. */
+export const groupLabel = (group: string) => group || 'Без группы';
+
+/** Профили по группам: группы по алфавиту, «Без группы» — последней. */
+export function groupProfiles<T extends Pick<LoiProfileSummary, 'group' | 'name'>>(profiles: T[]): { group: string; profiles: T[] }[] {
+  const groups = new Map<string, T[]>();
+  for (const p of profiles) groups.set(p.group, [...(groups.get(p.group) ?? []), p]);
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'ru')))
+    .map(([group, list]) => ({ group, profiles: list.sort((a, b) => a.name.localeCompare(b.name, 'ru')) }));
+}
+
+/** Варианты выбора профиля по группам; недописанные помечены. Подпись — с группой, чтобы выбранный «ОВ» не путался с «ОВ» другого проекта. */
 export const profileOptions = (profiles: LoiProfileSummary[]) =>
-  profiles.map((p) => ({ value: p.id, label: p.problems.length ? `${p.name} (не готов)` : p.name }));
+  groupProfiles(profiles).map(({ group, profiles: list }) => ({
+    group: groupLabel(group),
+    items: list.map((p) => ({ value: p.id, label: p.problems.length ? `${profileDisplayName(p)} (не готов)` : profileDisplayName(p) })),
+  }));
 
 /** Доля — «85,2 %»; null — «—» (нечего было проверять). */
 export function formatShare(share: number | null | undefined): string {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Group, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Autocomplete, Button, Group, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
@@ -14,15 +14,20 @@ interface Props {
   /** null — новый профиль. */
   id: string | null;
   initial: CheckProfile;
+  /** Группа профиля (обычно проект); пусто — без группы. */
+  initialGroup: string;
+  /** Существующие группы — подсказки. */
+  groups: string[];
   catalog: LoiCatalog;
   readOnly?: boolean;
   onDone: () => void;
 }
 
 /** Профиль проверки LOI: вид и ключевое слово РН по умолчанию и правила. Модели профилю не нужны — их задаёт расписание. */
-export function ProfileEditor({ id, initial, catalog, readOnly, onDone }: Props) {
+export function ProfileEditor({ id, initial, initialGroup, groups, catalog, readOnly, onDone }: Props) {
   const queryClient = useQueryClient();
   const [profile, setProfile] = useState<CheckProfile>(initial);
+  const [group, setGroup] = useState(initialGroup);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -40,7 +45,7 @@ export function ProfileEditor({ id, initial, catalog, readOnly, onDone }: Props)
     try {
       const saved = await apiFetch<LoiProfileSummary>(id ? `/api/loi/profiles/${id}` : '/api/loi/profiles', {
         method: id ? 'PUT' : 'POST',
-        json: { profile },
+        json: { profile, group: group.trim() },
       });
       notifications.show({ color: 'green', message: 'Профиль сохранён' });
       if (saved.problems.length > 0)
@@ -55,11 +60,13 @@ export function ProfileEditor({ id, initial, catalog, readOnly, onDone }: Props)
   }
 
   return (
-    <Panel title={id ? `Профиль «${initial.Name}»` : 'Новый профиль'}>
+    <Panel title={id ? `Профиль «${initialGroup ? `${initialGroup} · ` : ''}${initial.Name}»` : 'Новый профиль'}>
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
-        <SimpleGrid cols={{ base: 1, md: 3 }}>
-          <TextInput label="Название" value={profile.Name} disabled={readOnly} required onChange={(e) => setProfile({ ...profile, Name: e.currentTarget.value })} />
+        <SimpleGrid cols={{ base: 1, md: 4 }}>
+          <Autocomplete label="Группа" description="Обычно проект; пусто — без группы" data={groups} value={group} disabled={readOnly} onChange={setGroup} />
+          <TextInput label="Название" description="Уникально внутри группы, например «ОВ»" value={profile.Name} disabled={readOnly} required
+            onChange={(e) => setProfile({ ...profile, Name: e.currentTarget.value })} />
           <TextInput label="Вид по умолчанию" description="Пусто — проверяется вся модель" value={profile.ViewName} disabled={readOnly}
             onChange={(e) => setProfile({ ...profile, ViewName: e.currentTarget.value })} />
           <TextInput label="Не открывать РН, содержащие" description="Пусто — открываются все рабочие наборы" value={profile.WorksetKeyword}

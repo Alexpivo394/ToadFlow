@@ -412,6 +412,8 @@ export type JobResult = ExportJobResult | LoiJobResult | LoiCatalogResult;
 export interface LoiProfileSummary {
   id: string;
   name: string;
+  /** Группа профиля (обычно проект); пусто — без группы. Имя уникально внутри группы. */
+  group: string;
   ruleCount: number;
   viewName: string;
   worksetKeyword: string;
@@ -423,6 +425,7 @@ export interface LoiProfileSummary {
 export interface LoiProfileDetails {
   id: string;
   name: string;
+  group: string;
   updatedAt: string;
   updatedBy: string;
   profile: CheckProfile;
@@ -540,6 +543,8 @@ export interface KnownModel {
 export interface ModelOverride {
   modelKey: string;
   modelName: string;
+  /** Поправка по имени — для всех моделей с этим именем; иначе modelKey — путь одной модели. */
+  byName: boolean;
   customer: string | null;
   object: string | null;
   discipline: string | null;
@@ -555,6 +560,8 @@ export interface AnalyticsFilters {
   profiles: string[];
   first: string | null;
   last: string | null;
+  /** Свои поля справочника и их значения. */
+  fields: Record<string, string[]>;
 }
 
 export interface GroupStats {
@@ -596,6 +603,8 @@ export interface AnalyticsModelRow {
   completeness: number | null;
   previousFillRate: number | null;
   profileChanged: boolean;
+  /** Свои поля справочника именования, например «Стадия». */
+  fields: Record<string, string>;
 }
 
 export interface AnalyticsParameterRow {

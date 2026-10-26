@@ -24,6 +24,12 @@ public sealed record PreviewRowView(string Name, PreviewResultView Result);
 
 public sealed record PreviewResultView(string? Customer, string? Object, string? Discipline, string? Part, string[] Unrecognized);
 
+public sealed record OverrideView(string ModelKey, string ModelName, bool ByName);
+
+public sealed record FieldFiltersView(Dictionary<string, string[]> Fields);
+
+public sealed record FieldRowView(string ModelName, Dictionary<string, string> Fields);
+
 public class AnalyticsTests : ServerTest
 {
     private static readonly NamingConfig Naming = NamingDefaults.Create() with
@@ -217,6 +223,55 @@ public class AnalyticsTests : ServerTest
 
         (await admin.DeleteAsync($"/api/loi/models/overrides?key={Uri.EscapeDataString(check.ModelKey)}")).EnsureSuccessStatusCode();
         (await ChecksAsync()).Single().Object.ShouldBe("Полковая");
+    }
+
+    [Test]
+    public async Task OverrideByName_AppliesToModelsWithThatName_PathOverrideWins()
+    {
+        var admin = await AdminAsync();
+        await SetNamingAsync();
+        var first = Summary();
+        var second = Summary();
+        second.ModelPath = @"\\nas\Проекты\POL_AR_RLP_St_R22.rvt";
+        await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = first });
+        await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = second });
+
+        var byName = await (await admin.PutJsonAsync("/api/loi/models/overrides", new { modelPath = "POL_AR_RLP_St_R22.rvt", modelName = "", discipline = "АИ" }))
+            .EnsureSuccessStatusCode().ReadJsonAsync<OverrideView>();
+        byName.ByName.ShouldBeTrue();
+        (await ChecksAsync()).Select(c => c.Discipline).ShouldBe(["АИ", "АИ"]);
+
+        (await admin.PutJsonAsync("/api/loi/models/overrides", new { modelPath = first.ModelPath, modelName = first.ModelName, discipline = "КР" }))
+            .EnsureSuccessStatusCode();
+        (await ChecksAsync()).Select(c => c.Discipline).ShouldBe(["КР", "АИ"], ignoreOrder: true);
+
+        (await admin.DeleteAsync($"/api/loi/models/overrides?key={Uri.EscapeDataString(byName.ModelKey)}")).EnsureSuccessStatusCode();
+        (await ChecksAsync()).Select(c => c.Discipline).ShouldBe(["КР", "АР"], ignoreOrder: true);
+    }
+
+    [Test]
+    public async Task CustomFields_FilterAnalytics_AndFlattenForPowerBi()
+    {
+        var admin = await AdminAsync();
+        (await admin.PutJsonAsync("/api/loi/naming", Naming)).EnsureSuccessStatusCode(); // стандартная «Стадия»: RD → Р, P → П
+        await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary("POL_AR_RD_St_R22") });
+        await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary("POL_VK_P_St_R22") });
+        await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary("POL_OV_St_R22") });
+
+        var filters = await admin.GetJsonAsync<FieldFiltersView>("/api/loi/analytics/filters");
+        filters.Fields[NamingDefaults.StageField].ShouldBe(["П", "Р"]);
+
+        var stageR = await admin.GetJsonAsync<FieldRowView[]>($"/api/loi/analytics/models?field={Uri.EscapeDataString("Стадия=Р")}");
+        stageR.ShouldHaveSingleItem().ModelName.ShouldBe("POL_AR_RD_St_R22");
+        stageR[0].Fields[NamingDefaults.StageField].ShouldBe("Р");
+        (await admin.GetJsonAsync<FieldRowView[]>($"/api/loi/analytics/models?field={Uri.EscapeDataString("Стадия=(нет)")}"))
+            .ShouldHaveSingleItem().ModelName.ShouldBe("POL_OV_St_R22");
+
+        var csv = await admin.GetStringAsync("/api/loi/analytics/models.csv");
+        csv.ShouldContain("Заказчик;Объект;Раздел;Часть;Стадия;Модель");
+
+        var rows = await DbAsync(db => db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM loi_analytics_fields WHERE field = 'Стадия'").SingleAsync());
+        rows.ShouldBe(2);
     }
 
     [Test]

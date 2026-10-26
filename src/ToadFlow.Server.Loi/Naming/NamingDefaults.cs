@@ -1,29 +1,89 @@
 namespace ToadFlow.Server.Loi.Naming;
 
 /// <summary>
-///     Настройки именования на новом сервере: распространённые коды разделов (ГОСТ Р 21.101) латиницей и кириллицей, корпуса,
-///     секции и версия Revit в имени. Объекты и заказчики у каждой компании свои — их добавляют в настройках.
+///     Стандартный справочник именования: коды разделов (ГОСТ Р 21.101 и распространённые английские), стилобат и паркинг,
+///     стадия, служебные куски Revit; шаблоны корпусов, секций, блоков, версии Revit, дат и версий файла. Коды достаточно
+///     записать латиницей — набранные по-русски (<c>АР</c>, <c>ОВ</c>, <c>КЖ</c>) парсер сравнивает с ними сам. Объекты и
+///     заказчики у каждой компании свои — их добавляют в настройках.
 /// </summary>
 public static class NamingDefaults
 {
-    private static readonly (string Value, string Tokens)[] Disciplines =
+    public const string StageField = "Стадия";
+
+    private static readonly (string Value, string[] Tokens)[] Disciplines =
     [
-        ("АР", "AR"), ("КР", "KR"), ("КЖ", "KZH"), ("КЖ", "KJ"), ("КМ", "KM"), ("КД", "KD"),
-        ("ОВ", "OV"), ("ВК", "VK"), ("НВК", "NVK"), ("ЭОМ", "EOM"), ("ЭМ", "EM"), ("ЭО", "EO"), ("СС", "SS"),
-        ("ПТ", "PT"), ("АПТ", "APT"), ("ИТП", "ITP"), ("ТХ", "TH"), ("ТХ", "TX"), ("ГП", "GP"), ("ТМ", "TM")
+        ("АР", ["AR", "ARCH"]),
+        ("АС", ["AS"]),
+        ("КР", ["KR", "STR"]),
+        ("КЖ", ["KZH", "KJ"]),
+        ("КЖИ", ["KZHI"]),
+        ("КМ", ["KM"]),
+        ("КМД", ["KMD"]),
+        ("КД", ["KD"]),
+        ("ОВ", ["OV", "HVAC"]),
+        ("ОВиК", ["OVIK"]),
+        ("ВК", ["VK"]),
+        ("НВК", ["NVK"]),
+        ("НВ", ["NV"]),
+        ("НК", ["NK"]),
+        ("ЭОМ", ["EOM"]),
+        ("ЭМ", ["EM"]),
+        ("ЭО", ["EO"]),
+        ("ЭН", ["EN"]),
+        ("ЭС", ["ES"]),
+        ("СС", ["SS"]),
+        ("СКС", ["SKS"]),
+        ("АПС", ["APS"]),
+        ("СОУЭ", ["SOUE"]),
+        ("ПТ", ["PT"]),
+        ("АПТ", ["APT"]),
+        ("АУПТ", ["AUPT"]),
+        ("АОВ", ["AOV"]),
+        ("АВК", ["AVK"]),
+        ("ИТП", ["ITP"]),
+        ("ТМ", ["TM"]),
+        ("ТС", ["TS"]),
+        ("ТХ", ["TH", "TX"]),
+        ("ГП", ["GP"]),
+        ("ГСН", ["GSN"]),
+        ("ГСВ", ["GSV"])
     ];
+
+    private static readonly (string Value, string[] Tokens)[] Parts =
+    [
+        ("стилобат", ["STIL", "STILOBAT"]),
+        ("паркинг", ["PARK", "PARKING"])
+    ];
+
+    private static readonly (string Value, string[] Tokens)[] Stages =
+    [
+        ("П", ["P", "PD"]),
+        ("Р", ["R", "RD"])
+    ];
+
+    /// <summary>Служебные куски: так Revit и пользователи помечают копии файла.</summary>
+    private static readonly string[] Ignored = ["CENTRAL", "LOCAL", "DETACHED", "BACKUP"];
 
     public static NamingConfig Create() => new()
     {
         Separators = "_",
-        Entries = Disciplines.Select(d => new NamingEntry(NamingFields.Discipline, d.Tokens, d.Value)).ToList(),
+        Entries =
+        [
+            ..Disciplines.SelectMany(d => d.Tokens.Select(t => new NamingEntry(NamingFields.Discipline, t, d.Value))),
+            ..Parts.SelectMany(p => p.Tokens.Select(t => new NamingEntry(NamingFields.Part, t, p.Value))),
+            ..Stages.SelectMany(s => s.Tokens.Select(t => new NamingEntry(StageField, t, s.Value))),
+            ..Ignored.Select(t => new NamingEntry(NamingFields.Ignore, t))
+        ],
         Patterns =
         [
-            new NamingPattern(NamingFields.Part, @"^K(\d+)$", "корпус $1"),
-            new NamingPattern(NamingFields.Part, @"^K(\d+)-K?(\d+)$", "корпуса $1–$2"),
-            new NamingPattern(NamingFields.Part, @"^S(\d+)$", "секция $1"),
-            new NamingPattern(NamingFields.Part, @"^S(\d+)-S?(\d+)$", "секции $1–$2"),
-            new NamingPattern(NamingFields.Ignore, @"^R(20)?\d{2}$")
+            new NamingPattern(NamingFields.Part, @"^(K|KORP|KOR)(\d+)$", "корпус $2"),
+            new NamingPattern(NamingFields.Part, @"^(K|KORP|KOR)(\d+)-(K|KORP|KOR)?(\d+)$", "корпуса $2–$4"),
+            new NamingPattern(NamingFields.Part, @"^(S|SEK|SEC|SEKTS)(\d+)$", "секция $2"),
+            new NamingPattern(NamingFields.Part, @"^(S|SEK|SEC|SEKTS)(\d+)-(S|SEK|SEC|SEKTS)?(\d+)$", "секции $2–$4"),
+            new NamingPattern(NamingFields.Part, @"^(B|BL|BLOK)(\d+)$", "блок $2"),
+            new NamingPattern(NamingFields.Ignore, @"^R(20)?\d{2}$"),
+            new NamingPattern(NamingFields.Ignore, @"^(\d{6}|\d{8})$"),
+            new NamingPattern(NamingFields.Ignore, @"^V\d+$")
         ]
     };
 }

@@ -1,3 +1,4 @@
+using Alexpivo394.Revit.ParamCheck.Profiles;
 using Alexpivo394.Revit.ParamCheck.Summaries;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Auth;
@@ -22,7 +23,13 @@ public sealed record KnownModel(string Name, string Path);
 
 public sealed record ModelOverrideRequest(string ModelPath, string ModelName, string? Customer, string? Object, string? Discipline, string? Part);
 
-public sealed record ModelOverrideView(string ModelKey, string ModelName, string? Customer, string? Object, string? Discipline, string? Part, DateTimeOffset UpdatedAt);
+/// <param name="ByName">Поправка по имени — для всех моделей с этим именем; иначе <paramref name="ModelKey" /> — путь одной модели.</param>
+public sealed record ModelOverrideView(string ModelKey, string ModelName, bool ByName, string? Customer, string? Object, string? Discipline, string? Part,
+    DateTimeOffset UpdatedAt)
+{
+    public static ModelOverrideView Of(LoiModelOverride o) =>
+        new(o.ModelKey, o.ModelName, !CheckRecorder.IsPath(o.ModelKey), o.Customer, o.Object, o.Discipline, o.Part, o.UpdatedAt);
+}
 
 /// <summary>Приём ручных проверок и настройки аналитики: справочник именования, поправки моделей, срок хранения.</summary>
 internal static class AnalyticsAdminEndpoints
@@ -45,10 +52,11 @@ internal static class AnalyticsAdminEndpoints
 
         loi.MapGet("/analytics/settings", (LoiSettingsStore store, CancellationToken ct) => store.AnalyticsAsync(ct));
         loi.MapGet("/naming", (LoiSettingsStore store, CancellationToken ct) => store.NamingAsync(ct));
+        loi.MapGet("/naming/defaults", () => NamingDefaults.Create());
         loi.MapPost("/naming/preview", PreviewAsync);
         loi.MapGet("/naming/models", KnownModelsAsync);
-        loi.MapGet("/models/overrides", async (ToadFlowDb db) => await db.Set<LoiModelOverride>().AsNoTracking().OrderBy(o => o.ModelName)
-            .Select(o => new ModelOverrideView(o.ModelKey, o.ModelName, o.Customer, o.Object, o.Discipline, o.Part, o.UpdatedAt)).ToListAsync());
+        loi.MapGet("/models/overrides", async (ToadFlowDb db) => (await db.Set<LoiModelOverride>().AsNoTracking().OrderBy(o => o.ModelName).ToListAsync())
+            .Select(ModelOverrideView.Of).ToList());
 
         var admin = loi.MapGroup("").RequireAuthorization(Policies.Admin);
         admin.MapPut("/analytics/settings", async (AnalyticsSettings settings, LoiSettingsStore store, HttpContext http, IDomainEvents events, CancellationToken ct) =>
@@ -118,10 +126,13 @@ internal static class AnalyticsAdminEndpoints
         if (string.IsNullOrWhiteSpace(request.ModelPath) && string.IsNullOrWhiteSpace(request.ModelName))
             return Results.BadRequest(new { error = "Укажите модель" });
 
-        var key = CheckRecorder.ModelKey(request.ModelPath ?? "", request.ModelName ?? "");
+        // Путь — поправка одной модели; одно имя (без папок) — всех моделей с этим именем.
+        var model = (string.IsNullOrWhiteSpace(request.ModelPath) ? request.ModelName : request.ModelPath)!.Trim();
+        var byName = !CheckRecorder.IsPath(model);
+        var key = byName ? CheckRecorder.NameKey(model) : CheckRecorder.ModelKey(model, "");
         var manual = await db.Set<LoiModelOverride>().FindAsync([key], ct);
         if (manual is null) db.Set<LoiModelOverride>().Add(manual = new LoiModelOverride { ModelKey = key });
-        manual.ModelName = (request.ModelName ?? "").Trim();
+        manual.ModelName = ModelNames.FromPath(model);
         manual.Customer = Blank(request.Customer);
         manual.Object = Blank(request.Object);
         manual.Discipline = Blank(request.Discipline);
@@ -130,7 +141,7 @@ internal static class AnalyticsAdminEndpoints
         manual.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
         await recorder.ReclassifyAsync(key, ct);
-        return Results.Ok(new ModelOverrideView(key, manual.ModelName, manual.Customer, manual.Object, manual.Discipline, manual.Part, manual.UpdatedAt));
+        return Results.Ok(ModelOverrideView.Of(manual));
     }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

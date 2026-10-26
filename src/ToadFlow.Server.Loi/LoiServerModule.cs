@@ -66,7 +66,8 @@ public sealed class LoiServerModule : IServerModule
         model.Entity<LoiProfile>(profile =>
         {
             profile.ToTable("loi_profiles");
-            profile.HasIndex(p => p.Name).IsUnique();
+            profile.Property(p => p.Group).HasMaxLength(200).HasDefaultValue("");
+            profile.HasIndex(p => new { p.Group, p.Name }).IsUnique();
             profile.Property(p => p.ProfileJson).HasColumnType("jsonb");
         });
 
@@ -133,8 +134,10 @@ public sealed class LoiServerModule : IServerModule
             history = OutputFolderTemplate.Render(history, context.RunStartedAt, timeZone, scheduleName);
         }
 
+        // В отчёт и в аналитику профиль попадает с группой: «Полковая · ОВ» и «Донской · ОВ» — разные профили.
+        profile.Name = stored.DisplayName;
         var payload = new LoiJobPayload(model.Name, model.ModelPath, model.IsServer, context.RevitYear, context.OutputFolder, context.RunStartedAt,
-            stored.ProfileJson, parsed.Resolve(profile, history));
+            ProfileSerializer.SerializeProfile(profile), parsed.Resolve(profile, history));
         return JsonSerializer.Serialize(payload, ToadFlowDb.Json);
     }
 

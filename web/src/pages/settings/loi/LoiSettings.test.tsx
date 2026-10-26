@@ -2,8 +2,8 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderApp } from '../../../test/renderApp';
 
-const ready = { id: 'p1', name: 'ОВ', ruleCount: 2, viewName: 'Navisworks', worksetKeyword: '', updatedAt: '2026-10-24T10:00:00Z', updatedBy: 'А. Борисов', problems: [] };
-const draft = { ...ready, id: 'p2', name: 'Черновик', ruleCount: 0, viewName: '', problems: ['«Черновик»: нет правил.'] };
+const ready = { id: 'p1', name: 'ОВ', group: 'Полковая', ruleCount: 2, viewName: 'Navisworks', worksetKeyword: '', updatedAt: '2026-10-24T10:00:00Z', updatedBy: 'А. Борисов', problems: [] };
+const draft = { ...ready, id: 'p2', group: '', name: 'Черновик', ruleCount: 0, viewName: '', problems: ['«Черновик»: нет правил.'] };
 
 const responses = {
   '/api/loi/profiles': [ready, draft],
@@ -14,7 +14,7 @@ const responses = {
     catalog: { categories: [{ key: 'OST_DuctCurves', name: 'Воздуховоды', isModel: true }], parameters: ['ADSK_Марка'], hasSharedParameterFile: false },
   },
   '/api/loi/profiles/p1': {
-    id: 'p1', name: 'ОВ', updatedAt: ready.updatedAt, updatedBy: ready.updatedBy, problems: [],
+    id: 'p1', name: 'ОВ', group: 'Полковая', updatedAt: ready.updatedAt, updatedBy: ready.updatedBy, problems: [],
     profile: { Name: 'ОВ', ViewName: 'Navisworks', WorksetKeyword: '', Rules: [{ Title: 'Воздуховоды', Filter: { Categories: ['OST_DuctCurves', 'OST_Old'] }, Parameters: ['ADSK_Марка'] }] },
   },
 };
@@ -24,6 +24,8 @@ describe('LoiSettings', () => {
     renderApp('/settings/loi', responses);
 
     expect(await screen.findByText('ОВ')).toBeTruthy();
+    expect(screen.getByText('Полковая')).toBeTruthy(); // группа
+    expect(screen.getByText('Без группы')).toBeTruthy();
     expect(screen.getByText('готов')).toBeTruthy();
     expect(screen.getByText('не готов')).toBeTruthy();
     expect(screen.getAllByText('Revit 2024').length).toBeGreaterThan(0);
@@ -37,7 +39,8 @@ describe('LoiSettings', () => {
 
     fireEvent.click(await screen.findByText('ОВ'));
 
-    expect(await screen.findByText('Профиль «ОВ»')).toBeTruthy();
+    expect(await screen.findByText('Профиль «Полковая · ОВ»')).toBeTruthy();
+    expect(screen.getByDisplayValue('Полковая')).toBeTruthy(); // поле группы
     expect(screen.getByDisplayValue('Воздуховоды')).toBeTruthy(); // название правила
     expect(screen.getAllByText('OST_Old').length).toBeGreaterThan(0); // нет в каталоге — остаётся выбранной под ключом
     expect(screen.getByRole('button', { name: '+ Правило' })).toBeTruthy();

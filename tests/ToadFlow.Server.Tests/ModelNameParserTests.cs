@@ -57,6 +57,52 @@ public class ModelNameParserTests
     }
 
     [Test]
+    [Arguments("POL_АР_K1_R22", "АР", "корпус 1")]
+    [Arguments("POL_ОВ_С3_R22", "ОВ", "секция 3")]
+    [Arguments("POL_КЖ_КОРП2_R22", "КЖ", "корпус 2")]
+    [Arguments("POL_ТХ_СЕК4-5_R22", "ТХ", "секции 4–5")]
+    [Arguments("POL_ЭОМ_Б2_R22", "ЭОМ", "блок 2")]
+    public void CyrillicCodes_MatchLatinDictionary(string name, string discipline, string part)
+    {
+        var result = Parse(name);
+
+        result.Object.ShouldBe("Полковая");
+        result.Discipline.ShouldBe(discipline);
+        result.Part.ShouldBe(part);
+        result.Unrecognized.ShouldBeEmpty();
+    }
+
+    [Test]
+    public void CyrillicLookalike_InLatinToken_IsATypo()
+    {
+        // «РOL» — русская Р среди латиницы: это опечатка в POL, а не транслитерация «ROL».
+        Parse("РOL_AR_R22").Object.ShouldBe("Полковая");
+    }
+
+    [Test]
+    public void CyrillicEntry_MatchesLatinName()
+    {
+        var config = NamingDefaults.Create() with { Entries = [new(NamingFields.Object, "ЖК+Победа", "Победа")] };
+
+        new ModelNameParser(config).Parse("ZHK_POBEDA_AR").Object.ShouldBe("Победа");
+    }
+
+    [Test]
+    public void Defaults_RecognizeStageServicePiecesDatesAndVersions()
+    {
+        var result = new ModelNameParser(NamingDefaults.Create()).Parse("XXX_AR_RD_STIL_251026_V3_detached");
+
+        result.Discipline.ShouldBe("АР");
+        result.Part.ShouldBe("стилобат");
+        result.Fields.ShouldBe(new Dictionary<string, string> { [NamingDefaults.StageField] = "Р" });
+        result.Unrecognized.ShouldBe(["XXX"]);
+        new ModelNameParser(NamingDefaults.Create()).Parse("XXX_AR_Р").Fields[NamingDefaults.StageField].ShouldBe("Р"); // русская Р — стадия Р, не P
+    }
+
+    [Test]
+    public void Defaults_AreValid() => ModelNameParser.Validate(NamingDefaults.Create()).ShouldBeEmpty();
+
+    [Test]
     public void UnknownPieces_AreReported()
     {
         var result = Parse("NEW_AR_XYZ_K2_R24");

@@ -20,6 +20,10 @@ export function useAnalyticsFilters(): [AnalyticsFilterState, (patch: Partial<An
   return [state, update];
 }
 
+/** Свои поля справочника одной строкой: «Стадия: П · Очередь: 2». */
+export const fieldsText = (fields: Record<string, string> | undefined) =>
+  Object.entries(fields ?? {}).map(([name, value]) => `${name}: ${value}`).join(' · ');
+
 /** Значение поля или «не распознано» — у моделей, которые справочник именования не разобрал. */
 export const orNone = (value: string | null | undefined) => value ?? 'не распознано';
 
@@ -78,6 +82,15 @@ export function AnalyticsFiltersBar() {
         data={[{ value: 'Schedule', label: 'По расписанию' }, { value: 'Manual', label: 'Вручную' }]}
         onChange={(v) => update({ source: (v as AnalyticsFilterState['source']) ?? undefined })} />
       <TextInput placeholder="Модель" leftSection={<IconSearch size={14} />} defaultValue={state.search} onChange={(e) => search(e.currentTarget.value)} />
+      {Object.entries(data?.fields ?? {}).map(([name, values]) => (
+        <Select key={name} placeholder={`${name}: все`} clearable searchable value={state.fields?.[name] ?? null} data={withNone(values)}
+          onChange={(v) => {
+            const fields = { ...state.fields };
+            if (v) fields[name] = v;
+            else delete fields[name];
+            update({ fields: Object.keys(fields).length > 0 ? fields : undefined });
+          }} />
+      ))}
     </SimpleGrid>
   );
 }

@@ -6,7 +6,7 @@ import type { ModelHistory } from '../../api/types';
 import { Panel } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { toPercent } from './filters';
-import { Delta, orNone, Share, Stat } from './parts';
+import { Delta, fieldsText, orNone, Share, Stat } from './parts';
 
 const percent = (value: number) => `${value.toString().replace('.', ',')} %`;
 
@@ -33,7 +33,7 @@ export function ModelPage() {
       <Paper withBorder p="md" radius="md">
         <Title order={3}>{model.modelName}</Title>
         <Group gap="lg" mt={4}>
-          <Text size="sm">{[model.customer, orNone(model.object), orNone(model.discipline), model.part].filter(Boolean).join(' · ')}</Text>
+          <Text size="sm">{[model.customer, orNone(model.object), orNone(model.discipline), model.part, fieldsText(model.fields)].filter(Boolean).join(' · ')}</Text>
           <Text size="sm" c="dimmed">{model.modelPath}</Text>
         </Group>
       </Paper>

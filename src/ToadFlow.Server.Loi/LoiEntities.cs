@@ -13,6 +13,17 @@ public sealed class LoiProfile
     /// <summary>Совпадает с именем в <see cref="ProfileJson" />; отдельной колонкой — для уникальности и сортировки.</summary>
     public string Name { get; set; } = "";
 
+    /// <summary>
+    ///     Группа профиля — обычно проект: «Полковая», «Донской». Имя уникально внутри группы, поэтому профили «ОВ» могут
+    ///     быть в каждом проекте. Пусто — без группы. В файл ParamChecker не попадает.
+    /// </summary>
+    public string Group { get; set; } = "";
+
+    /// <summary>Имя с группой — для отчётов, аналитики и списков, где профили разных групп стоят рядом.</summary>
+    public string DisplayName => DisplayNameOf(Group, Name);
+
+    public static string DisplayNameOf(string group, string name) => group.Length > 0 ? $"{group} · {name}" : name;
+
     /// <summary>Профиль в формате ParamChecker (<see cref="ProfileSerializer.SerializeProfile" />), без моделей.</summary>
     public string ProfileJson { get; set; } = "{}";
 

@@ -16,6 +16,7 @@ namespace ToadFlow.Server.Loi;
 public sealed record LoiProfileSummary(
     Guid Id,
     string Name,
+    string Group,
     int RuleCount,
     string ViewName,
     string WorksetKeyword,
@@ -24,12 +25,18 @@ public sealed record LoiProfileSummary(
     IReadOnlyList<string> Problems);
 
 /// <param name="Profile">Профиль в формате ParamChecker — как в файлах профилей плагина (имена полей с заглавной буквы).</param>
-public sealed record LoiProfileDetails(Guid Id, string Name, DateTimeOffset UpdatedAt, string UpdatedBy, JsonElement Profile, IReadOnlyList<string> Problems);
+public sealed record LoiProfileDetails(Guid Id, string Name, string Group, DateTimeOffset UpdatedAt, string UpdatedBy, JsonElement Profile,
+    IReadOnlyList<string> Problems);
 
-public sealed record LoiProfileRequest(JsonElement Profile);
+/// <param name="Group">Группа профиля (обычно проект); пусто — без группы.</param>
+public sealed record LoiProfileRequest(JsonElement Profile, string? Group = null);
 
 /// <param name="Json">Содержимое файла профилей ParamChecker (экспорт или profiles.json) любой версии.</param>
-public sealed record LoiImportRequest(string Json);
+/// <param name="Group">В какую группу положить загруженные профили; пусто — без группы.</param>
+public sealed record LoiImportRequest(string Json, string? Group = null);
+
+/// <summary>Переименовать группу профилей или слить её с другой: все профили группы <paramref name="From" /> переходят в <paramref name="To" />.</summary>
+public sealed record LoiGroupRenameRequest(string From, string To);
 
 /// <param name="Warnings">Что из файла не перенеслось — например, категории старого формата, которых нет в каталогах.</param>
 public sealed record LoiImportResult(IReadOnlyList<LoiProfileSummary> Created, IReadOnlyList<string> Warnings);
@@ -80,6 +87,7 @@ internal static class LoiEndpoints
             SaveAsync(id, request, db, http, events, time));
         write.MapDelete("/profiles/{id:guid}", DeleteAsync);
         write.MapPost("/profiles/import", ImportAsync);
+        write.MapPut("/profile-groups", RenameGroupAsync);
         loi.MapGet("/disciplines", KnownDisciplinesAsync);
         loi.MapPost("/routing/preview", PreviewRoutingAsync);
         write.MapPost("/catalog/refresh", async (LoiRefreshRequest request, LoiCatalogRefresher refresher, HttpContext http) =>
@@ -103,7 +111,7 @@ internal static class LoiEndpoints
 
         var profile = stored.ToProfile();
         using var json = JsonDocument.Parse(stored.ProfileJson);
-        return Results.Ok(new LoiProfileDetails(stored.Id, stored.Name, stored.UpdatedAt, await UserNameAsync(db, stored.UpdatedByUserId),
+        return Results.Ok(new LoiProfileDetails(stored.Id, stored.Name, stored.Group, stored.UpdatedAt, await UserNameAsync(db, stored.UpdatedByUserId),
             json.RootElement.Clone(), RunValidator.RuleProblems(profile)));
     }
 
@@ -130,18 +138,20 @@ internal static class LoiEndpoints
         }
 
         profile.Name = profile.Name.Trim();
+        var group = (request.Group ?? "").Trim();
         if (profile.Name.Length == 0) return Results.BadRequest(new { error = "Укажите название профиля" });
-        if (await db.Set<LoiProfile>().AnyAsync(p => p.Name == profile.Name && p.Id != id))
-            return Results.Conflict(new { error = $"Профиль «{profile.Name}» уже есть" });
+        if (await db.Set<LoiProfile>().AnyAsync(p => p.Group == group && p.Name == profile.Name && p.Id != id))
+            return Results.Conflict(new { error = group.Length > 0 ? $"В группе «{group}» уже есть профиль «{profile.Name}»" : $"Профиль «{profile.Name}» без группы уже есть" });
 
         var stored = id is null ? null : await db.Set<LoiProfile>().FindAsync(id);
         if (id is not null && stored is null) return Results.NotFound();
         if (stored is null) db.Set<LoiProfile>().Add(stored = new LoiProfile { Id = Guid.CreateVersion7() });
 
         Apply(stored, profile, http.User.UserId(), time.GetUtcNow());
+        stored.Group = group;
         await db.SaveChangesAsync();
         events.Publish(new CatalogChanged(http.User.Actor(), ProfilesEntity, stored.Id,
-            $"{(id is null ? "Добавлен" : "Изменён")} профиль проверки LOI «{stored.Name}»"));
+            $"{(id is null ? "Добавлен" : "Изменён")} профиль проверки LOI «{stored.DisplayName}»"));
 
         var summary = (await SummariesAsync(db, stored.Id)).Single();
         return id is null ? Results.Created($"/api/loi/profiles/{stored.Id}", summary) : Results.Ok(summary);
@@ -157,7 +167,7 @@ internal static class LoiEndpoints
 
         db.Set<LoiProfile>().Remove(stored);
         await db.SaveChangesAsync();
-        events.Publish(new CatalogChanged(http.User.Actor(), ProfilesEntity, id, $"Удалён профиль проверки LOI «{stored.Name}»"));
+        events.Publish(new CatalogChanged(http.User.Actor(), ProfilesEntity, id, $"Удалён профиль проверки LOI «{stored.DisplayName}»"));
         return Results.NoContent();
     }
 
@@ -182,14 +192,15 @@ internal static class LoiEndpoints
 
         if (set.Profiles.Count == 0) return Results.BadRequest(new { error = "В файле нет профилей" });
 
-        var names = new HashSet<string>(await db.Set<LoiProfile>().Select(p => p.Name).ToListAsync());
+        var group = (request.Group ?? "").Trim();
+        var names = new HashSet<string>(await db.Set<LoiProfile>().Where(p => p.Group == group).Select(p => p.Name).ToListAsync());
         var userId = http.User.UserId();
         var now = time.GetUtcNow();
         var created = new List<LoiProfile>();
         foreach (var profile in set.Profiles)
         {
             profile.Name = UniqueName(names, profile.Name.Trim().Length == 0 ? "Профиль" : profile.Name.Trim());
-            var stored = new LoiProfile { Id = Guid.CreateVersion7() };
+            var stored = new LoiProfile { Id = Guid.CreateVersion7(), Group = group };
             Apply(stored, profile, userId, now);
             db.Set<LoiProfile>().Add(stored);
             created.Add(stored);
@@ -197,7 +208,7 @@ internal static class LoiEndpoints
 
         await db.SaveChangesAsync();
         events.Publish(new CatalogChanged(http.User.Actor(), ProfilesEntity, created[0].Id,
-            $"Загружены профили проверки LOI из файла ParamChecker: {string.Join(", ", created.Select(p => $"«{p.Name}»"))}"));
+            $"Загружены профили проверки LOI из файла ParamChecker: {string.Join(", ", created.Select(p => $"«{p.DisplayName}»"))}"));
 
         IReadOnlyList<string> warnings = unknown.Count == 0 ? [] : [$"Неизвестные номера категорий не перенесены: {string.Join(", ", unknown)}"];
 
@@ -224,7 +235,7 @@ internal static class LoiEndpoints
             await db.Schedules.AsNoTracking().Where(s => s.Id == scheduleId).Select(s => s.LastKnownModels).SingleOrDefaultAsync(ct) is { } known)
             models.AddRange(known.Select(m => new LoiModelRef(m.Name, m.ModelPath)));
 
-        var names = await db.Set<LoiProfile>().AsNoTracking().ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+        var names = (await db.Set<LoiProfile>().AsNoTracking().ToListAsync(ct)).ToDictionary(p => p.Id, p => p.DisplayName);
         var rows = new List<LoiRoutingPreviewRow>();
         foreach (var model in models.DistinctBy(m => m.ModelPath.Length > 0 ? m.ModelPath : m.Name, StringComparer.OrdinalIgnoreCase).OrderBy(m => m.Name))
         {
@@ -261,16 +272,38 @@ internal static class LoiEndpoints
     {
         var query = db.Set<LoiProfile>().AsNoTracking();
         if (id is not null) query = query.Where(p => p.Id == id);
-        var stored = await query.OrderBy(p => p.Name).ToListAsync();
+        var stored = await query.OrderBy(p => p.Group).ThenBy(p => p.Name).ToListAsync();
         var users = await db.Users.AsNoTracking().ToDictionaryAsync(u => u.Id, u => u.DisplayName);
 
         return stored.Select(p =>
         {
             var profile = p.ToProfile();
-            return new LoiProfileSummary(p.Id, p.Name, profile.Rules.Count, profile.ViewName, profile.WorksetKeyword, p.UpdatedAt,
+            return new LoiProfileSummary(p.Id, p.Name, p.Group, profile.Rules.Count, profile.ViewName, profile.WorksetKeyword, p.UpdatedAt,
                 users.GetValueOrDefault(p.UpdatedByUserId, "—"), RunValidator.RuleProblems(profile));
         }).ToList();
     }
+
+    private static async Task<IResult> RenameGroupAsync(LoiGroupRenameRequest request, ToadFlowDb db, HttpContext http, IDomainEvents events)
+    {
+        var from = (request.From ?? "").Trim();
+        var to = (request.To ?? "").Trim();
+        if (from == to) return Results.NoContent();
+
+        var moving = await db.Set<LoiProfile>().Where(p => p.Group == from).ToListAsync();
+        if (moving.Count == 0) return Results.NotFound();
+        var taken = await db.Set<LoiProfile>().Where(p => p.Group == to).Select(p => p.Name).ToListAsync();
+        var clashes = moving.Select(p => p.Name).Intersect(taken).Order().ToList();
+        if (clashes.Count > 0)
+            return Results.Conflict(new { error = $"В группе «{GroupLabel(to)}» уже есть профили: {string.Join(", ", clashes)}" });
+
+        foreach (var profile in moving) profile.Group = to;
+        await db.SaveChangesAsync();
+        events.Publish(new CatalogChanged(http.User.Actor(), ProfilesEntity, moving[0].Id,
+            $"Группа профилей LOI «{GroupLabel(from)}» → «{GroupLabel(to)}»: профилей {moving.Count}"));
+        return Results.NoContent();
+    }
+
+    private static string GroupLabel(string group) => group.Length > 0 ? group : "без группы";
 
     private static async Task<string> UserNameAsync(ToadFlowDb db, Guid userId) =>
         await db.Users.Where(u => u.Id == userId).Select(u => u.DisplayName).SingleOrDefaultAsync() ?? "—";

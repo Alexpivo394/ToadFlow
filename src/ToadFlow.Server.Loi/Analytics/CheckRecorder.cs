@@ -19,6 +19,12 @@ public sealed class CheckRecorder(ToadFlowDb db, LoiSettingsStore settings)
     public static string ModelKey(string modelPath, string modelName) =>
         ModelNames.Key(modelPath.Trim().Length > 0 ? modelPath : modelName).ToLowerInvariant();
 
+    /// <summary>Ключ поправки «по имени»: она действует на все модели с этим именем, где бы они ни лежали.</summary>
+    public static string NameKey(string modelNameOrPath) => ModelKey("", ModelNames.FromPath(modelNameOrPath));
+
+    /// <summary>Похоже ли на путь к модели, а не на одно имя.</summary>
+    public static bool IsPath(string text) => text.IndexOfAny(['\\', '/', ':']) >= 0;
+
     /// <returns>Записана ли проверка: false — аналитика выключена или проверка с этим id уже есть.</returns>
     public async Task<bool> RecordAsync(Guid id, CheckSummary summary, CheckOrigin origin, CancellationToken ct)
     {
@@ -75,16 +81,19 @@ public sealed class CheckRecorder(ToadFlowDb db, LoiSettingsStore settings)
     /// <summary>
     ///     Заново раскладывает уже записанные проверки — после правки справочника или ручной поправки.
     /// </summary>
-    /// <param name="modelKey">Только эта модель; null — все.</param>
+    /// <param name="modelKey">
+    ///     Только эта модель — или, если это ключ поправки по имени (<see cref="NameKey" />), все модели с этим именем;
+    ///     null — все модели.
+    /// </param>
     /// <returns>Сколько моделей пересчитано.</returns>
     public async Task<int> ReclassifyAsync(string? modelKey, CancellationToken ct)
     {
         var parser = new ModelNameParser(await settings.NamingAsync(ct));
-        var query = db.Set<LoiCheck>().AsNoTracking();
-        if (modelKey is not null) query = query.Where(c => c.ModelKey == modelKey);
-        var models = await query.GroupBy(c => c.ModelKey)
-            .Select(g => g.OrderByDescending(c => c.CheckedAt).Select(c => new { c.ModelKey, c.ModelPath, c.ModelName }).First())
-            .ToListAsync(ct);
+        var models = (await db.Set<LoiCheck>().AsNoTracking().GroupBy(c => c.ModelKey)
+                .Select(g => g.OrderByDescending(c => c.CheckedAt).Select(c => new { c.ModelKey, c.ModelPath, c.ModelName }).First())
+                .ToListAsync(ct))
+            .Where(m => modelKey is null || m.ModelKey == modelKey || NameKey(m.ModelName) == modelKey)
+            .ToList();
 
         foreach (var model in models)
         {
@@ -100,11 +109,13 @@ public sealed class CheckRecorder(ToadFlowDb db, LoiSettingsStore settings)
         return models.Count;
     }
 
-    /// <summary>Классификация модели: справочник именования, поверх — ручная поправка.</summary>
+    /// <summary>Классификация модели: справочник именования, поверх — ручная поправка (по пути главнее, чем по имени).</summary>
     public async Task<ModelPlacement> PlaceAsync(ModelNameParser parser, string modelKey, string modelPath, string modelName, CancellationToken ct)
     {
         var parsed = parser.Parse(modelPath.Trim().Length > 0 ? modelPath : modelName);
-        var manual = await db.Set<LoiModelOverride>().AsNoTracking().SingleOrDefaultAsync(o => o.ModelKey == modelKey, ct);
+        var nameKey = NameKey(modelName.Trim().Length > 0 ? modelName : modelPath);
+        var manual = (await db.Set<LoiModelOverride>().AsNoTracking().Where(o => o.ModelKey == modelKey || o.ModelKey == nameKey).ToListAsync(ct))
+            .OrderBy(o => o.ModelKey == modelKey ? 0 : 1).FirstOrDefault();
         return new ModelPlacement(
             Blank(manual?.Customer) ?? parsed.Customer,
             Blank(manual?.Object) ?? parsed.Object,

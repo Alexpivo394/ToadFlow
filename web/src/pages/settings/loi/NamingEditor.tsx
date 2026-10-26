@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
-  ActionIcon, Alert, Badge, Button, Group, Popover, Select, SimpleGrid, Stack, Table, Tabs, Text, Textarea, TextInput, Tooltip,
+  ActionIcon, Alert, Badge, Button, Group, Menu, Popover, Select, SimpleGrid, Stack, Table, Tabs, Text, Textarea, TextInput, Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
-import { IconTrash } from '@tabler/icons-react';
+import { IconChevronDown, IconTrash } from '@tabler/icons-react';
 import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
 import type { KnownModel, NamingConfig, NamingEntry, NamingPreviewRow } from '../../../api/types';
-import { Panel } from '../../../components/ui';
-import { builtInFields, emptyNaming, fieldLabel, fieldsOf } from './naming';
+import { askConfirm, Panel } from '../../../components/ui';
+import { builtInFields, emptyNaming, fieldLabel, fieldsOf, mergeDefaults } from './naming';
 
 /** Добавить нераспознанный кусок в справочник прямо из предпросмотра. */
 function AddToken({ token, fields, onAdd }: { token: string; fields: string[]; onAdd: (entry: NamingEntry) => void }) {
@@ -95,6 +95,28 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
     }
   }
 
+  /** Стандартный справочник: дополнить им текущий или заменить всё. Сохранять — как обычно, кнопкой «Сохранить справочник». */
+  async function applyDefaults(replace: boolean) {
+    try {
+      const defaults = await apiFetch<NamingConfig>('/api/loi/naming/defaults');
+      if (replace) {
+        askConfirm('Заменить весь справочник стандартным? Свои объекты, записи и шаблоны пропадут после сохранения.', () => {
+          setDraft(defaults);
+          notifications.show({ color: 'yellow', message: 'Подставлен стандартный справочник — проверьте предпросмотр и нажмите «Сохранить справочник»' });
+        });
+        return;
+      }
+      const merged = mergeDefaults(config, defaults);
+      setDraft(merged.config);
+      notifications.show({
+        color: merged.added ? 'green' : 'gray',
+        message: merged.added ? `Добавлено записей и шаблонов: ${merged.added}. Нажмите «Сохранить справочник»` : 'Всё стандартное уже есть в справочнике',
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   function addEntry(entry: NamingEntry) {
     const next = { ...config, entries: [...config.entries, entry] };
     setDraft(next);
@@ -102,6 +124,7 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
   }
 
   const visible = config.entries.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.field === filter);
+  const customFields = [...new Set((preview ?? []).flatMap((row) => Object.keys(row.result.fields ?? {})))];
 
   return (
     <Panel title="Разбор имён моделей">
@@ -109,7 +132,8 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
         <Text size="sm" c="dimmed">
           Имя модели режется на куски по разделителям, и каждый кусок ищется в справочнике — где бы он ни стоял. Регистр, пробелы и русские буквы,
           похожие на латинские (К и K), не важны. Несколько кусков через «+» (например <code>DON+BNK-DOO</code>) задают значение вместе и важнее
-          одиночных. Корпуса, секции и версию Revit распознают шаблоны.
+          одиночных. Коды, набранные по-русски (АР, ОВ, КЖ), совпадают с латинскими (AR, OV, KZH) — их не нужно дублировать. Корпуса, секции и
+          версию Revit распознают шаблоны.
         </Text>
         {error && <Alert color="red">{error}</Alert>}
 
@@ -209,6 +233,15 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
           <Group>
             <Button onClick={save}>Сохранить справочник</Button>
             <Button variant="default" onClick={() => saved.data && setDraft(saved.data)}>Отменить правки</Button>
+            <Menu position="bottom-start">
+              <Menu.Target>
+                <Button variant="default" rightSection={<IconChevronDown size={14} />}>Стандартный справочник</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item onClick={() => applyDefaults(false)}>Добавить недостающие стандартные записи и шаблоны</Menu.Item>
+                <Menu.Item color="red" onClick={() => applyDefaults(true)}>Заменить всё стандартным</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           </Group>
         )}
 
@@ -231,6 +264,7 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
                     <Table.Th>Объект</Table.Th>
                     <Table.Th>Раздел</Table.Th>
                     <Table.Th>Часть</Table.Th>
+                    {customFields.map((f) => <Table.Th key={f}>{f}</Table.Th>)}
                     <Table.Th>Не распознано</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -242,6 +276,7 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
                       <Table.Td>{row.result.object ?? <Text span c="red">—</Text>}</Table.Td>
                       <Table.Td>{row.result.discipline ?? <Text span c="red">—</Text>}</Table.Td>
                       <Table.Td>{row.result.part ?? ''}</Table.Td>
+                      {customFields.map((f) => <Table.Td key={f}>{row.result.fields[f] ?? ''}</Table.Td>)}
                       <Table.Td>
                         <Group gap={4}>
                           {row.result.unrecognized.map((token) =>

@@ -6,6 +6,7 @@ using ToadFlow.Server.Settings;
 namespace ToadFlow.Server.Loi.Analytics;
 
 /// <summary>Фильтры аналитики. Пустое поле — без фильтра; <c>(нет)</c> — модели, у которых поле не распознано.</summary>
+/// <param name="Field">Свои поля справочника: <c>Имя=Значение</c>, по одному на поле.</param>
 public sealed record AnalyticsFilter(
     DateTimeOffset? From,
     DateTimeOffset? To,
@@ -15,13 +16,20 @@ public sealed record AnalyticsFilter(
     string? Part,
     string? Profile,
     LoiCheckSource? Source,
-    string? Search)
+    string? Search,
+    string[]? Field = null)
 {
     public const string None = "(нет)";
+
+    /// <summary>Фильтры по своим полям: имя → значение (или <see cref="None" />).</summary>
+    public IReadOnlyList<(string Name, string Value)> Fields => (Field ?? [])
+        .Select(f => f.Split('=', 2)).Where(p => p.Length == 2 && p[0].Trim().Length > 0 && p[1].Trim().Length > 0)
+        .Select(p => (p[0].Trim(), p[1].Trim())).ToList();
 }
 
+/// <param name="Fields">Свои поля справочника и их значения во всех проверках.</param>
 public sealed record AnalyticsFilters(string[] Customers, AnalyticsObject[] Objects, string[] Disciplines, string[] Parts, string[] Profiles,
-    DateTimeOffset? First, DateTimeOffset? Last);
+    DateTimeOffset? First, DateTimeOffset? Last, Dictionary<string, string[]> Fields);
 
 public sealed record AnalyticsObject(string Name, string? Customer);
 
@@ -47,7 +55,8 @@ public sealed record ModelRow(
     double? FillRate,
     double? Completeness,
     double? PreviousFillRate,
-    bool ProfileChanged);
+    bool ProfileChanged,
+    IReadOnlyDictionary<string, string> Fields);
 
 public sealed record ParameterRow(string Name, int Models, int Total, int Filled, int Empty, int Missing, double? FillRate, string[] WorstModels);
 
@@ -101,6 +110,10 @@ internal static class AnalyticsQueryEndpoints
     {
         var checks = db.Set<LoiCheck>().AsNoTracking();
         var objects = await checks.Where(c => c.Object != null).Select(c => new { c.Object, c.Customer }).Distinct().ToListAsync(ct);
+        var fields = (await checks.Select(c => c.Fields).ToListAsync(ct)).SelectMany(d => d)
+            .GroupBy(pair => pair.Key, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(pair => pair.Value).Distinct().Order(StringComparer.CurrentCultureIgnoreCase).ToArray());
         return new AnalyticsFilters(
             await Distinct(checks.Select(c => c.Customer), ct),
             objects.GroupBy(o => o.Object!).Select(g => new AnalyticsObject(g.Key, g.Select(o => o.Customer).FirstOrDefault(c => c != null)))
@@ -109,7 +122,8 @@ internal static class AnalyticsQueryEndpoints
             await Distinct(checks.Select(c => c.Part), ct),
             await Distinct(checks.Select(c => c.ProfileName), ct),
             await checks.MinAsync(c => (DateTimeOffset?)c.CheckedAt, ct),
-            await checks.MaxAsync(c => (DateTimeOffset?)c.CheckedAt, ct));
+            await checks.MaxAsync(c => (DateTimeOffset?)c.CheckedAt, ct),
+            fields);
     }
 
     private static async Task<AnalyticsOverview> OverviewAsync([AsParameters] AnalyticsFilter filter, ToadFlowDb db, ISettingsStore settings, CancellationToken ct)
@@ -173,13 +187,17 @@ internal static class AnalyticsQueryEndpoints
     /// <summary>Таблица моделей для Excel: точка с запятой и BOM — так её открывает русский Excel.</summary>
     private static async Task<IResult> ExportAsync([AsParameters] AnalyticsFilter filter, ToadFlowDb db, CancellationToken ct)
     {
-        var rows = (await StateAsync(db, filter, ct)).Rows.OrderBy(r => r.Object).ThenBy(r => r.Discipline).ThenBy(r => r.ModelName);
-        var text = new StringBuilder("Заказчик;Объект;Раздел;Часть;Модель;Путь;Проверена;Источник;Профиль;Элементов;Заполненность;Полнота;Изменение\r\n");
+        var rows = (await StateAsync(db, filter, ct)).Rows.OrderBy(r => r.Object).ThenBy(r => r.Discipline).ThenBy(r => r.ModelName).ToList();
+        var fields = rows.SelectMany(r => r.Fields.Keys).Distinct(StringComparer.CurrentCultureIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+        var text = new StringBuilder("Заказчик;Объект;Раздел;Часть;");
+        foreach (var field in fields) text.Append(Csv(field)).Append(';');
+        text.Append("Модель;Путь;Проверена;Источник;Профиль;Элементов;Заполненность;Полнота;Изменение\r\n");
         foreach (var r in rows)
         {
-            text.AppendJoin(';', Csv(r.Customer), Csv(r.Object), Csv(r.Discipline), Csv(r.Part), Csv(r.ModelName), Csv(r.ModelPath),
-                r.CheckedAt.ToString("yyyy-MM-dd HH:mm"), r.Source == LoiCheckSource.Manual ? "вручную" : "по расписанию", Csv(r.ProfileName), r.Elements,
-                Percent(r.FillRate), Percent(r.Completeness), r.FillRate is { } now && r.PreviousFillRate is { } before ? Percent(now - before) : "");
+            text.AppendJoin(';', [Csv(r.Customer), Csv(r.Object), Csv(r.Discipline), Csv(r.Part), ..fields.Select(f => Csv(r.Fields.GetValueOrDefault(f))),
+                Csv(r.ModelName), Csv(r.ModelPath), r.CheckedAt.ToString("yyyy-MM-dd HH:mm"), r.Source == LoiCheckSource.Manual ? "вручную" : "по расписанию",
+                Csv(r.ProfileName), r.Elements.ToString(), Percent(r.FillRate), Percent(r.Completeness),
+                r.FillRate is { } now && r.PreviousFillRate is { } before ? Percent(now - before) : ""]);
             text.Append("\r\n");
         }
 
@@ -205,7 +223,11 @@ internal static class AnalyticsQueryEndpoints
         if (!string.IsNullOrWhiteSpace(filter.Search)) query = query.Where(c => EF.Functions.ILike(c.ModelName, $"%{filter.Search.Trim()}%"));
 
         var checks = await query.Select(c => new Light(c.Id, c.ModelKey, c.ModelName, c.ModelPath, c.Customer, c.Object, c.Discipline, c.Part, c.CheckedAt,
-            c.Source, c.ProfileName, c.ProfileFingerprint, c.Elements, c.CompleteElements, c.Values, c.Filled)).ToListAsync(ct);
+            c.Source, c.ProfileName, c.ProfileFingerprint, c.Elements, c.CompleteElements, c.Values, c.Filled, c.Fields)).ToListAsync(ct);
+        foreach (var (name, value) in filter.Fields)
+            checks = checks.Where(c => value == AnalyticsFilter.None
+                ? !c.Fields.ContainsKey(name)
+                : string.Equals(c.Fields.GetValueOrDefault(name), value, StringComparison.CurrentCultureIgnoreCase)).ToList();
 
         var from = filter.From?.ToUniversalTime();
         var inPeriod = from is null ? checks : checks.Where(c => c.CheckedAt >= from).ToList();
@@ -256,7 +278,7 @@ internal static class AnalyticsQueryEndpoints
     private static ModelRow Row(Light latest, Light? previous) => new(latest.ModelKey, latest.ModelName, latest.ModelPath, latest.Customer, latest.Object,
         latest.Discipline, latest.Part, latest.CheckedAt, latest.Source, latest.ProfileName, latest.Elements, Ratio(latest.Filled, latest.Values),
         Ratio(latest.CompleteElements, latest.Elements), previous is null ? null : Ratio(previous.Filled, previous.Values),
-        previous is not null && previous.ProfileFingerprint != latest.ProfileFingerprint);
+        previous is not null && previous.ProfileFingerprint != latest.ProfileFingerprint, latest.Fields);
 
     private static ModelRow Row(LoiCheck latest, LoiCheck? previous) => Row(Light.Of(latest), previous is null ? null : Light.Of(previous));
 
@@ -275,10 +297,11 @@ internal static class AnalyticsQueryEndpoints
         value is null ? "" : value.IndexOfAny([';', '"', '\n']) >= 0 ? $"\"{value.Replace("\"", "\"\"")}\"" : value;
 
     private sealed record Light(Guid Id, string ModelKey, string ModelName, string ModelPath, string? Customer, string? Object, string? Discipline, string? Part,
-        DateTimeOffset CheckedAt, LoiCheckSource Source, string ProfileName, string ProfileFingerprint, int Elements, int CompleteElements, int Values, int Filled)
+        DateTimeOffset CheckedAt, LoiCheckSource Source, string ProfileName, string ProfileFingerprint, int Elements, int CompleteElements, int Values, int Filled,
+        Dictionary<string, string> Fields)
     {
         public static Light Of(LoiCheck c) => new(c.Id, c.ModelKey, c.ModelName, c.ModelPath, c.Customer, c.Object, c.Discipline, c.Part, c.CheckedAt, c.Source,
-            c.ProfileName, c.ProfileFingerprint, c.Elements, c.CompleteElements, c.Values, c.Filled);
+            c.ProfileName, c.ProfileFingerprint, c.Elements, c.CompleteElements, c.Values, c.Filled, c.Fields);
     }
 
     /// <param name="InPeriod">Проверки периода — для графика и счётчиков.</param>

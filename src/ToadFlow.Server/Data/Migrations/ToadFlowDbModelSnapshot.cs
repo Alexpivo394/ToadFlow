@@ -995,6 +995,14 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Group")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasDefaultValue("")
+                        .HasColumnName("group");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -1016,9 +1024,9 @@ namespace ToadFlow.Server.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_loi_profiles");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("Group", "Name")
                         .IsUnique()
-                        .HasDatabaseName("ix_loi_profiles_name");
+                        .HasDatabaseName("ix_loi_profiles_group_name");
 
                     b.ToTable("loi_profiles", (string)null);
                 });

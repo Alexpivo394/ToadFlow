@@ -8,7 +8,7 @@ import type { AnalyticsModelRow, AnalyticsParameterRow } from '../../api/types';
 import { Empty, Panel } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
 import { toApiQuery } from './filters';
-import { Delta, orNone, Share, useAnalyticsFilters } from './parts';
+import { Delta, fieldsText, orNone, Share, useAnalyticsFilters } from './parts';
 
 type SortKey = 'object' | 'fillRate' | 'delta' | 'checkedAt';
 
@@ -74,7 +74,10 @@ export function ModelsTab() {
                     <Text size="sm" c={m.object ? undefined : 'red'}>{orNone(m.object)}</Text>
                     <Text size="xs" c={m.discipline ? 'dimmed' : 'red'}>{orNone(m.discipline)}</Text>
                   </Table.Td>
-                  <Table.Td c="dimmed">{m.part ?? ''}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed">{m.part ?? ''}</Text>
+                    {fieldsText(m.fields) && <Text size="xs" c="dimmed">{fieldsText(m.fields)}</Text>}
+                  </Table.Td>
                   <Table.Td><Share value={m.fillRate} /></Table.Td>
                   <Table.Td><Share value={m.completeness} /></Table.Td>
                   <Table.Td><Delta now={m.fillRate} before={m.previousFillRate} profileChanged={m.profileChanged} /></Table.Td>
