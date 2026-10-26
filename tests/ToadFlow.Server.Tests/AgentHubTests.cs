@@ -62,16 +62,27 @@ public class AgentHubTests : ServerTest
     }
 
     [Test]
-    public async Task Limits_SumAbove3_400()
+    public async Task Limits_SumAboveDefault_Accepted()
     {
         var admin = await AdminAsync();
         await using var agent = await FakeAgent.RegisterAsync(Server, admin);
         await agent.ConnectAsync(new InstalledRevitDto(2022, true), new InstalledRevitDto(2024, true));
 
-        var response = await admin.PutJsonAsync($"/api/agents/{agent.Id}/limits", new[] { new VersionLimitDto(2022, 2), new VersionLimitDto(2024, 2) });
+        (await admin.PutJsonAsync($"/api/agents/{agent.Id}/limits", new[] { new VersionLimitDto(2022, 3), new VersionLimitDto(2024, 2) }))
+            .EnsureSuccessStatusCode();
 
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).ShouldContain("3");
+        await EventuallyAsync(() => Task.FromResult(agent.AppliedSettings.Any(s => s.Limits.Sum(l => l.MaxInstances) == 5)));
+    }
+
+    [Test]
+    public async Task Limits_Negative_400()
+    {
+        var admin = await AdminAsync();
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        await agent.ConnectAsync(new InstalledRevitDto(2022, true));
+
+        (await admin.PutJsonAsync($"/api/agents/{agent.Id}/limits", new[] { new VersionLimitDto(2022, -1) }))
+            .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Test]

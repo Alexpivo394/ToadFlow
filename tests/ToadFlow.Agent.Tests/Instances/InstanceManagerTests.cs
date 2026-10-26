@@ -118,6 +118,17 @@ public class InstanceManagerTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task Slots_FollowMaxSlots()
+    {
+        _manager.MaxSlots = 5;
+        var slots = new List<int>();
+        for (var i = 0; i < 5; i++) slots.Add((await AcquireAsync(i % 2 == 0 ? 2022 : 2024)).Slot);
+
+        slots.Order().ShouldBe([1, 2, 3, 4, 5]);
+        await Should.ThrowAsync<RevitStartException>(() => _manager.AcquireAsync(2022, CancellationToken.None));
+    }
+
+    [Test]
     public async Task Recycle_AfterNModels_Kills()
     {
         var instance = await AcquireAsync(2022);

@@ -8,14 +8,14 @@ namespace ToadFlow.Agent.Instances;
 public sealed class RevitStartException(string message) : Exception(message);
 
 /// <summary>
-///     Слоты экземпляров Revit (не больше трёх на агента, сквозь все версии). Экземпляр запускается, когда для него есть
+///     Слоты экземпляров Revit (сквозь все версии; сколько их — задают лимиты агента). Экземпляр запускается, когда для него есть
 ///     задание, живёт между заданиями и закрывается после простоя или планового перезапуска — чтобы не держать лицензию
 ///     и не копить утечки памяти.
 /// </summary>
 public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<RevitInstallation> revits, TimeProvider time, ILogger<InstanceManager> logger)
     : IAsyncDisposable
 {
-    public const int MaxSlots = 3;
+    public const int DefaultMaxSlots = 3;
     public static readonly TimeSpan StartTimeout = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan StartBackoff = TimeSpan.FromMinutes(1);
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(10);
@@ -25,6 +25,9 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
     private readonly Dictionary<int, DateTimeOffset> _failedStarts = [];
 
     public IReadOnlyList<RevitInstallation> Revits => revits;
+
+    /// <summary>Сколько экземпляров Revit агент держит одновременно — сумма лимитов по версиям из настроек сервера.</summary>
+    public int MaxSlots { get; set; } = DefaultMaxSlots;
 
     public IReadOnlyList<RevitInstance> Instances
     {
@@ -65,7 +68,7 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
                 throw new RevitStartException($"Revit {year} недавно не запустился — следующая попытка через минуту");
 
             var slot = Enumerable.Range(1, MaxSlots).Except(_instances.Select(i => i.Slot)).FirstOrDefault();
-            if (slot == 0) throw new RevitStartException($"Уже запущено {MaxSlots} экземпляра Revit — свободного места нет");
+            if (slot == 0) throw new RevitStartException($"Уже запущено экземпляров Revit: {_instances.Count} — свободного места нет");
 
             instance = new RevitInstance(slot, year, time);
             if (job is not null) instance.Reserve(job);

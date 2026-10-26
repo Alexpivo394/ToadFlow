@@ -184,8 +184,6 @@ public static class AgentEndpoints
     {
         if (limits.Any(l => l.MaxInstances < 0)) return "Число экземпляров не может быть отрицательным";
         if (limits.Any(l => agent.Revits.All(r => r.Year != l.Year))) return "На агенте нет Revit такой версии";
-        if (limits.Sum(l => l.MaxInstances) > AgentSettingsFactory.MaxInstancesPerAgent)
-            return $"Не больше {AgentSettingsFactory.MaxInstancesPerAgent} экземпляров Revit на агента";
         return null;
     }
 

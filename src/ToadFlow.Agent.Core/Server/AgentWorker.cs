@@ -64,6 +64,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
     {
         if (!connection.IsConnected || connection.Settings is not { Draining: false } settings) return;
 
+        instances.MaxSlots = settings.Limits.Sum(l => l.MaxInstances);
         foreach (var limit in settings.Limits.Where(l => l.MaxInstances > 0))
         {
             while (CanTake(limit))
@@ -84,7 +85,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
         if (all.Count(i => i.Year == limit.Year && i.State != InstanceState.Idle) + pendingYear >= limit.MaxInstances) return false;
 
         var idleOfYear = all.Count(i => i.Year == limit.Year && i.State == InstanceState.Idle);
-        return idleOfYear > pendingYear || all.Count + _pending.Values.Sum() < InstanceManager.MaxSlots;
+        return idleOfYear > pendingYear || all.Count + _pending.Values.Sum() < instances.MaxSlots;
     }
 
     private async Task RunJobAsync(JobAssignmentDto assignment, int year, AgentSettingsDto settings, CancellationToken ct)
@@ -137,7 +138,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
     {
         var all = instances.Instances;
         return all.FirstOrDefault(i => i.Year == year && i.State == InstanceState.Idle)?.Slot
-               ?? Enumerable.Range(1, InstanceManager.MaxSlots).Except(all.Select(i => i.Slot)).DefaultIfEmpty(1).First();
+               ?? Enumerable.Range(1, instances.MaxSlots).Except(all.Select(i => i.Slot)).DefaultIfEmpty(1).First();
     }
 
     private bool HasNwcExporter(int year) =>

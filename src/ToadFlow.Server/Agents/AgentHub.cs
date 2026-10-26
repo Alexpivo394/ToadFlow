@@ -101,14 +101,14 @@ public interface IAgentJobs
 
 public static class AgentSettingsFactory
 {
-    public const int MaxInstancesPerAgent = 3;
+    public const int DefaultInstancesPerAgent = 3;
 
     public static AgentSettingsDto Build(Agent agent, GeneralSettings general) => new(
         agent.Limits.ToArray(), general.SilenceTimeoutMinutes, general.RecycleAfterModels, general.RecycleMemoryMb, agent.IsDraining);
 
     /// <summary>
     ///     Лимиты под установленные версии: для известных версий остаются прежние, новые получают по одному экземпляру,
-    ///     пока не набралось <see cref="MaxInstancesPerAgent" />, остальные — ноль. Удалённые версии пропадают.
+    ///     пока не набралось <see cref="DefaultInstancesPerAgent" />, остальные — ноль. Удалённые версии пропадают.
     /// </summary>
     public static List<VersionLimitDto> ReconcileLimits(IReadOnlyList<VersionLimitDto> current, IReadOnlyList<InstalledRevitDto> revits)
     {
@@ -116,7 +116,7 @@ public static class AgentSettingsFactory
         var total = kept.Values.Sum();
         foreach (var revit in revits.OrderBy(r => r.Year).Where(r => !kept.ContainsKey(r.Year)))
         {
-            var slots = total < MaxInstancesPerAgent ? 1 : 0;
+            var slots = total < DefaultInstancesPerAgent ? 1 : 0;
             kept[revit.Year] = slots;
             total += slots;
         }

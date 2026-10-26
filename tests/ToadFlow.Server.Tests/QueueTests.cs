@@ -114,7 +114,7 @@ public class QueueTests : ServerTest
             agents.Add(agent);
         }
 
-        // Лимит в 3 экземпляра — забота агента; здесь проверяется только атомарность выдачи, поэтому лимит снят через «завершение».
+        // Общий лимит экземпляров — забота агента; здесь проверяется только атомарность выдачи, поэтому лимит снят через «завершение».
         var claimed = await Task.WhenAll(agents.SelectMany(agent => Enumerable.Range(0, 10).Select(async slot =>
         {
             var assignment = await agent.RequestJobAsync(slot, 2022);

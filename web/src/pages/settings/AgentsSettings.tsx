@@ -26,11 +26,14 @@ function LimitsModal({ agent, onClose }: { agent: AgentView; onClose: () => void
             key={limit.year}
             label={`Revit ${limit.year}${agent.revits.find((r) => r.year === limit.year)?.hasNwcExporter ? '' : ' (нет Navisworks Exporter — только RVT)'}`}
             min={0}
-            max={3}
+            allowDecimal={false}
             value={limit.maxInstances}
             onChange={(v) => setLimits(limits.map((l, j) => (j === i ? { ...l, maxInstances: Number(v) || 0 } : l)))}
           />
         ))}
+        <Text size="sm" c="dimmed">
+          Всего одновременно: {limits.reduce((sum, l) => sum + l.maxInstances, 0)}. Учитывайте память: тяжёлая модель может занимать 10–20 ГБ.
+        </Text>
         {error && <Alert color="red">{error}</Alert>}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
