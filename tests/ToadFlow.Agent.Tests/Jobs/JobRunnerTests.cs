@@ -247,6 +247,34 @@ public class JobRunnerTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task MessageDialog_DuringNwcExport_IsClosed_JobEndsWithoutKill()
+    {
+        const string message = "«Navisworks»: Не найдена подходящая геометрия.";
+        _launcher.Then(async (addin, job, _) =>
+        {
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            addin.Process.Sampler = () => new ProcessSample(TimeSpan.FromSeconds(42), 1_000_000, 5000, 5200); // ждёт окна — простаивает
+            addin.Process.Dialogs = () =>
+            {
+                if (closed.Task.IsCompleted) return [];
+                closed.SetResult();
+                return [message];
+            };
+            await addin.ProgressAsync(job, "Экспорт NWC", "экспорт NWC");
+            await closed.Task;
+            await addin.ResultAsync(job, JobOutcome.Failed, "NWC: Navisworks Exporter не создал файл NWC", """{"nwc":"Failed"}""");
+        });
+
+        var (completion, instance) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 10));
+
+        completion.Outcome.ShouldBe(JobOutcome.Failed);
+        completion.Note.ShouldBe($"NWC: Navisworks Exporter не создал файл NWC; агент закрыл окно Revit: {message}");
+        _reporter.Killed.ShouldBeEmpty();
+        ((FakeRevitProcess)instance.Process).Killed.ShouldBeFalse();
+        _reporter.Lines.ShouldContain(l => l.Text.Contains("агент закрыл окно") && l.Text.Contains("Экспорт NWC"));
+    }
+
+    [Test]
     public async Task BusyForever_IsKilledByModelTimeout()
     {
         // Процесс в бесконечном цикле: работа не может продлевать задание бесконечно.

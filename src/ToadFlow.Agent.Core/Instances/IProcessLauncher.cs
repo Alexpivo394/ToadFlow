@@ -27,6 +27,9 @@ public interface IRevitProcess
 
     /// <summary>Счётчики процесса сейчас; null — процесс закрылся или счётчики недоступны.</summary>
     ProcessSample? Sample() => null;
+
+    /// <summary>Закрывает окна-сообщения, которых ждёт Revit (<see cref="RevitMessageDialogs" />); возвращает их тексты.</summary>
+    IReadOnlyList<string> CloseMessageDialogs() => [];
 }
 
 public interface IProcessLauncher
@@ -114,6 +117,8 @@ public sealed partial class ProcessLauncher(AddinTrust trust, ILogger<ProcessLau
                 return null; // процесс закрылся между проверкой и чтением
             }
         }
+
+        public IReadOnlyList<string> CloseMessageDialogs() => _process.HasExited ? [] : RevitMessageDialogs.Close(_process.Id);
 
         public void Kill()
         {

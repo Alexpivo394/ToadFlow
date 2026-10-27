@@ -19,6 +19,11 @@ public sealed class FakeRevitProcess(int pid, IReadOnlyDictionary<string, string
 
     public Task Exited => _exited.Task;
 
+    /// <summary>Окна-сообщения, которые «закрывает» агент: их тексты; null — окон нет.</summary>
+    public Func<IReadOnlyList<string>>? Dialogs { get; set; }
+
+    public IReadOnlyList<string> CloseMessageDialogs() => Dialogs?.Invoke() ?? [];
+
     public ProcessSample? Sample() => HasExited ? null : Sampler?.Invoke();
 
     public void Kill()

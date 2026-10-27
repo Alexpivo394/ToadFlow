@@ -48,6 +48,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
         var buffer = new List<JobLogDto>();
         var stages = new StageTimings(started);
         var verdict = HangVerdict.Active;
+        var dialogs = new List<string>();
         DateTimeOffset? cancelSentAt = null;
         Task<PipeMessage>? pending = null;
 
@@ -104,10 +105,27 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
                     return Failure(reason);
                 }
 
-                if (watch.SampleDue(now)) Sample(now);
+                var sampled = watch.SampleDue(now);
+                if (sampled) Sample(now);
                 var next = watch.Judge(now, instance.LastActivityAt, quietAfter);
                 if (next != verdict) OnVerdictChanged(next, now);
                 verdict = next;
+
+                // Аддин молчит — возможно, поток Revit API ждёт ответа в окне-сообщении: закрываем его, а не ждём таймаута.
+                if (sampled && verdict != HangVerdict.Active && await Task.Run(instance.Process.CloseMessageDialogs, CancellationToken.None) is { Count: > 0 } closed)
+                {
+                    foreach (var dialog in closed)
+                    {
+                        dialogs.Add(dialog);
+                        buffer.Add(new JobLogDto(now, DiagnosticsStage, $"Revit ждал ответа в окне {dialog} на этапе «{stages.Current}» — агент закрыл окно"));
+                        logger.LogWarning("Revit в слоте {Slot} (PID {Pid}), задание {Job}: закрыто окно {Dialog}", instance.Slot, instance.Process.Pid, jobId, dialog);
+                    }
+
+                    // Отсчёт молчания — заново: Revit продолжает работу после окна.
+                    instance.Touch();
+                    verdict = HangVerdict.Active;
+                    instance.MarkResponsive();
+                }
 
                 if (verdict == HangVerdict.Hung)
                     return await KillAsync($"не отвечал {Format(watch.SilenceLimit)} на этапе «{stages.Current}» ({watch.DescribeActivity()})");
@@ -170,7 +188,9 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
             if (result.RecycleReason is { } recycle) instance.RecycleReason = recycle;
             Finish(now, result.Outcome.ToString(), result.RecycleReason is { } why ? $"Revit будет перезапущен: {why}" : null);
             await FlushAsync();
-            return new JobCompletionDto(jobId, result.Outcome, result.Note, result.ResultJson);
+            var note = dialogs.Count == 0 ? result.Note
+                : string.Join("; ", new[] { result.Note, $"агент закрыл окно Revit: {string.Join("; ", dialogs)}" }.Where(part => !string.IsNullOrEmpty(part)));
+            return new JobCompletionDto(jobId, result.Outcome, note, result.ResultJson);
         }
 
         void Sample(DateTimeOffset now)
