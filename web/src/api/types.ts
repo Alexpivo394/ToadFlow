@@ -288,6 +288,8 @@ export interface GeneralSettings {
   logRetentionDays: number;
   recycleAfterModels: number;
   recycleMemoryMb: number;
+  ramReserveMb: number;
+  ramPerJobMb: number;
 }
 
 export interface Dashboard {

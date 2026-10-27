@@ -28,7 +28,7 @@ public sealed class AgentHarness : IAsyncDisposable
     public AgentConfig Config { get; }
     public ServerConnection Connection => _services.GetRequiredService<ServerConnection>();
 
-    public static async Task<AgentHarness> StartAsync(ServerFactory server, HttpClient admin, FakeLauncher launcher, TimeSpan? silence = null,
+    public static async Task<AgentHarness> StartAsync(ServerFactory server, HttpClient admin, FakeLauncher launcher, TimeSpan? silence = null, FakeMemory? memory = null,
         string machineName = "BIM-FARM-01")
     {
         var code = await (await admin.PostAsync("/api/agents/registration-codes", null)).ReadJsonAsync<CodeBody>();
@@ -45,7 +45,8 @@ public sealed class AgentHarness : IAsyncDisposable
             PollInterval = TimeSpan.FromMilliseconds(500),
             SilenceTimeoutOverride = silence,
             Revits = [new RevitInstallation(2022, @"C:\Program Files\Autodesk\Revit 2022\Revit.exe", true)],
-            Launcher = launcher
+            Launcher = launcher,
+            Memory = memory ?? new FakeMemory()
         });
 
         var harness = new AgentHarness(services.BuildServiceProvider(), launcher, config);

@@ -13,7 +13,7 @@ namespace ToadFlow.Revit.Addin;
 ///     Клиент пайпа агента (фоновый поток): hello, приём заданий и отмен, «Revit жив» каждые 10 секунд.
 ///     Задание выполняется в потоке Revit API через внешнее событие.
 /// </summary>
-internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNwcExporter, JobExecutor executor, ExternalEvent externalEvent,
+internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNwcExporter, string? journalPath, JobExecutor executor, ExternalEvent externalEvent,
     PipeProgress progress) : IDisposable
 {
     private const int ConnectTimeoutMs = 60_000;
@@ -55,7 +55,8 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
                 RevitYear = revitYear,
                 Pid = Process.GetCurrentProcess().Id,
                 HasNwcExporter = hasNwcExporter,
-                AddinVersion = typeof(AgentPipeClient).Assembly.GetName().Version?.ToString() ?? "0"
+                AddinVersion = typeof(AgentPipeClient).Assembly.GetName().Version?.ToString() ?? "0",
+                JournalPath = journalPath
             });
             _alive = new Timer(_ => Send(new AliveMessage { LastActivityAt = progress.LastActivityAt }), null, AliveEvery, AliveEvery);
 

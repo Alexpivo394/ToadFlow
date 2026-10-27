@@ -21,6 +21,9 @@ public sealed class HelloMessage : PipeMessage
     public int Pid { get; set; }
     public bool HasNwcExporter { get; set; }
     public string AddinVersion { get; set; } = "";
+
+    /// <summary>Журнал этого процесса Revit — для разбора сбоев. null — аддин до 1.6 или Revit не сообщил путь.</summary>
+    public string? JournalPath { get; set; }
 }
 
 /// <summary>Агент → аддин: выполнить задание над моделью.</summary>
@@ -68,6 +71,12 @@ public sealed class ResultMessage : PipeMessage
     public JobOutcome Outcome { get; set; }
     public string? Note { get; set; }
     public string? ResultJson { get; set; }
+
+    /// <summary>
+    ///     Состояние Revit после задания под сомнением (модель не закрылась, неожиданное исключение): агент не даёт этому
+    ///     экземпляру новых заданий и перезапускает его. null — экземпляр можно использовать дальше.
+    /// </summary>
+    public string? RecycleReason { get; set; }
 }
 
 /// <summary>Агент → аддин: бросить модель (отмена пользователем).</summary>

@@ -22,6 +22,7 @@ public static class AgentCoreSetup
             ?? new ProcessLauncher(new AddinTrust(), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ProcessLauncher>>()));
         services.AddSingleton(provider => new InstanceManager(provider.GetRequiredService<IProcessLauncher>(), options.Revits ?? new RevitLocator().Find(),
             provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InstanceManager>>()));
+        services.AddSingleton<ISystemMemory>(options.Memory ?? new SystemLoad());
         services.AddSingleton<JobRunner>();
         services.AddSingleton<SourceBrowser>();
         services.AddSingleton<ServerConnection>();

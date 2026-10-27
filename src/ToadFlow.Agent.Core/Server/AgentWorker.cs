@@ -10,15 +10,17 @@ namespace ToadFlow.Agent.Server;
 /// <summary>
 ///     Рабочий цикл агента: heartbeat, задания для свободных лимитов, выгрузка в фоне, сдача результата, закрытие
 ///     простаивающих Revit. Задание берётся до запуска Revit — так лицензия занята, только когда есть что выгружать.
+///     Сверх лимитов экземпляров задание берётся, только если на него хватает физической памяти (<see cref="MemoryGate" />).
 /// </summary>
 public sealed class AgentWorker(ServerConnection connection, InstanceManager instances, JobRunner runner, AgentOptions options, TimeProvider time,
-    ILogger<AgentWorker> logger) : BackgroundService
+    ISystemMemory memory, ILogger<AgentWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan IdleCheckEvery = TimeSpan.FromMinutes(1);
 
     private readonly ConcurrentDictionary<Guid, Task> _running = new();
     private readonly ConcurrentDictionary<int, int> _pending = new(); // задания, под которые ещё запускается Revit
     private readonly SystemLoad _load = new();
+    private string? _memoryBlocked;
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -38,6 +40,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
                 if (now - lastPoll >= options.PollInterval)
                 {
                     lastPoll = now;
+                    FreeMemoryIfCritical();
                     await TakeJobsAsync(ct);
                 }
 
@@ -67,7 +70,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
         instances.MaxSlots = settings.Limits.Sum(l => l.MaxInstances);
         foreach (var limit in settings.Limits.Where(l => l.MaxInstances > 0))
         {
-            while (CanTake(limit))
+            while (CanTake(limit) && HasMemoryFor(limit.Year, settings))
             {
                 var assignment = await connection.RequestJobAsync(new JobRequestDto(PredictSlot(limit.Year), limit.Year, HasNwcExporter(limit.Year)));
                 if (assignment is null) break;
@@ -86,6 +89,39 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
 
         var idleOfYear = all.Count(i => i.Year == limit.Year && i.State == InstanceState.Idle);
         return idleOfYear > pendingYear || all.Count + _pending.Values.Sum() < instances.MaxSlots;
+    }
+
+    /// <summary>Хватит ли памяти на ещё одно задание этого года. Решение пишется в журнал агента, только когда меняется.</summary>
+    private bool HasMemoryFor(int year, AgentSettingsDto settings)
+    {
+        if (memory.Snapshot() is not { } ram) return true;
+
+        var all = instances.Instances;
+        // Задания, под которые Revit ещё не попал в список экземпляров, растут с нуля.
+        var unstarted = Math.Max(0, _pending.Values.Sum() - all.Count(i => i.State == InstanceState.Starting));
+        var busy = all.Where(i => i.State != InstanceState.Idle)
+            .Select(i => (CurrentMb: i.Process?.WorkingSetMb ?? 0, PeakMb: i.PeakWorkingSetMb))
+            .Concat(Enumerable.Repeat((CurrentMb: 0L, PeakMb: 0L), unstarted))
+            .ToList();
+        var idle = all.FirstOrDefault(i => i.Year == year && i.State == InstanceState.Idle);
+        var decision = MemoryGate.Check(ram, busy, idle?.Process?.WorkingSetMb, instances.ExpectedJobMb(settings.RamPerJobMb), settings.RamReserveMb);
+
+        var blocked = decision.Allowed ? null : decision.Reason;
+        if (blocked is not null && _memoryBlocked is null) logger.LogWarning("Revit {Year}: новое задание не беру — {Reason}", year, decision.Reason);
+        if (blocked is null && _memoryBlocked is not null) logger.LogInformation("Памяти снова хватает: {Reason}", decision.Reason);
+        _memoryBlocked = blocked;
+        return decision.Allowed;
+    }
+
+    /// <summary>Свободной памяти меньше резерва — закрыть простаивающие Revit. Работающие задания не трогаем.</summary>
+    private void FreeMemoryIfCritical()
+    {
+        if (connection.Settings is not { } settings || memory.Snapshot() is not { } ram || ram.AvailableMb >= settings.RamReserveMb) return;
+
+        var closed = instances.CloseIdleForMemory();
+        if (closed > 0)
+            logger.LogWarning("Свободно {Available} из {Total} МБ — меньше резерва {Reserve} МБ: закрыто простаивающих Revit: {Closed}", ram.AvailableMb,
+                ram.TotalMb, settings.RamReserveMb, closed);
     }
 
     private async Task RunJobAsync(JobAssignmentDto assignment, int year, AgentSettingsDto settings, CancellationToken ct)
@@ -115,9 +151,16 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             if (instance.KillReason is null && !instance.Process.HasExited)
             {
                 // Аддин сообщил о внутренней ошибке Revit — этот процесс больше не доверяем, повтор пойдёт в новом.
-                if (completion.Outcome == JobOutcome.InfrastructureFailure) instances.Kill(instance.Slot, "внутренняя ошибка Revit — перезапуск");
+                // Освобождение само перезапускает Revit, если аддин усомнился в его состоянии (RecycleReason).
+                if (completion.Outcome == JobOutcome.InfrastructureFailure)
+                {
+                    instances.RecordPeak(instance.PeakWorkingSetMb);
+                    instances.Kill(instance.Slot, "внутренняя ошибка Revit — перезапуск");
+                }
                 else instances.Release(instance, current);
             }
+            else instances.RecordPeak(instance.PeakWorkingSetMb);
+
             await connection.CompleteJobAsync(completion, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

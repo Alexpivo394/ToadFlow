@@ -43,7 +43,8 @@ describe('SettingsPage', () => {
 
   it('general', async () => {
     renderApp('/settings/general', {
-      '/api/settings': { timeZoneId: 'Europe/Moscow', defaultModelTimeoutMinutes: 30, silenceTimeoutMinutes: 10, logRetentionDays: 90, recycleAfterModels: 20, recycleMemoryMb: 12000 },
+      '/api/settings': { timeZoneId: 'Europe/Moscow', defaultModelTimeoutMinutes: 30, silenceTimeoutMinutes: 10, logRetentionDays: 90, recycleAfterModels: 20, recycleMemoryMb: 12000,
+        ramReserveMb: 4096, ramPerJobMb: 4096 },
     });
 
     expect(await screen.findByDisplayValue('90')).toBeTruthy();

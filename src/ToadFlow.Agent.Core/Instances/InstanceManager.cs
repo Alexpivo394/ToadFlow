@@ -23,6 +23,10 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
     private readonly object _sync = new();
     private readonly List<RevitInstance> _instances = [];
     private readonly Dictionary<int, DateTimeOffset> _failedStarts = [];
+    private readonly Queue<long> _recentPeaks = new();
+
+    /// <summary>По скольким последним заданиям оценивать память на следующее.</summary>
+    public const int RecentPeaks = 5;
 
     public IReadOnlyList<RevitInstallation> Revits => revits;
 
@@ -114,8 +118,19 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
     {
         instance.ModelsDone++;
         instance.EndJob();
+        RecordPeak(instance.PeakWorkingSetMb);
         if (instance.Process.HasExited) return;
 
+        // Аддин не уверен в состоянии Revit (модель не закрылась, неожиданная ошибка) — новых заданий этот процесс не получит.
+        if (instance.RecycleReason is { } recycle)
+        {
+            logger.LogWarning("Перезапуск Revit {Year} в слоте {Slot}, PID {Pid}: {Reason}", instance.Year, instance.Slot, instance.Process.Pid, recycle);
+            KillCore(instance, recycle);
+            return;
+        }
+
+        logger.LogInformation("Revit {Year} в слоте {Slot}, PID {Pid}: после моделей {Models} занимает {Memory} МБ, пик за задание {Peak} МБ",
+            instance.Year, instance.Slot, instance.Process.Pid, instance.ModelsDone, instance.Process.WorkingSetMb, instance.PeakWorkingSetMb);
         if (instance.ModelsDone >= settings.RecycleAfterModels || instance.Process.WorkingSetMb > settings.RecycleMemoryMb)
         {
             logger.LogInformation("Плановый перезапуск Revit {Year} в слоте {Slot}: моделей {Models}, памяти {Memory} МБ", instance.Year, instance.Slot,
@@ -142,6 +157,34 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
         var now = time.GetUtcNow();
         foreach (var instance in Instances.Where(i => i.State == InstanceState.Idle && now - i.IdleSince >= IdleTimeout))
             KillCore(instance, "простаивал");
+    }
+
+    /// <summary>
+    ///     Памяти машины меньше резерва: простаивающие Revit держат память впустую — закрываем их сразу. Занятые не трогаем:
+    ///     много памяти у работающего Revit — норма тяжёлой модели, а убитое задание пришлось бы делать заново.
+    /// </summary>
+    public int CloseIdleForMemory()
+    {
+        var idle = Instances.Where(i => i.State == InstanceState.Idle).ToList();
+        foreach (var instance in idle) KillCore(instance, "мало свободной памяти");
+        return idle.Count;
+    }
+
+    /// <summary>Сколько памяти закладывать на задание: настройка или больший пик последних заданий этой машины.</summary>
+    public long ExpectedJobMb(int configuredMb)
+    {
+        lock (_sync) return Math.Max(configuredMb, _recentPeaks.Count == 0 ? 0 : _recentPeaks.Max());
+    }
+
+    /// <summary>Пик памяти законченного задания — для оценки следующих. Учитываются последние <see cref="RecentPeaks" />.</summary>
+    public void RecordPeak(long peakMb)
+    {
+        if (peakMb <= 0) return;
+        lock (_sync)
+        {
+            _recentPeaks.Enqueue(peakMb);
+            while (_recentPeaks.Count > RecentPeaks) _recentPeaks.Dequeue();
+        }
     }
 
     public async ValueTask DisposeAsync()

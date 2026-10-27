@@ -189,4 +189,47 @@ public class InstanceManagerTests : IAsyncDisposable
         status.Year.ShouldBe(2024);
         status.Pid.ShouldBe(instance.Process.Pid);
     }
+
+    [Test]
+    public async Task RecycleReason_ReleaseKillsInsteadOfIdle_NextAcquireStartsNewRevit()
+    {
+        var first = await AcquireAsync(2022);
+        first.RecycleReason = "модель не закрылась после задания";
+
+        _manager.Release(first, Settings());
+        var second = await AcquireAsync(2022);
+
+        ((FakeRevitProcess)first.Process).Killed.ShouldBeTrue();
+        first.KillReason.ShouldBe("модель не закрылась после задания");
+        second.ShouldNotBeSameAs(first);
+        _launcher.Started.Count.ShouldBe(2);
+    }
+
+    [Test]
+    public async Task CloseIdleForMemory_ClosesOnlyIdle()
+    {
+        var idle = await AcquireAsync(2022);
+        var busy = await AcquireAsync(2022);
+        _manager.Release(idle, Settings());
+
+        _manager.CloseIdleForMemory().ShouldBe(1);
+
+        ((FakeRevitProcess)idle.Process).Killed.ShouldBeTrue();
+        ((FakeRevitProcess)busy.Process).Killed.ShouldBeFalse();
+        _manager.Instances.ShouldBe([busy]);
+    }
+
+    [Test]
+    public async Task ExpectedJobMb_LearnsFromRecentPeaks()
+    {
+        _manager.ExpectedJobMb(4096).ShouldBe(4096);
+        var instance = await AcquireAsync(2022);
+        instance.PeakWorkingSetMb = 14000;
+
+        _manager.Release(instance, Settings());
+
+        _manager.ExpectedJobMb(4096).ShouldBe(14000);
+        for (var i = 0; i < InstanceManager.RecentPeaks; i++) _manager.RecordPeak(3000);
+        _manager.ExpectedJobMb(4096).ShouldBe(4096);
+    }
 }

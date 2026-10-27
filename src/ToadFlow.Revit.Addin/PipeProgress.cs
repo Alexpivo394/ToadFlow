@@ -5,8 +5,9 @@ using ToadFlow.Contracts.Pipe;
 namespace ToadFlow.Revit.Addin;
 
 /// <summary>
-///     Ход задания — агенту. Каждый вызов из потока Revit API отмечает «Revit жив» (<see cref="LastActivityAt" />):
-///     по этому времени агент отличает долгую операцию от зависания. В пайп уходит только смена шага и строки журнала.
+///     Ход задания — агенту. Каждый вызов из потока Revit API отмечает «Revit жив» (<see cref="LastActivityAt" />). Во время
+///     синхронного вызова API (например, экспорта NWC) отметок нет — тогда агент судит о работе Revit по счётчикам процесса
+///     (сторож зависаний агента), а не по этому времени. В пайп уходит только смена шага и строки журнала.
 /// </summary>
 internal sealed class PipeProgress : IExportProgress, IExportLog, ICheckProgress, ICheckLog
 {
@@ -66,7 +67,7 @@ internal sealed class PipeProgress : IExportProgress, IExportLog, ICheckProgress
     public void Error(string model, string text, Exception exception)
     {
         Touch();
-        Post(_stage ?? "Журнал", $"{text}: {exception.Message} ({exception.GetType().Name})");
+        Post(_stage ?? "Журнал", $"{text}: {exception}");
     }
 
     public void Touch() => Interlocked.Exchange(ref _lastActivityTicks, DateTimeOffset.UtcNow.UtcTicks);

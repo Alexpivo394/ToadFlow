@@ -28,6 +28,9 @@ public sealed class AgentOptions
     /// <summary>null — запускать настоящий Revit.exe.</summary>
     public IProcessLauncher? Launcher { get; init; }
 
+    /// <summary>null — физическая память этой машины.</summary>
+    public ISystemMemory? Memory { get; init; }
+
     /// <summary>Для тестов: обработчик сервера в памяти.</summary>
     public Func<HttpMessageHandler>? HttpMessageHandlerFactory { get; init; }
 

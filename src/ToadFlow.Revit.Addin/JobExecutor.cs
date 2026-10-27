@@ -5,6 +5,7 @@ using Alexpivo394.Revit.Export.Services;
 using Alexpivo394.Revit.ParamCheck.Profiles;
 using Alexpivo394.Revit.ParamCheck.Reports;
 using Alexpivo394.Revit.ParamCheck.Services;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Pipe;
@@ -24,6 +25,7 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
     private static readonly TimeSpan HistoryWait = TimeSpan.FromMinutes(2);
 
     private readonly ConcurrentQueue<JobMessage> _jobs = new();
+    private ResultMessage? _result;
 
     /// <summary>Куда отправлять результат; задаёт клиент пайпа.</summary>
     public Action<PipeMessage>? Send { get; set; }
@@ -40,6 +42,9 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
     private void Run(UIApplication application, JobMessage job)
     {
         progress.Begin(job.JobId);
+        _result = null;
+        string? recycle = null;
+        var openBefore = OpenModels(application);
         try
         {
             if (progress.ShouldAbort)
@@ -66,7 +71,25 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
         }
         catch (Exception exception)
         {
+            // Исключение прошло мимо библиотеки модуля — в каком состоянии остался Revit, неизвестно.
+            progress.Step("", $"задание упало: {exception}");
+            recycle = $"неожиданная ошибка аддина ({exception.GetType().Name})";
             Result(job, JobOutcome.Failed, exception.Message, null);
+        }
+        finally
+        {
+            // Незакрытая модель держит память и может помешать следующему заданию — такой Revit агент перезапустит.
+            var left = OpenModels(application) - openBefore;
+            if (left > 0)
+            {
+                progress.Step("", $"после задания осталось открытых моделей: {left} — Revit будет перезапущен");
+                recycle ??= "модель не закрылась после задания";
+            }
+
+            var result = _result ?? new ResultMessage { JobId = job.JobId, Outcome = JobOutcome.Failed, Note = "аддин не вернул итог задания" };
+            result.RecycleReason = recycle;
+            progress.Touch();
+            Send?.Invoke(result);
         }
     }
 
@@ -88,8 +111,15 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
             return;
         }
 
+        // Revit пишет файлы в локальную папку задания, в папку результатов они попадают только готовыми (ResultPublisher):
+        // зависший или упавший экспорт не трогает прошлую выгрузку. Папку с замком брошенной после сбоя уберёт CleanupUnused.
+        using var staging = TempWorkspace.Create();
         progress.Status("Начало выгрузки");
-        var model = new ModelExporter(application.Application).Export(modelJob, options, payload.OutputFolder, progress, progress);
+        var model = new ModelExporter(application.Application).Export(modelJob, options, staging.Directory, progress, progress);
+
+        if (model.Rvt == StepResult.Done || model.Nwc == StepResult.Done) progress.Status("Публикация результатов");
+        ResultPublisher.PublishOutputs(model, payload, staging.Directory, text => progress.Step(payload.ModelName, text));
+
         var (outcome, result) = PayloadMapping.ToResult(model, payload);
         Result(job, outcome, model.Note, AddinPipeJson.SerializeObject(result));
     }
@@ -152,9 +182,11 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
         Result(job, JobOutcome.Succeeded, null, AddinPipeJson.SerializeObject(LoiMapping.ToCatalogResult(snapshot)));
     }
 
-    private void Result(JobMessage job, JobOutcome outcome, string? note, string? resultJson)
-    {
-        progress.Touch();
-        Send?.Invoke(new ResultMessage { JobId = job.JobId, Outcome = outcome, Note = note, ResultJson = resultJson });
-    }
+    /// <summary>Итог задания; уходит агенту в конце <see cref="Run" />, после проверки, что модели закрыты.</summary>
+    private void Result(JobMessage job, JobOutcome outcome, string? note, string? resultJson) =>
+        _result = new ResultMessage { JobId = job.JobId, Outcome = outcome, Note = note, ResultJson = resultJson };
+
+    /// <summary>Открытые проекты и семейства, без загруженных связей.</summary>
+    private static int OpenModels(UIApplication application) =>
+        application.Application.Documents.Cast<Document>().Count(document => !document.IsLinked);
 }

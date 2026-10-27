@@ -14,7 +14,12 @@ public sealed class FakeRevitProcess(int pid, IReadOnlyDictionary<string, string
     public long WorkingSetMb { get; set; } = 2000;
     public bool Killed { get; private set; }
 
+    /// <summary>Счётчики процесса для сторожа зависаний; null — счётчиков нет, как у процесса без доступа.</summary>
+    public Func<ProcessSample?>? Sampler { get; set; }
+
     public Task Exited => _exited.Task;
+
+    public ProcessSample? Sample() => HasExited ? null : Sampler?.Invoke();
 
     public void Kill()
     {

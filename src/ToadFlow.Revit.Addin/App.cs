@@ -1,3 +1,4 @@
+using Alexpivo394.Revit.Export.Core;
 using Autodesk.Revit.UI;
 using Nice3point.Revit.Toolkit.External;
 using ToadFlow.Revit.Addin.Logic;
@@ -16,10 +17,14 @@ public sealed class App : ExternalApplication
     {
         if (AddinBootstrap.InstanceIdFromProcess() is not { } instanceId) return;
 
+        // Копии моделей и файлы выгрузок, брошенные убитым или упавшим Revit; занятые другим экземпляром папки остаются.
+        TempWorkspace.CleanupUnused();
+
         var year = int.Parse(Application.ControlledApplication.VersionNumber);
         var progress = new PipeProgress();
         var executor = new JobExecutor(year, progress);
-        _client = new AgentPipeClient(instanceId, year, OptionalFunctionalityUtils.IsNavisworksExporterAvailable(), executor,
+        _client = new AgentPipeClient(instanceId, year, OptionalFunctionalityUtils.IsNavisworksExporterAvailable(),
+            Application.ControlledApplication.RecordingJournalFilename, executor,
             Autodesk.Revit.UI.ExternalEvent.Create(executor), progress);
         _client.Start();
     }

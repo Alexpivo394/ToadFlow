@@ -40,6 +40,15 @@ public sealed class RevitInstance
     /// <summary>Почему агент убил экземпляр; null — не убивал (Revit закрылся сам).</summary>
     public string? KillReason { get; internal set; }
 
+    /// <summary>Аддин сообщил, что после задания Revit в неизвестном состоянии: новых заданий он не получит.</summary>
+    public string? RecycleReason { get; internal set; }
+
+    /// <summary>Журнал Revit этого процесса, если аддин его назвал.</summary>
+    public string? JournalPath { get; private set; }
+
+    /// <summary>Наибольшая занятая память за текущее (или последнее) задание — для оценки, сколько ещё вырастет Revit.</summary>
+    public long PeakWorkingSetMb { get; internal set; }
+
     internal PipeChannel Pipe { get; private set; } = null!;
     internal Task<HelloMessage> Hello => _hello.Task;
 
@@ -84,6 +93,7 @@ public sealed class RevitInstance
             JobId = assignment.JobId;
             ModelName = assignment.ModelName;
             State = InstanceState.Busy;
+            PeakWorkingSetMb = 0;
             SetStage("Начало работы");
             Touch();
         }
@@ -132,6 +142,7 @@ public sealed class RevitInstance
             {
                 case HelloMessage hello:
                     HasNwcExporter = hello.HasNwcExporter;
+                    JournalPath = hello.JournalPath;
                     Touch();
                     _hello.TrySetResult(hello);
                     break;

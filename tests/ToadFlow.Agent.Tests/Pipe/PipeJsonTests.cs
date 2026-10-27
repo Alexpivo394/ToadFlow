@@ -54,6 +54,27 @@ public class PipeJsonTests
         PipeJson.Serialize(new ResultMessage { JobId = JobId, Outcome = JobOutcome.InfrastructureFailure }).ShouldContain("\"outcome\":\"InfrastructureFailure\"");
 
     [Test]
+    public void PipeJson_MessagesOfOlderAddin_StillRead()
+    {
+        var hello = PipeJson.Deserialize("""{"type":"hello","instanceId":"7f1c2b5e-0d4a-4f3e-9a51-6b2d8c0e4a11","revitYear":2022,"pid":1,"hasNwcExporter":false,"addinVersion":"1.0.0"}""");
+        var result = PipeJson.Deserialize("""{"type":"result","jobId":"0f4f21fd-5ab8-45fd-b322-fd9b4af4c8f2","outcome":"Succeeded","note":null,"resultJson":null}""");
+
+        hello.ShouldBeOfType<HelloMessage>().JournalPath.ShouldBeNull();
+        result.ShouldBeOfType<ResultMessage>().RecycleReason.ShouldBeNull();
+    }
+
+    [Test]
+    public void AgentSettings_FromOlderServer_GetMemoryDefaults()
+    {
+        var settings = System.Text.Json.JsonSerializer.Deserialize<AgentSettingsDto>(
+            """{"limits":[{"year":2024,"maxInstances":2}],"silenceTimeoutMinutes":10,"recycleAfterModels":20,"recycleMemoryMb":12000,"draining":false}""",
+            PipeJson.Options)!;
+
+        settings.RamReserveMb.ShouldBe(AgentSettingsDto.DefaultRamReserveMb);
+        settings.RamPerJobMb.ShouldBe(AgentSettingsDto.DefaultRamPerJobMb);
+    }
+
+    [Test]
     public void PipeJson_UnknownType_Throws() =>
         Should.Throw<InvalidDataException>(() => PipeJson.Deserialize("""{"type":"what"}"""));
 }

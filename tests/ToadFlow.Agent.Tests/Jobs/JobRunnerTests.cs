@@ -204,4 +204,101 @@ public class JobRunnerTests : IAsyncDisposable
         completion.Note.ShouldNotBeNull().ShouldContain("убит вручную");
         _reporter.Killed.ShouldBeEmpty(); // ручное убийство сервер записал сам
     }
+
+    /// <summary>Аддин сообщил «Экспорт NWC» и молчит, пока поток Revit API в Document.Export; процесс тратит полъядра.</summary>
+    private FakeJobBehavior LongNwcExport(TimeSpan duration) => async (addin, job, _) =>
+    {
+        var start = _time.GetUtcNow();
+        addin.Process.Sampler = () => new ProcessSample(TimeSpan.FromTicks((_time.GetUtcNow() - start).Ticks / 2), 0, 9000, 9500);
+        await addin.ProgressAsync(job, "Экспорт NWC", "экспорт NWC");
+        while (_time.GetUtcNow() - start < duration) await Task.Delay(10);
+        await addin.ResultAsync(job, JobOutcome.Succeeded, null, """{"nwc":"Done"}""");
+    };
+
+    [Test]
+    public async Task LongNwcExport_WithoutMessages_IsNotTakenForHang()
+    {
+        _launcher.Then(LongNwcExport(TimeSpan.FromMinutes(25)));
+
+        var (completion, instance) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 10));
+
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
+        _reporter.Killed.ShouldBeEmpty();
+        ((FakeRevitProcess)instance.Process).Killed.ShouldBeFalse();
+        _reporter.Lines.ShouldContain(l => l.Stage == JobRunner.DiagnosticsStage && l.Text.Contains("процесс работает") && l.Text.Contains("Экспорт NWC"));
+        _reporter.Lines.ShouldContain(l => l.Stage == JobRunner.DiagnosticsStage && l.Text.Contains("итог Succeeded") && l.Text.Contains("Экспорт NWC 2"));
+        instance.PeakWorkingSetMb.ShouldBe(9000);
+    }
+
+    [Test]
+    public async Task Hang_WithIdleProcess_IsStillKilledAfterSilenceLimit()
+    {
+        _launcher.Then(async (addin, job, _) =>
+        {
+            addin.Process.Sampler = () => new ProcessSample(TimeSpan.FromSeconds(42), 1_000_000, 5000, 5200); // счётчики не растут
+            await addin.ProgressAsync(job, "Экспорт NWC", "экспорт NWC");
+        });
+
+        var (completion, _) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 10));
+
+        completion.Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        _reporter.Killed.ShouldHaveSingleItem().Reason.ShouldContain("не отвечал 10 мин на этапе «Экспорт NWC»");
+        _reporter.Lines.ShouldContain(l => l.Text.Contains("не работает"));
+    }
+
+    [Test]
+    public async Task BusyForever_IsKilledByModelTimeout()
+    {
+        // Процесс в бесконечном цикле: работа не может продлевать задание бесконечно.
+        _launcher.Then(LongNwcExport(TimeSpan.FromDays(1)));
+
+        var (completion, _) = await RunAsync(Assignment(timeoutMinutes: 45), InstanceManagerTests.Settings(silence: 10));
+
+        completion.Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        _reporter.Killed.ShouldHaveSingleItem().Reason.ShouldContain("таймаут 45 мин");
+    }
+
+    [Test]
+    public async Task Diagnostics_StartAndCrashStageReachJobLog()
+    {
+        _launcher.Then(FakeBehaviors.Crash());
+
+        await RunAsync(Assignment(), InstanceManagerTests.Settings());
+
+        _reporter.Lines.ShouldContain(l => l.Stage == JobRunner.DiagnosticsStage && l.Text.Contains("PID") && l.Text.Contains("Revit 2022") &&
+                                           l.Text.Contains("попытка 1"));
+        _reporter.Lines.ShouldContain(l => l.Text.Contains("итог InfrastructureFailure") &&
+                                           l.Text.Contains("Revit завершился во время задания на этапе «Открытие»"));
+    }
+
+    [Test]
+    public async Task Diagnostics_StartLineIsSentBeforeAddinGetsTheJob()
+    {
+        var linesWhenJobArrived = -1;
+        _launcher.Then(async (addin, job, _) =>
+        {
+            linesWhenJobArrived = _reporter.Lines.Count(l => l.Stage == JobRunner.DiagnosticsStage);
+            await addin.ResultAsync(job, JobOutcome.Succeeded);
+        });
+
+        await RunAsync(Assignment(), InstanceManagerTests.Settings());
+
+        linesWhenJobArrived.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task RecycleReason_InstanceGetsNoMoreJobs()
+    {
+        _launcher.Then(async (addin, job, _) =>
+            await addin.SendAsync(new ResultMessage { JobId = job.JobId, Outcome = JobOutcome.Failed, Note = "ошибка", RecycleReason = "модель не закрылась после задания" }));
+
+        var (completion, instance) = await RunAsync(Assignment(), InstanceManagerTests.Settings());
+        _manager.Release(instance, InstanceManagerTests.Settings());
+
+        completion.Outcome.ShouldBe(JobOutcome.Failed);
+        instance.RecycleReason.ShouldBe("модель не закрылась после задания");
+        ((FakeRevitProcess)instance.Process).Killed.ShouldBeTrue();
+        _manager.Instances.ShouldBeEmpty();
+        _manager.HasFreeSlot(2022).ShouldBeTrue(); // следующее задание получит новый Revit
+    }
 }

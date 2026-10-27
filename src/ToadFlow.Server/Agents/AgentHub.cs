@@ -104,7 +104,8 @@ public static class AgentSettingsFactory
     public const int DefaultInstancesPerAgent = 3;
 
     public static AgentSettingsDto Build(Agent agent, GeneralSettings general) => new(
-        agent.Limits.ToArray(), general.SilenceTimeoutMinutes, general.RecycleAfterModels, general.RecycleMemoryMb, agent.IsDraining);
+        agent.Limits.ToArray(), general.SilenceTimeoutMinutes, general.RecycleAfterModels, general.RecycleMemoryMb, agent.IsDraining, general.RamReserveMb,
+        general.RamPerJobMb);
 
     /// <summary>
     ///     Лимиты под установленные версии: для известных версий остаются прежние, новые получают по одному экземпляру,

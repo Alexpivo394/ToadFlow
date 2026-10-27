@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using ToadFlow.Contracts;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
@@ -14,7 +15,9 @@ public sealed record GeneralSettings(
     int SilenceTimeoutMinutes = 10,
     int LogRetentionDays = 90,
     int RecycleAfterModels = 20,
-    int RecycleMemoryMb = 12000)
+    int RecycleMemoryMb = 12000,
+    int RamReserveMb = AgentSettingsDto.DefaultRamReserveMb,
+    int RamPerJobMb = AgentSettingsDto.DefaultRamPerJobMb)
 {
     public TimeZoneInfo TimeZone => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
 
@@ -27,6 +30,8 @@ public sealed record GeneralSettings(
         if (LogRetentionDays < 1) errors.Add("Хранить логи — не меньше 1 дня");
         if (RecycleAfterModels < 1) errors.Add("Перезапуск Revit — не реже чем после 1 модели");
         if (RecycleMemoryMb < 1000) errors.Add("Порог памяти для перезапуска Revit — не меньше 1000 МБ");
+        if (RamReserveMb < 512) errors.Add("Резерв памяти для Windows — не меньше 512 МБ");
+        if (RamPerJobMb < 512) errors.Add("Память на задание — не меньше 512 МБ");
         return errors;
     }
 
@@ -41,6 +46,8 @@ public sealed record GeneralSettings(
         if (old.LogRetentionDays != LogRetentionDays) parts.Add($"хранение логов {old.LogRetentionDays} → {LogRetentionDays} дн.");
         if (old.RecycleAfterModels != RecycleAfterModels) parts.Add($"перезапуск Revit после {old.RecycleAfterModels} → {RecycleAfterModels} моделей");
         if (old.RecycleMemoryMb != RecycleMemoryMb) parts.Add($"порог памяти Revit {old.RecycleMemoryMb} → {RecycleMemoryMb} МБ");
+        if (old.RamReserveMb != RamReserveMb) parts.Add($"резерв памяти {old.RamReserveMb} → {RamReserveMb} МБ");
+        if (old.RamPerJobMb != RamPerJobMb) parts.Add($"память на задание {old.RamPerJobMb} → {RamPerJobMb} МБ");
         return parts.Count == 0 ? "без изменений" : string.Join("; ", parts);
     }
 }

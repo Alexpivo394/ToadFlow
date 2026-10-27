@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
+using ToadFlow.Agent.Server;
 using ToadFlow.Agent.Tests.Infrastructure;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Agents;
@@ -37,10 +38,10 @@ public class AgentEndToEndTests : ServerTest
         _models.Dispose();
     }
 
-    private async Task<AgentHarness> AgentAsync(TimeSpan? silence = null)
+    private async Task<AgentHarness> AgentAsync(TimeSpan? silence = null, FakeMemory? memory = null)
     {
         _admin = await AdminAsync();
-        _agent = await AgentHarness.StartAsync(Server, _admin, _launcher, silence);
+        _agent = await AgentHarness.StartAsync(Server, _admin, _launcher, silence, memory);
         await EventuallyAsync(async () => (await _admin.GetJsonAsync<AgentRow[]>("/api/agents")).Any(a => a.State == AgentState.Online));
         return _agent;
     }
@@ -87,6 +88,26 @@ public class AgentEndToEndTests : ServerTest
         _launcher.Started.Count.ShouldBe(1); // один Revit выгрузил обе модели
         var log = await _admin.GetJsonAsync<LogLine[]>($"/api/jobs/{details.Jobs[0].Id}/log");
         log.ShouldContain(l => l.Text == "открытие модели");
+    }
+
+    [Test]
+    [Arguments(48000, 2)]
+    [Arguments(6000, 1)]
+    public async Task EndToEnd_LowMemory_SecondRevitIsNotStarted(long availableMb, int expectedRevits)
+    {
+        _models.Model(@"ЖК\АР.rvt", 2022);
+        _models.Model(@"ЖК\КР.rvt", 2022);
+        _launcher.Then(FakeBehaviors.Ok(delay: TimeSpan.FromSeconds(2)));
+        var agent = await AgentAsync(memory: new FakeMemory { Current = new RamSnapshot(32768, availableMb) });
+        (await _admin.PutJsonAsync($"/api/agents/{agent.Config.AgentId}/limits", new[] { new VersionLimitDto(2022, 2) })).EnsureSuccessStatusCode();
+        await EventuallyAsync(() => Task.FromResult(agent.Connection.Settings?.Limits.Single().MaxInstances == 2));
+
+        var runId = await RunNowAsync();
+
+        // 6000 МБ свободно: первый Revit (2000 МБ) ещё вырастет до 4096, второму места с резервом 4096 нет — задания идут по очереди.
+        var details = await UntilAsync(runId, d => d.Run.State == RunState.Completed);
+        details.Jobs.ShouldAllBe(j => j.Status == JobStatus.Succeeded);
+        _launcher.Started.Count.ShouldBe(expectedRevits);
     }
 
     [Test]

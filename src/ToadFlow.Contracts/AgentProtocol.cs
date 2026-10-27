@@ -41,12 +41,23 @@ public sealed record AgentHelloDto(string MachineName, string AgentVersion, long
 
 public sealed record VersionLimitDto(int Year, int MaxInstances);
 
+/// <param name="RamReserveMb">Сколько физической памяти оставлять Windows и другим программам: на её счёт Revit не запускается.</param>
+/// <param name="RamPerJobMb">
+///     Сколько памяти закладывать на задание, пока агент не видел, сколько на деле занимают модели этой машины.
+///     Значения по умолчанию — для сервера до 1.6, который их не присылает.
+/// </param>
 public sealed record AgentSettingsDto(
     VersionLimitDto[] Limits,
     int SilenceTimeoutMinutes,
     int RecycleAfterModels,
     int RecycleMemoryMb,
-    bool Draining);
+    bool Draining,
+    int RamReserveMb = AgentSettingsDto.DefaultRamReserveMb,
+    int RamPerJobMb = AgentSettingsDto.DefaultRamPerJobMb)
+{
+    public const int DefaultRamReserveMb = 4096;
+    public const int DefaultRamPerJobMb = 4096;
+}
 
 public sealed record InstanceStatusDto(
     int Slot,

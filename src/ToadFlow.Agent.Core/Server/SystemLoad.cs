@@ -2,8 +2,18 @@ using System.Runtime.InteropServices;
 
 namespace ToadFlow.Agent.Server;
 
-/// <summary>Загрузка процессора и занятая память машины — для дашборда.</summary>
-internal sealed partial class SystemLoad
+/// <summary>Физическая память машины, МБ.</summary>
+public readonly record struct RamSnapshot(long TotalMb, long AvailableMb);
+
+/// <summary>Сколько физической памяти свободно — для решения, хватит ли её на ещё один Revit.</summary>
+public interface ISystemMemory
+{
+    /// <summary>null — ОС не ответила.</summary>
+    RamSnapshot? Snapshot();
+}
+
+/// <summary>Загрузка процессора и память машины — для дашборда и контроля памяти.</summary>
+internal sealed partial class SystemLoad : ISystemMemory
 {
     private ulong _lastIdle;
     private ulong _lastTotal;
@@ -21,10 +31,12 @@ internal sealed partial class SystemLoad
         return first || totalDelta == 0 ? 0 : Math.Round(100.0 * (totalDelta - idleDelta) / totalDelta, 1);
     }
 
-    public long RamUsedMb()
+    public long RamUsedMb() => Snapshot() is { } ram ? ram.TotalMb - ram.AvailableMb : 0;
+
+    public RamSnapshot? Snapshot()
     {
         var status = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
-        return GlobalMemoryStatusEx(ref status) ? (long)((status.TotalPhys - status.AvailPhys) / (1024 * 1024)) : 0;
+        return GlobalMemoryStatusEx(ref status) ? new RamSnapshot((long)(status.TotalPhys / (1024 * 1024)), (long)(status.AvailPhys / (1024 * 1024))) : null;
     }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

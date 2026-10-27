@@ -33,9 +33,12 @@ export function GeneralSettingsForm() {
           onChange={(v) => v && set({ timeZoneId: v })} />
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           {number('defaultModelTimeoutMinutes', 'Таймаут на модель по умолчанию, мин', 1)}
-          {number('silenceTimeoutMinutes', 'Молчание Revit до перезапуска, мин', 1)}
+          {number('silenceTimeoutMinutes', 'Молчание Revit до перезапуска, мин', 1,
+            'Revit молчит и не тратит процессор и диск. Долгий экспорт NWC молчанием не считается — его ограничивает таймаут на модель')}
           {number('recycleAfterModels', 'Перезапускать Revit после, моделей', 1, 'Плановый перезапуск — чтобы не копились утечки памяти')}
           {number('recycleMemoryMb', 'Или когда Revit занял, МБ', 1000, 'Что наступит раньше')}
+          {number('ramReserveMb', 'Резерв памяти для Windows, МБ', 512, 'Агент не берёт задание, если после него свободной памяти останется меньше')}
+          {number('ramPerJobMb', 'Память на задание не меньше, МБ', 512, 'Оценка для нового Revit; агент берёт больше, если последние модели занимали больше')}
           {number('logRetentionDays', 'Хранить логи, дней', 1)}
         </SimpleGrid>
         {!readOnly && (
