@@ -7,7 +7,9 @@
         <UseWindowsForms>true</UseWindowsForms>
         <RootNamespace>ToadFlow.Agent.App</RootNamespace>
         <AssemblyName>ToadFlow.Agent</AssemblyName>
-        <Version>0.1.0</Version>
+        <!-- Версия разработческой сборки; выпуск задаёт свою через VersionPrefix (build/PublishAgentModule). Version здесь
+             перекрыл бы её — так все агенты сообщали серверу 0.1.0. -->
+        <VersionPrefix>0.1.0</VersionPrefix>
         <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <!-- Значок exe — его же показывают ярлык в «Пуске» и «Приложения» Windows -->
