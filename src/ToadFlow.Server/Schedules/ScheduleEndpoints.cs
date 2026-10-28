@@ -222,7 +222,7 @@ public static class ScheduleEndpoints
             if (agents.Count == 0)
                 warnings.Add($"Для Revit {year} нет ни одного агента — задания будут ждать, пока он появится");
             else if (!agents.Any(a => AgentCapabilities.CanRun(a.AgentVersion, schedule.ModuleKind)))
-                warnings.Add($"Агенты с Revit {year} старой версии и не умеют эту задачу — задания будут ждать, пока агента обновят до 1.1 или новее");
+                warnings.Add($"Агенты с Revit {year} старой версии и не умеют эту задачу — задания будут ждать, пока агента обновят до {AgentCapabilities.MinimumVersion(schedule.ModuleKind)} или новее");
         }
 
         var duplicates = schedule.Selection.Models.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1)

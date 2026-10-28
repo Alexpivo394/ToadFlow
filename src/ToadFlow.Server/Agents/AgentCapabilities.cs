@@ -19,6 +19,9 @@ public static class AgentCapabilities
     /// <summary>Выгрузку для коллизий умеют агенты с 1.8: аддин выгружает геометрию, агент загружает слепок на сервер.</summary>
     private static readonly Version ClashExtractSince = new(1, 8);
 
+    /// <summary>С какой версии агент умеет задания этого вида — для подсказки «обновите агента».</summary>
+    public static string MinimumVersion(string moduleKind) => moduleKind == ModuleKinds.ClashExtract ? "1.8" : "1.1";
+
     /// <summary>Может ли агент этой версии взять задание этого вида.</summary>
     public static bool CanRun(string agentVersion, string moduleKind) => moduleKind switch
     {

@@ -81,6 +81,19 @@ public class ClashScheduleTests : ServerTest
     }
 
     [Test]
+    public async Task CreateSchedule_OnlyAgents17_WarnsToUpdateTo18()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        await agent.ConnectAsync("1.7.1", new InstalledRevitDto(2022, true));
+
+        var schedule = await ScheduleApi.CreateAsync(admin, Body(sourceId, new { viewName = "Navisworks" }));
+
+        schedule.Warnings.ShouldHaveSingleItem().ShouldContain("до 1.8 или новее");
+    }
+
+    [Test]
     public async Task RunSchedule_BuildsPayloadWithStableModelKey()
     {
         var admin = await AdminAsync();
