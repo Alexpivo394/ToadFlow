@@ -1,0 +1,101 @@
+using System.IO.Compression;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using ToadFlow.Contracts.Clash;
+
+namespace ToadFlow.Clash.Worker;
+
+/// <summary>Настройки работника — секция <c>Clash</c> конфигурации (в Docker: <c>Clash__ServerUrl</c>, <c>Clash__EngineKey</c> …).</summary>
+public sealed class WorkerOptions
+{
+    /// <summary>Адрес сервера ToadFlow; работнику нужен только он.</summary>
+    public string ServerUrl { get; set; } = "http://localhost:5000";
+
+    /// <summary>Ключ работника — тот же, что <c>Clash:EngineKey</c> сервера.</summary>
+    public string EngineKey { get; set; } = "";
+
+    /// <summary>Кеш слепков; пусто — <c>%LocalAppData%\ToadFlow\clash-engine-cache</c>.</summary>
+    public string CacheRoot { get; set; } = "";
+
+    public long CacheLimitBytes { get; set; } = 30L * 1024 * 1024 * 1024;
+
+    /// <summary>Как часто спрашивать прогон, когда очередь пуста.</summary>
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Как часто сообщать ход во время поиска: сервер держит аренду 2 мин.</summary>
+    public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>Потоков поиска; 0 — все ядра (в контейнере — лимит cpus).</summary>
+    public int Threads { get; set; }
+
+    public string ResolvedCacheRoot => CacheRoot.Length > 0
+        ? CacheRoot
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToadFlow", "clash-engine-cache");
+}
+
+/// <summary>Протокол работника с сервером (<c>/api/engine</c>). Ответ 409 — прогон больше не идёт: его отменили или отдали другой попытке.</summary>
+public sealed class EngineClient(HttpClient http)
+{
+    private static readonly JsonSerializerOptions Json = JsonSerializerOptions.Web;
+    private int _downloads;
+
+    /// <summary>Сколько файлов слепков скачано (для тестов кеша).</summary>
+    public int Downloads => Volatile.Read(ref _downloads);
+
+    public async Task<EngineRunAssignment?> ClaimAsync(CancellationToken ct)
+    {
+        using var response = await http.PostAsync("api/engine/runs/claim", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<EngineRunAssignment>(Json, ct);
+    }
+
+    /// <returns>false — прогон больше не идёт.</returns>
+    public async Task<bool> ProgressAsync(Guid runId, string stage, string text, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/progress", new EngineProgress(runId, stage, text), Json, ct);
+        if (response.StatusCode == HttpStatusCode.Conflict) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <summary>Скачивает файл слепка в <paramref name="path" />; начатый файл докачивается с места обрыва.</summary>
+    public async Task DownloadAsync(Guid snapshotId, string file, string path, CancellationToken ct)
+    {
+        Interlocked.Increment(ref _downloads);
+        var offset = File.Exists(path) ? new FileInfo(path).Length : 0;
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/engine/snapshots/{snapshotId}/{file}");
+        if (offset > 0) request.Headers.Range = new RangeHeaderValue(offset, null);
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable) return; // уже целиком
+        response.EnsureSuccessStatusCode();
+
+        var append = response.StatusCode == HttpStatusCode.PartialContent;
+        await using var target = new FileStream(path, append ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20, useAsync: true);
+        await using var source = await response.Content.ReadAsStreamAsync(ct);
+        await source.CopyToAsync(target, ct);
+    }
+
+    /// <returns>false — прогон больше не идёт.</returns>
+    public async Task<bool> PostResultAsync(Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats, CancellationToken ct)
+    {
+        using var packed = new MemoryStream();
+        await using (var zip = new GZipStream(packed, CompressionLevel.Fastest, leaveOpen: true))
+            await JsonSerializer.SerializeAsync(zip, new EngineRunResult(runId, hits, stats), Json, ct);
+        using var content = new ByteArrayContent(packed.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        content.Headers.ContentEncoding.Add("gzip");
+        using var response = await http.PostAsync($"api/engine/runs/{runId}/result?part={part}&last={(last ? "true" : "false")}", content, ct);
+        if (response.StatusCode == HttpStatusCode.Conflict) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    public async Task FailAsync(Guid runId, string error, bool retry, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/fail", new EngineFailure(runId, error, retry), Json, ct);
+        if (response.StatusCode != HttpStatusCode.Conflict) response.EnsureSuccessStatusCode();
+    }
+}

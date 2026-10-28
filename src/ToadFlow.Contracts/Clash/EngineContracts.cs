@@ -15,7 +15,7 @@ public sealed record EngineProgress(Guid RunId, string Stage, string Text);
 
 /// <summary>
 ///     Коллизия с обеими сторонами. Пара каноническая: сначала элемент с меньшим (<c>ModelA</c>, <c>UniqueIdA</c>) в ordinal-порядке.
-///     Координаты — мм в общей системе первой модели прогона.
+///     Точка — центр зоны пересечения, абсолютные мм в общей системе координат моделей.
 /// </summary>
 /// <param name="ModelA">Id модели в форме <c>N</c>.</param>
 /// <param name="SetsA">Наборы элемента A его раздела, в которые он попал.</param>

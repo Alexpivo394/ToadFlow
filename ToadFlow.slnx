@@ -7,6 +7,7 @@
   <Folder Name="/src/">
     <Project Path="src/ToadFlow.Agent/ToadFlow.Agent.csproj" />
     <Project Path="src/ToadFlow.Agent.Core/ToadFlow.Agent.Core.csproj" />
+    <Project Path="src/ToadFlow.Clash.Worker/ToadFlow.Clash.Worker.csproj" />
     <Project Path="src/ToadFlow.Contracts/ToadFlow.Contracts.csproj" />
     <Project Path="src/ToadFlow.Server/ToadFlow.Server.csproj" />
     <Project Path="src/ToadFlow.Server.Export/ToadFlow.Server.Export.csproj" />
@@ -16,6 +17,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ToadFlow.Agent.Tests/ToadFlow.Agent.Tests.csproj" />
+    <Project Path="tests/ToadFlow.Clash.Worker.Tests/ToadFlow.Clash.Worker.Tests.csproj" />
     <Project Path="tests/ToadFlow.Revit.Addin.Tests/ToadFlow.Revit.Addin.Tests.csproj" />
     <Project Path="tests/ToadFlow.Server.Tests/ToadFlow.Server.Tests.csproj" />
     <Project Path="tests/ToadFlow.TestInfrastructure/ToadFlow.TestInfrastructure.csproj" />

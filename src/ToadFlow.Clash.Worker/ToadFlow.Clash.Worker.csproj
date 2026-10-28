@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Работник движка коллизий: свой процесс (контейнер), берёт прогоны черновиков у сервера по HTTP, считает и сдаёт результат -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>ToadFlow.Clash.Worker</RootNamespace>
+        <ServerGarbageCollection>true</ServerGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Hosting"/>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Engine"/>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Geometry"/>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Rules"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Contracts\ToadFlow.Contracts.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ToadFlow.Clash.Worker.Tests"/>
+    </ItemGroup>
+
+</Project>
