@@ -12,6 +12,9 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
     public const string AdminLogin = "admin";
     public const string AdminPassword = "admin-pass";
 
+    /// <summary>Своё хранилище слепков коллизий у каждого сервера тестов.</summary>
+    public string ClashStorageRoot { get; } = Path.Combine(Path.GetTempPath(), "toadflow-clash-tests", Guid.NewGuid().ToString("N"));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -20,6 +23,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         builder.UseSetting("Auth:JwtKey", "test-jwt-key-0123456789abcdef0123456789abcdef");
         builder.UseSetting("Admin:Login", AdminLogin);
         builder.UseSetting("Admin:Password", AdminPassword);
+        builder.UseSetting("Clash:StorageRoot", ClashStorageRoot);
         if (time is not null) builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Singleton(time)));
     }
 }

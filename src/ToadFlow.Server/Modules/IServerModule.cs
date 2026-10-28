@@ -13,6 +13,9 @@ public interface IServerModule
 {
     string Kind { get; }
 
+    /// <summary>Задания пишут результат в папку результатов расписания; false — папка не нужна, её можно не указывать.</summary>
+    bool UsesOutputFolder => true;
+
     void AddServices(IServiceCollection services);
 
     void ConfigureModel(ModelBuilder model);

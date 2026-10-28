@@ -22,6 +22,162 @@ namespace ToadFlow.Server.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.ClashModel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("key");
+
+                    b.Property<string>("ModelPath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_path");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clash_models");
+
+                    b.HasIndex("Key")
+                        .IsUnique()
+                        .HasDatabaseName("ix_clash_models_key");
+
+                    b.ToTable("clash_models", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.ClashSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Catalog")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("catalog");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Elements")
+                        .HasColumnType("integer")
+                        .HasColumnName("elements");
+
+                    b.Property<DateTimeOffset>("ExtractedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("extracted_at");
+
+                    b.Property<long>("GeometryBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("geometry_bytes");
+
+                    b.Property<int>("Inventory")
+                        .HasColumnType("integer")
+                        .HasColumnName("inventory");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("model_id");
+
+                    b.Property<long>("ParametersBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("parameters_bytes");
+
+                    b.Property<int>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<long>("Triangles")
+                        .HasColumnType("bigint")
+                        .HasColumnName("triangles");
+
+                    b.Property<string>("ViewName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("view_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clash_snapshots");
+
+                    b.HasIndex("ModelId", "ExtractedAt")
+                        .HasDatabaseName("ix_clash_snapshots_model_id_extracted_at");
+
+                    b.ToTable("clash_snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.ClashUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("GeometryBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("geometry_bytes");
+
+                    b.Property<string>("GeometrySha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("geometry_sha256");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("model_id");
+
+                    b.Property<long>("ParametersBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("parameters_bytes");
+
+                    b.Property<string>("ParametersSha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("parameters_sha256");
+
+                    b.Property<Guid?>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clash_uploads");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_clash_uploads_created_at");
+
+                    b.HasIndex("JobId")
+                        .HasDatabaseName("ix_clash_uploads_job_id");
+
+                    b.ToTable("clash_uploads", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.Agent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1029,6 +1185,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasDatabaseName("ix_loi_profiles_group_name");
 
                     b.ToTable("loi_profiles", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.ClashSnapshot", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.ClashModel", null)
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_snapshots_clash_models_model_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.ApiToken", b =>

@@ -95,8 +95,9 @@ public static class ScheduleEndpoints
         var settings = await services.GetRequiredService<ISettingsStore>().GetAsync();
 
         var source = await db.Sources.AsNoTracking().SingleOrDefaultAsync(s => s.Id == request.SourceId);
-        var errors = Validate(request, source);
-        if (services.GetRequiredService<ServerModuleRegistry>().Find(request.ModuleKind) is not { } module) errors.Add($"Неизвестный вид задачи «{request.ModuleKind}»");
+        var module = services.GetRequiredService<ServerModuleRegistry>().Find(request.ModuleKind);
+        var errors = Validate(request, source, module?.UsesOutputFolder ?? true);
+        if (module is null) errors.Add($"Неизвестный вид задачи «{request.ModuleKind}»");
         else errors.AddRange(await module.ValidateSettingsAsync(request.ModuleSettings, services, http.RequestAborted));
         if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors), errors });
 
@@ -161,12 +162,14 @@ public static class ScheduleEndpoints
         return Results.NoContent();
     }
 
-    private static List<string> Validate(ScheduleRequest request, Source? source)
+    /// <param name="needsFolder">Модуль пишет в папку результатов: без шаблона папки расписание не сохраняется.</param>
+    private static List<string> Validate(ScheduleRequest request, Source? source, bool needsFolder)
     {
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(request.Name)) errors.Add("Укажите название");
         if (source is null) errors.Add("Источник не найден");
-        if (OutputFolderTemplate.Validate(request.OutputFolderTemplate) is { } folderError) errors.Add(folderError);
+        if ((needsFolder || !string.IsNullOrWhiteSpace(request.OutputFolderTemplate)) && OutputFolderTemplate.Validate(request.OutputFolderTemplate) is { } folderError)
+            errors.Add(folderError);
         if (request.Selection is null || request.Selection.Models.Length + request.Selection.Folders.Length == 0)
             errors.Add("Отметьте хотя бы одну модель или папку");
         else if (request.Selection.Models.Any(m => !m.Rvt && !m.Nwc) || request.Selection.Folders.Any(f => !f.Rvt && !f.Nwc))

@@ -17,6 +17,9 @@
         <PackageVersion Include="MysticMind.PostgresEmbed" Version="4.0.0"/>
         <!-- Профили LOI в формате ParamChecker: https://github.com/Alexpivo394/ToadParamCheck -->
         <PackageVersion Include="Alexpivo394.Revit.ParamCheck.Profiles" Version="1.0.0"/>
+        <!-- Ядро коллизий: https://github.com/Alexpivo394/ToadClash -->
+        <PackageVersion Include="Alexpivo394.Revit.Clash.Geometry" Version="1.0.0"/>
+        <PackageVersion Include="Alexpivo394.Revit.Clash.Rules" Version="1.0.0"/>
     </ItemGroup>
 
     <!-- PostgresEmbed тянет SharpCompress 0.34.2 (GHSA-6c8g-7p36-r338, zip slip при распаковке). Исправленные версии

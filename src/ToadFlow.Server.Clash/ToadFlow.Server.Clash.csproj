@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <!-- Модуль «Коллизии» на сервере: модели и слепки геометрии, задания выгрузки, приём загрузок, каталог параметров -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Library</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Geometry"/>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Rules"/>
+        <PackageReference Include="Alexpivo394.Revit.ParamCheck.Profiles"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Server\ToadFlow.Server.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ToadFlow.Server.Tests"/>
+    </ItemGroup>
+
+</Project>
