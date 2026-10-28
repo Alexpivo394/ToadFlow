@@ -74,6 +74,26 @@ public static class ClashFixtures
         return client;
     }
 
+    /// <summary>Выгрузка модели целиком, как её делает агент: задание, загрузка обоих файлов одной частью, публикация.</summary>
+    public static async Task<(Guid JobId, ClashModel Model, ClashExtractResult Result)> PublishAsync(ServerFactory server, FakeAgent agent,
+        string modelName = "АР.rvt", DateTimeOffset? extractedAt = null, int padding = 0)
+    {
+        var (jobId, model) = await RunningJobAsync(server, agent, modelName);
+        var files = ModelFiles(model.SnapshotKey, extractedAt: extractedAt, padding: padding);
+        var client = AgentClient(server, agent);
+        var started = await client.PostJsonAsync("/api/agent/clash/uploads", files.Request(jobId));
+        var upload = await started.ReadJsonAsync<ClashUploadState>();
+        foreach (var (file, bytes) in new[] { (ClashUploads.Geometry, files.Geometry), (ClashUploads.Parameters, files.Parameters) })
+        {
+            var put = await client.PutAsync($"/api/agent/clash/uploads/{upload.UploadId}/{file}?offset=0", new ByteArrayContent(bytes));
+            put.EnsureSuccessStatusCode();
+        }
+
+        var completed = await client.PostAsync($"/api/agent/clash/uploads/{upload.UploadId}/complete", null);
+        completed.EnsureSuccessStatusCode();
+        return (jobId, model, await completed.ReadJsonAsync<ClashExtractResult>());
+    }
+
     private static ElementGeometry Box(ElementInfo info, float x)
     {
         float[] positions = [x, 0, 0, x + 100, 0, 0, x + 100, 100, 0, x, 100, 0, x, 0, 100, x + 100, 0, 100, x + 100, 100, 100, x, 100, 100];

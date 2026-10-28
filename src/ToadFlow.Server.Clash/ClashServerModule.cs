@@ -4,6 +4,8 @@ using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Data.Entities;
+using ToadFlow.Server.Events;
 using ToadFlow.Server.Modules;
 
 namespace ToadFlow.Server.Clash;
@@ -30,6 +32,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<ClashStorage>();
         services.AddScoped<ClashSettingsStore>();
         services.AddScoped<SnapshotPublisher>();
+        services.AddHostedService<ClashUploadCleaner>();
     }
 
     public void ConfigureModel(ModelBuilder model)
@@ -60,8 +63,36 @@ public sealed class ClashServerModule : IServerModule
         });
     }
 
-    public void MapEndpoints(RouteGroupBuilder api)
+    public void MapEndpoints(RouteGroupBuilder api) => api.MapClash();
+
+    /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>
+    public async Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct)
     {
+        if (job is not { ModuleKind: ModuleKinds.ClashExtract, Status: JobStatus.Succeeded or JobStatus.Warning, ResultJson: { } json }) return;
+
+        ClashExtractResult? result;
+        try
+        {
+            result = JsonSerializer.Deserialize<ClashExtractResult>(json, ToadFlowDb.Json);
+        }
+        catch (JsonException)
+        {
+            result = null;
+        }
+
+        var db = services.GetRequiredService<ToadFlowDb>();
+        var snapshot = result is null
+            ? null
+            : await db.Set<ClashSnapshot>().AsNoTracking().SingleOrDefaultAsync(s => s.Id == result.SnapshotId && s.JobId == job.Id, ct);
+        if (snapshot is null)
+        {
+            services.GetRequiredService<ILogger<ClashServerModule>>()
+                .LogWarning("Выгрузка {Job} ({Model}) сдана без опубликованного слепка", job.Id, job.ModelName);
+            return;
+        }
+
+        services.GetRequiredService<IDomainEvents>().Publish(new CatalogChanged(Actor.System, ClashEndpoints.ModelsEntity, snapshot.ModelId,
+            $"Выгружена модель {job.ModelName}: элементов {snapshot.Elements}, треугольников {snapshot.Triangles}"));
     }
 
     public void MapAgentEndpoints(RouteGroupBuilder agentApi) => agentApi.MapClashUploads();
