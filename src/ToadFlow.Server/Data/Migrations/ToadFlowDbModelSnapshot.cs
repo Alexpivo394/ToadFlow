@@ -243,6 +243,40 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_part_models", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Templates.ClashTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration_json");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clash_templates");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_clash_templates_name");
+
+                    b.ToTable("clash_templates", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.Agent", b =>
                 {
                     b.Property<Guid>("Id")

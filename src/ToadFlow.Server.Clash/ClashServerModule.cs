@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash.Parts;
+using ToadFlow.Server.Clash.Templates;
 using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
@@ -78,12 +79,22 @@ public sealed class ClashServerModule : IServerModule
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(m => m.PartId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<ClashModel>().WithMany().HasForeignKey(m => m.ModelId).OnDelete(DeleteBehavior.Cascade);
         });
+
+        model.Entity<ClashTemplate>(entity =>
+        {
+            entity.ToTable("clash_templates");
+            entity.Property(t => t.Id).ValueGeneratedNever();
+            entity.Property(t => t.ConfigurationJson).HasColumnType("jsonb");
+            entity.HasIndex(t => t.Name).IsUnique();
+        });
     }
 
     public void MapEndpoints(RouteGroupBuilder api)
     {
         api.MapClash();
         api.MapClashParts();
+        api.MapClashDrafts();
+        api.MapClashTemplates();
     }
 
     /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>
