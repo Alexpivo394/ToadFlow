@@ -29,6 +29,10 @@ services:
       Auth__JwtKey: ${JWT_KEY:?задайте JWT_KEY в .env (не короче 32 символов)}
       Admin__Login: ${ADMIN_LOGIN:-admin}
       Admin__Password: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD в .env}
+      Clash__StorageRoot: /data/clash
+    volumes:
+      # Выгрузки геометрии для коллизий: последние N на модель (Настройки → Коллизии)
+      - clash:/data/clash
 
   web:
     build:
@@ -42,3 +46,4 @@ services:
 
 volumes:
   postgres:
+  clash:

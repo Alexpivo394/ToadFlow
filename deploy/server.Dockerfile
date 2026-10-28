@@ -20,5 +20,7 @@ COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
+# Хранилище выгрузок для коллизий (том clash в docker compose): создаётся заранее, чтобы том унаследовал владельца app.
+RUN mkdir -p /data/clash && chown app /data/clash
 USER app
 ENTRYPOINT ["dotnet", "ToadFlow.Server.Host.dll"]

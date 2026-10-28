@@ -12,6 +12,7 @@
 | `src/ToadFlow.Server` | Ядро сервера: агенты, очередь заданий, расписания, история, пользователи, события |
 | `src/ToadFlow.Server.Export` | Модуль «Выгрузка RVT/NWC»: пресеты, настройки расписания, задания агентам |
 | `src/ToadFlow.Server.Loi` | Модуль «Проверка LOI»: профили ParamChecker, каталог категорий и параметров Revit, задания агентам |
+| `src/ToadFlow.Server.Clash` | Модуль «Коллизии»: задания выгрузки геометрии, приём слепков от агентов, хранилище и каталог параметров |
 | `src/ToadFlow.Server.Host` | Приложение сервера: ядро и подключённые модули |
 | `src/ToadFlow.Contracts` | Протокол сервер ↔ агент ↔ аддин |
 | `src/ToadFlow.Agent.Core` | Агент: связь с сервером, экземпляры Revit, обнаружение зависаний, обзор источников |
@@ -24,7 +25,7 @@
 | `tests/` | Тесты сервера, агента и аддина |
 | `wiki/` | Эта вики; публикуется в GitHub Wiki при изменении в `main` |
 
-Ядро выгрузки — пакеты [ToadExport](https://github.com/Alexpivo394/ToadExport), ядро проверки LOI — пакеты [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck) на nuget.org. Чтобы собрать ToadFlow с пакетами, которых ещё нет на nuget.org, соберите их локально (`DOTNET_ENVIRONMENT=Development Publish__Version=X.Y.Z dotnet run -c Release -- pack` в `build/` репозитория пакета) и добавьте папку `output` как источник: `dotnet build -p:RestoreAdditionalProjectSources=<папка>`.
+Ядро выгрузки — пакеты [ToadExport](https://github.com/Alexpivo394/ToadExport), ядро проверки LOI — пакеты [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck), ядро коллизий — пакеты [ToadClash](https://github.com/Alexpivo394/ToadClash) на nuget.org. Чтобы собрать ToadFlow с пакетами, которых ещё нет на nuget.org, соберите их локально (`DOTNET_ENVIRONMENT=Development Publish__Version=X.Y.Z dotnet run -c Release -- pack` в `build/` репозитория пакета) и добавьте папку `output` как источник: `dotnet build -p:RestoreAdditionalProjectSources=<папка>`.
 
 ## Запуск локально
 
