@@ -36,6 +36,8 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<SnapshotPublisher>();
         services.AddHostedService<ClashUploadCleaner>();
         services.AddScoped<PartModels>();
+        services.AddScoped<PartElements>();
+        services.AddSingleton<PartElementsCache>();
     }
 
     public void ConfigureModel(ModelBuilder model)
@@ -94,6 +96,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClash();
         api.MapClashParts();
         api.MapClashDrafts();
+        api.MapClashSetPreview();
         api.MapClashTemplates();
     }
 
