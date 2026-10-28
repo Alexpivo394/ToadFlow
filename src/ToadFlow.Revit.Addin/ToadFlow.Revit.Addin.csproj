@@ -31,6 +31,7 @@
         <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI"/>
         <PackageReference Include="Alexpivo394.Revit.Export"/>
         <PackageReference Include="Alexpivo394.Revit.ParamCheck"/>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Revit"/>
         <PackageReference Include="Newtonsoft.Json"/>
         <PackageReference Include="ILRepack" PrivateAssets="all"/>
     </ItemGroup>

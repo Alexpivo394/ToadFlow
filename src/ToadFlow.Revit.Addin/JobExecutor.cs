@@ -61,6 +61,10 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
                 case ModuleKinds.LoiCatalog:
                     ReadCatalog(application, job);
                     break;
+                case ModuleKinds.ClashExtract:
+                    var (outcome, note, resultJson) = new ClashExtractRunner(revitYear, progress).Run(application, job);
+                    Result(job, outcome, note, resultJson);
+                    break;
                 case "" or ModuleKinds.Export:
                     Export(application, job);
                     break;
