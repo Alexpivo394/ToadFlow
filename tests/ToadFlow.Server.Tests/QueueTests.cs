@@ -65,6 +65,21 @@ public class QueueTests : ServerTest
     }
 
     [Test]
+    public async Task Claim_ClashExtractNeedsAgent18()
+    {
+        await using var old = await FakeAgent.RegisterAsync(Server, await AdminAsync(), "FARM-17");
+        await old.ConnectAsync("1.7.1", new InstalledRevitDto(2022, true));
+        await using var fresh = await FakeAgent.RegisterAsync(Server, await AdminAsync(), "FARM-18");
+        await fresh.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
+        var jobId = await SeedJobAsync();
+        await DbAsync(db => db.Jobs.Where(j => j.Id == jobId).ExecuteUpdateAsync(j => j.SetProperty(x => x.ModuleKind, ModuleKinds.ClashExtract)));
+
+        // Аддин 1.7 не умеет выгрузку для коллизий, а агент — загрузку слепка.
+        (await old.RequestJobAsync(1, 2022)).ShouldBeNull();
+        (await fresh.RequestJobAsync(1, 2022)).ShouldNotBeNull().JobId.ShouldBe(jobId);
+    }
+
+    [Test]
     [Arguments("1.0.3", false)]
     [Arguments("1.0.0", false)]
     [Arguments("1.1.0", true)]

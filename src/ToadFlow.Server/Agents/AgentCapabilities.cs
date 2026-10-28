@@ -16,6 +16,21 @@ public static class AgentCapabilities
         return !Version.TryParse(prefix, out var version) || !(version.Major == 1 && version.Minor == 0);
     }
 
+    /// <summary>Выгрузку для коллизий умеют агенты с 1.8: аддин выгружает геометрию, агент загружает слепок на сервер.</summary>
+    private static readonly Version ClashExtractSince = new(1, 8);
+
     /// <summary>Может ли агент этой версии взять задание этого вида.</summary>
-    public static bool CanRun(string agentVersion, string moduleKind) => moduleKind == ModuleKinds.Export || KnowsModuleKind(agentVersion);
+    public static bool CanRun(string agentVersion, string moduleKind) => moduleKind switch
+    {
+        ModuleKinds.Export => true,
+        ModuleKinds.ClashExtract => AtLeast(agentVersion, ClashExtractSince),
+        _ => KnowsModuleKind(agentVersion)
+    };
+
+    /// <summary>Версия не ниже <paramref name="since" />; сборка разработчика (0.x) или нечитаемая версия — свежая.</summary>
+    private static bool AtLeast(string agentVersion, Version since)
+    {
+        var prefix = agentVersion.Split('-', '+')[0];
+        return !Version.TryParse(prefix, out var version) || version.Major == 0 || version >= since;
+    }
 }

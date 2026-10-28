@@ -30,13 +30,15 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         var queued = nameof(JobStatus.Queued);
         var export = ModuleKinds.Export;
         var anyModule = AgentCapabilities.KnowsModuleKind(agent.AgentVersion);
+        var clash = ModuleKinds.ClashExtract;
+        var clashCapable = AgentCapabilities.CanRun(agent.AgentVersion, ModuleKinds.ClashExtract);
         var claimed = await db.Jobs.FromSql($"""
             UPDATE jobs SET status = {running}, agent_id = {agentId}, instance_slot = {request.Slot}, attempt = attempt + 1,
                             started_at = {now}, lease_until = {lease}
             WHERE id = (
                 SELECT id FROM jobs
                 WHERE status = {queued} AND revit_year = {request.Year} AND (NOT requires_nwc OR {request.HasNwcExporter})
-                      AND (module_kind = {export} OR {anyModule}) AND NOT cancel_requested
+                      AND (module_kind = {export} OR {anyModule}) AND (module_kind <> {clash} OR {clashCapable}) AND NOT cancel_requested
                 ORDER BY priority DESC, created_at
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED)

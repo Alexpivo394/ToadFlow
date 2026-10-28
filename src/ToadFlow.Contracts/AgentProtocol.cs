@@ -97,4 +97,7 @@ public static class ModuleKinds
 
     /// <summary>Снять в Revit категории и имена параметров для редактора правил LOI. Задание без модели и без расписания.</summary>
     public const string LoiCatalog = "loi-catalog";
+
+    /// <summary>Выгрузить геометрию и параметры модели для поиска коллизий и загрузить слепок на сервер.</summary>
+    public const string ClashExtract = "clash-extract";
 }
