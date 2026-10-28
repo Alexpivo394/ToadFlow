@@ -293,4 +293,56 @@ public class ClashEngineQueueTests : ServerTest
         model.SnapshotId.ShouldBe(queuedSnapshot);
         (await engine.GetAsync($"/api/engine/snapshots/{model.SnapshotId}/geometry")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
+
+    private async Task<EngineRunModel> FinishedRunAsync(HttpClient admin, Guid partId)
+    {
+        var run = await StartAsync(admin, partId);
+        var engine = EngineClient(Server);
+        (await ClaimAsync(engine)).ShouldNotBeNull();
+        (await PostResultAsync(engine, run.RunId, 0, true, [Hit(1)], Stats)).EnsureSuccessStatusCode();
+        return (await RunAsync(run.RunId)).Models.Single();
+    }
+
+    private async Task PublishAgainAsync(FakeAgent agent)
+    {
+        var published = await ClashFixtures.PublishAsync(Server, agent, "POL_K1_AR.rvt");
+        await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded);
+    }
+
+    private bool SnapshotExists(EngineRunModel model) =>
+        Directory.Exists(Server.Services.CreateScope().ServiceProvider.GetRequiredService<ClashStorage>().SnapshotFolder(model.ModelId, model.SnapshotId));
+
+    [Test]
+    public async Task Prune_KeepsSnapshotsOfVisibleDraftResult()
+    {
+        var (admin, agent) = await SetupAsync();
+        await using var _ = agent;
+        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
+        var shown = await FinishedRunAsync(admin, partId);
+
+        await PublishAgainAsync(agent);
+        var second = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models.Single().Latest!.Id;
+        await PublishAgainAsync(agent);
+
+        SnapshotExists(shown).ShouldBeTrue();
+        SnapshotExists(shown with { SnapshotId = second }).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Prune_ReleasesSnapshotWhenResultReplaced()
+    {
+        var (admin, agent) = await SetupAsync();
+        await using var _ = agent;
+        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
+        var first = await FinishedRunAsync(admin, partId);
+        await PublishAgainAsync(agent);
+        var second = await FinishedRunAsync(admin, partId);
+
+        await PublishAgainAsync(agent);
+
+        SnapshotExists(first).ShouldBeFalse();
+        SnapshotExists(second).ShouldBeTrue();
+    }
 }

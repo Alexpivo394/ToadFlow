@@ -5,6 +5,7 @@ using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash.Engine;
+using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
 
 namespace ToadFlow.Server.Clash.Uploads;
@@ -79,12 +80,14 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
 
     /// <summary>
     ///     Оставляет у модели <paramref name="keep" /> последних по времени выгрузки слепков: сначала файлы, потом записи.
-    ///     Слепки прогонов движка в очереди и в работе не удаляются, пока прогон не закончится.
+    ///     Слепки прогонов движка в очереди и в работе не удаляются, пока прогон не закончится, а слепки прогона — видимого
+    ///     результата части — пока у части не появится новый результат: на них открывается просмотрщик коллизий.
     /// </summary>
     public async Task PruneAsync(Guid modelId, int keep, CancellationToken ct)
     {
         var active = (await db.Set<EngineRun>().AsNoTracking()
-                .Where(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running)
+                .Where(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running
+                            || db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id))
                 .Select(r => r.Models).ToListAsync(ct))
             .SelectMany(m => m).Select(m => m.SnapshotId).ToHashSet();
         var stale = (await db.Set<ClashSnapshot>().Where(s => s.ModelId == modelId)
