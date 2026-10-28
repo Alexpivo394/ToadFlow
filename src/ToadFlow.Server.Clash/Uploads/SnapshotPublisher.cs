@@ -4,6 +4,7 @@ using Alexpivo394.Revit.Clash.Geometry;
 using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Data;
 
 namespace ToadFlow.Server.Clash.Uploads;
@@ -76,12 +77,20 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
     public static ClashExtractResult ResultOf(ClashSnapshot snapshot) =>
         new(snapshot.Id, snapshot.Elements, snapshot.Triangles, snapshot.Inventory, snapshot.GeometryBytes, snapshot.ParametersBytes);
 
-    /// <summary>Оставляет у модели <paramref name="keep" /> последних по времени выгрузки слепков: сначала файлы, потом записи.</summary>
+    /// <summary>
+    ///     Оставляет у модели <paramref name="keep" /> последних по времени выгрузки слепков: сначала файлы, потом записи.
+    ///     Слепки прогонов движка в очереди и в работе не удаляются, пока прогон не закончится.
+    /// </summary>
     public async Task PruneAsync(Guid modelId, int keep, CancellationToken ct)
     {
-        var stale = await db.Set<ClashSnapshot>().Where(s => s.ModelId == modelId)
-            .OrderByDescending(s => s.ExtractedAt).ThenByDescending(s => s.CreatedAt)
-            .Skip(keep).Select(s => s.Id).ToListAsync(ct);
+        var active = (await db.Set<EngineRun>().AsNoTracking()
+                .Where(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running)
+                .Select(r => r.Models).ToListAsync(ct))
+            .SelectMany(m => m).Select(m => m.SnapshotId).ToHashSet();
+        var stale = (await db.Set<ClashSnapshot>().Where(s => s.ModelId == modelId)
+                .OrderByDescending(s => s.ExtractedAt).ThenByDescending(s => s.CreatedAt)
+                .Skip(keep).Select(s => s.Id).ToListAsync(ct))
+            .Where(id => !active.Contains(id)).ToList();
         if (stale.Count == 0) return;
 
         foreach (var id in stale)

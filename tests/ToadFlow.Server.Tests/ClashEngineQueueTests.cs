@@ -273,4 +273,24 @@ public class ClashEngineQueueTests : ServerTest
         watch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(20));
         (await RunAsync(run.RunId)).HitCount.ShouldBe(100_000);
     }
+
+    [Test]
+    public async Task Prune_KeepsSnapshotOfActiveRun()
+    {
+        var (admin, agent) = await SetupAsync();
+        await using var _ = agent;
+        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
+        var run = await StartAsync(admin, partId);
+        var queuedSnapshot = (await RunAsync(run.RunId)).Models.Single().SnapshotId;
+
+        // Ночная выгрузка той же модели, пока прогон ждёт движка: при «хранить 1» прежний слепок подлежит удалению.
+        var published = await ClashFixtures.PublishAsync(Server, agent, "POL_K1_AR.rvt");
+        await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded);
+
+        var engine = EngineClient(Server);
+        var model = (await ClaimAsync(engine)).ShouldNotBeNull().Models.Single();
+        model.SnapshotId.ShouldBe(queuedSnapshot);
+        (await engine.GetAsync($"/api/engine/snapshots/{model.SnapshotId}/geometry")).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
 }
