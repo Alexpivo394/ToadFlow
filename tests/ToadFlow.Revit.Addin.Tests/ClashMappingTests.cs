@@ -80,3 +80,12 @@ public class ClashMappingTests
         JsonSerializer.Deserialize<ClashStagedSnapshot>(AddinPipeJson.SerializeObject(staged), Server).ShouldBe(staged);
     }
 }
+
+public class ClashMappingLogTests
+{
+    [Test]
+    public void FailureLog_Cancelled_IsShort() => ClashMapping.FailureLog(new OperationCanceledException()).ShouldBe("выгрузка отменена");
+
+    [Test]
+    public void FailureLog_Error_KeepsDetails() => ClashMapping.FailureLog(new IOException("диск переполнен")).ShouldStartWith("выгрузка не удалась: System.IO.IOException: диск переполнен");
+}

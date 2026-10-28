@@ -53,6 +53,10 @@ public static class ClashMapping
         _ => (JobOutcome.Failed, exception.Message)
     };
 
+    /// <summary>Строка журнала о неудачной выгрузке: отмена — без стека, остальное — с подробностями для разбора.</summary>
+    public static string FailureLog(Exception exception) =>
+        exception is OperationCanceledException ? "выгрузка отменена" : $"выгрузка не удалась: {exception}";
+
     public static ClashStagedSnapshot ToStaged(string folder, int elements, long triangles, int inventory) => new(folder, elements, triangles, inventory);
 
     private static string Number(long value) => value.ToString("#,0", Thousands);

@@ -42,7 +42,7 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
         catch (Exception exception) when (exception is OperationCanceledException or ArgumentException or IOException or UnauthorizedAccessException
                                               or InvalidOperationException or Autodesk.Revit.Exceptions.ApplicationException)
         {
-            progress.Step(payload.ModelName, $"выгрузка не удалась: {exception}");
+            progress.Step(payload.ModelName, ClashMapping.FailureLog(exception));
             var (outcome, note) = ClashMapping.MapFailure(exception, exception is Autodesk.Revit.Exceptions.InternalException, payload.ViewName);
             return (outcome, note, null);
         }
