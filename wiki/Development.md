@@ -12,7 +12,8 @@
 | `src/ToadFlow.Server` | Ядро сервера: агенты, очередь заданий, расписания, история, пользователи, события |
 | `src/ToadFlow.Server.Export` | Модуль «Выгрузка RVT/NWC»: пресеты, настройки расписания, задания агентам |
 | `src/ToadFlow.Server.Loi` | Модуль «Проверка LOI»: профили ParamChecker, каталог категорий и параметров Revit, задания агентам |
-| `src/ToadFlow.Server.Clash` | Модуль «Коллизии»: задания выгрузки геометрии, приём слепков от агентов, хранилище и каталог параметров |
+| `src/ToadFlow.Server.Clash` | Модуль «Коллизии»: выгрузки моделей, части, черновики проверок и шаблоны, очередь прогонов движка и их результаты |
+| `src/ToadFlow.Clash.Worker` | Работник движка коллизий — отдельный процесс (контейнер `clash-engine`), говорит с сервером по HTTP |
 | `src/ToadFlow.Server.Host` | Приложение сервера: ядро и подключённые модули |
 | `src/ToadFlow.Contracts` | Протокол сервер ↔ агент ↔ аддин |
 | `src/ToadFlow.Agent.Core` | Агент: связь с сервером, экземпляры Revit, обнаружение зависаний, обзор источников |
@@ -45,12 +46,21 @@ dotnet run --project src/ToadFlow.Agent
 
 Аддин для отладки: `dotnet build src/ToadFlow.Revit.Addin -c Debug.R22` кладёт его в `%AppData%\Autodesk\Revit\Addins\2022`. Аддин работает только в Revit, запущенном агентом, — запускайте выгрузку через расписание.
 
+
+Движок коллизий против локального сервера (ключ — любой, одинаковый у обоих):
+
+```powershell
+$env:Clash__EngineKey = 'dev-engine-key'; dotnet run --project src/ToadFlow.Server.Host   # сервер с ключом движка
+$env:Clash__EngineKey = 'dev-engine-key'; dotnet run --project src/ToadFlow.Clash.Worker   # работник: http://localhost:5000
+```
+
 ## Тесты
 
 ```powershell
 dotnet test --project tests/ToadFlow.Server.Tests      # на встроенном PostgreSQL
 dotnet test --project tests/ToadFlow.Agent.Tests       # агент против настоящего сервера и имитации Revit
 dotnet test --project tests/ToadFlow.Revit.Addin.Tests # логика аддина без Revit
+dotnet test --project tests/ToadFlow.Clash.Worker.Tests # работник движка коллизий против настоящего сервера
 cd web; npm test
 ```
 

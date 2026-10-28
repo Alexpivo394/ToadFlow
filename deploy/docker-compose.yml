@@ -30,9 +30,26 @@ services:
       Admin__Login: ${ADMIN_LOGIN:-admin}
       Admin__Password: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD в .env}
       Clash__StorageRoot: /data/clash
+      Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env — общий ключ сервера и движка коллизий}
     volumes:
       # Выгрузки геометрии для коллизий: последние N на модель (Настройки → Коллизии)
       - clash:/data/clash
+
+  # Движок коллизий: прогоны черновиков по одному. Лимиты — чтобы не душить сервер и PostgreSQL на той же машине.
+  clash-engine:
+    build:
+      context: ..
+      dockerfile: deploy/clash-engine.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
+    mem_limit: 8g
+    cpus: 8
+    environment:
+      Clash__ServerUrl: http://server:8080
+      Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env}
+    volumes:
+      - clash-engine-cache:/data/cache
 
   web:
     build:
@@ -47,3 +64,4 @@ services:
 volumes:
   postgres:
   clash:
+  clash-engine-cache:
