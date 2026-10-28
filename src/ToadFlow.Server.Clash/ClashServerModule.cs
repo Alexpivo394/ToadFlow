@@ -127,6 +127,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashDrafts();
         api.MapClashSetPreview();
         api.MapClashDraftRuns();
+        api.MapClashDraftResults();
         api.MapClashTemplates();
     }
 
