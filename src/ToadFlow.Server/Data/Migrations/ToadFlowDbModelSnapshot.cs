@@ -178,6 +178,71 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_uploads", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("draft_json");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Object")
+                        .HasColumnType("text")
+                        .HasColumnName("object");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("text")
+                        .HasColumnName("part");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clash_parts");
+
+                    b.ToTable("clash_parts", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPartModel", b =>
+                {
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("model_id");
+
+                    b.Property<string>("DisciplineOverride")
+                        .HasColumnType("text")
+                        .HasColumnName("discipline_override");
+
+                    b.HasKey("PartId", "ModelId")
+                        .HasName("pk_clash_part_models");
+
+                    b.HasIndex("ModelId")
+                        .HasDatabaseName("ix_clash_part_models_model_id");
+
+                    b.ToTable("clash_part_models", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.Agent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1195,6 +1260,23 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_snapshots_clash_models_model_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPartModel", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.ClashModel", null)
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_part_models_clash_models_model_id");
+
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_part_models_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.ApiToken", b =>

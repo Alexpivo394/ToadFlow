@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
@@ -33,6 +34,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<ClashSettingsStore>();
         services.AddScoped<SnapshotPublisher>();
         services.AddHostedService<ClashUploadCleaner>();
+        services.AddScoped<PartModels>();
     }
 
     public void ConfigureModel(ModelBuilder model)
@@ -61,9 +63,28 @@ public sealed class ClashServerModule : IServerModule
             entity.HasIndex(u => u.JobId);
             entity.HasIndex(u => u.CreatedAt);
         });
+
+        model.Entity<ClashPart>(entity =>
+        {
+            entity.ToTable("clash_parts");
+            entity.Property(p => p.Id).ValueGeneratedNever();
+            entity.Property(p => p.DraftJson).HasColumnType("jsonb");
+        });
+
+        model.Entity<ClashPartModel>(entity =>
+        {
+            entity.ToTable("clash_part_models");
+            entity.HasKey(m => new { m.PartId, m.ModelId });
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(m => m.PartId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ClashModel>().WithMany().HasForeignKey(m => m.ModelId).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
-    public void MapEndpoints(RouteGroupBuilder api) => api.MapClash();
+    public void MapEndpoints(RouteGroupBuilder api)
+    {
+        api.MapClash();
+        api.MapClashParts();
+    }
 
     /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>
     public async Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct)
