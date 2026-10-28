@@ -6,7 +6,8 @@ import { apiFetch } from './client';
 export function useApi<T>(key: unknown[], path: string | null, options: { refetchInterval?: number } = {}) {
   return useQuery({
     queryKey: key,
-    queryFn: () => apiFetch<T>(path!),
+    // 204 — «ничего нет»: TanStack Query не принимает undefined, поэтому null.
+    queryFn: async () => ((await apiFetch<T>(path!)) ?? null) as T,
     enabled: path !== null,
     refetchInterval: options.refetchInterval,
   });

@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../test/renderApp';
 
 const part = { id: 'p1', name: 'Полковая, корпус 1', object: null, part: null, updatedAt: '2026-10-28T10:00:00Z', models: [] };
@@ -75,5 +75,18 @@ describe('Draft run', () => {
     fireEvent.click(await screen.findByRole('button', { name: '2' }));
 
     await waitFor(() => expect(calls().some(([url]) => url.includes('/draft/hits?') && url.includes('page=2'))).toBe(true));
+  });
+});
+
+describe('Draft without runs', () => {
+  it('DraftRun_NoRunYet_ShowsStartWithoutQueryError', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await openDraftTab({ ...base, '/api/clash/parts/p1/draft/run': null, '/api/clash/parts/p1/draft/summary': null });
+
+    expect(await screen.findByRole('button', { name: 'Прогнать' })).toBeTruthy();
+    expect(await screen.findByText(/Результатов пока нет/)).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes('undefined'))).toEqual([]);
+    errors.mockRestore();
   });
 });
