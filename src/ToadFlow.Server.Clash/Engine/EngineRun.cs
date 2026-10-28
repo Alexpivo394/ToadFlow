@@ -86,3 +86,10 @@ public sealed record DraftRunSummary(
 {
     public static DraftRunSummary Of(EngineRun run) => new(run.Id, run.State, run.Stage, run.HitCount, run.Error, run.CreatedAt, run.FinishedAt, run.Stats);
 }
+
+/// <summary>Состояние или ход прогона черновика части изменились — странице части пора обновиться. В журнал не пишется.</summary>
+public sealed record ClashDraftChanged(ToadFlow.Server.Events.Actor Actor, Guid PartId) : ToadFlow.Server.Events.DomainEvent(Actor)
+{
+    public override string UiEntity => "clash-parts";
+    public override string UiId => PartId.ToString();
+}

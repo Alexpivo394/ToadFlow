@@ -4,6 +4,7 @@ using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Events;
 
 namespace ToadFlow.Server.Clash.Parts;
 
@@ -26,7 +27,8 @@ public static class DraftRunEndpoints
         return run is null ? Results.NoContent() : Results.Ok(DraftRunSummary.Of(run));
     }
 
-    private static async Task<IResult> StartAsync(Guid id, ToadFlowDb db, PartModels models, HttpContext http, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> StartAsync(Guid id, ToadFlowDb db, PartModels models, HttpContext http, TimeProvider time, IDomainEvents events,
+        CancellationToken ct)
     {
         var part = await db.Set<ClashPart>().AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
         if (part is null) return Results.NotFound();
@@ -59,10 +61,12 @@ public static class DraftRunEndpoints
         };
         db.Set<EngineRun>().Add(run);
         await db.SaveChangesAsync(ct);
+        events.Publish(new ClashDraftChanged(http.User.Actor(), id));
         return Results.Ok(DraftRunSummary.Of(run));
     }
 
-    private static async Task<IResult> CancelAsync(Guid id, ToadFlowDb db, DraftHits hits, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> CancelAsync(Guid id, ToadFlowDb db, DraftHits hits, TimeProvider time, HttpContext http, IDomainEvents events,
+        CancellationToken ct)
     {
         var active = await db.Set<EngineRun>().Where(r => r.PartId == id && (r.State == EngineRunState.Queued || r.State == EngineRunState.Running))
             .ToListAsync(ct);
@@ -75,6 +79,7 @@ public static class DraftRunEndpoints
         }
 
         await db.SaveChangesAsync(ct);
+        if (active.Count > 0) events.Publish(new ClashDraftChanged(http.User.Actor(), id));
         return active.Count == 0 ? Results.NotFound(new { error = "Прогона нет" }) : Results.Ok(DraftRunSummary.Of(active[^1]));
     }
 }

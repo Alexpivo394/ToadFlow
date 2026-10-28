@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Events;
 
 namespace ToadFlow.Server.Clash.Engine;
 
@@ -23,7 +24,7 @@ public static class EngineEndpoints
     }
 
     /// <summary>Следующий прогон очереди, если сейчас ни один не идёт: движок считает по одному прогону.</summary>
-    private static async Task<IResult> ClaimAsync(ToadFlowDb db, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> ClaimAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var lease = now + EngineRun.Lease;
@@ -42,6 +43,7 @@ public static class EngineEndpoints
         if (claimed.Count == 0) return Results.NoContent();
 
         var run = claimed[0];
+        events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         return Results.Ok(new EngineRunAssignment(run.Id, run.ConfigurationJson, run.Models, run.Attempt));
     }
 
@@ -55,16 +57,20 @@ public static class EngineEndpoints
         return File.Exists(path) ? Results.File(path, "application/octet-stream", enableRangeProcessing: true) : Results.NotFound();
     }
 
-    private static async Task<IResult> ProgressAsync(Guid id, EngineProgress progress, ToadFlowDb db, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> ProgressAsync(Guid id, EngineProgress progress, ToadFlowDb db, TimeProvider time, IDomainEvents events,
+        CancellationToken ct)
     {
         var lease = time.GetUtcNow() + EngineRun.Lease;
         var stage = string.IsNullOrWhiteSpace(progress.Text) ? progress.Stage : $"{progress.Stage}: {progress.Text}";
         var updated = await db.Set<EngineRun>().Where(r => r.Id == id && r.State == EngineRunState.Running)
             .ExecuteUpdateAsync(r => r.SetProperty(x => x.LeaseUntil, lease).SetProperty(x => x.Stage, stage), ct);
-        return updated == 0 ? NotRunning() : Results.Ok();
+        if (updated == 0) return NotRunning();
+        events.Publish(new ClashDraftChanged(Actor.System, await db.Set<EngineRun>().Where(r => r.Id == id).Select(r => r.PartId).SingleAsync(ct)));
+        return Results.Ok();
     }
 
     private static async Task<IResult> ResultAsync(Guid id, int part, bool last, HttpRequest request, ToadFlowDb db, DraftHits hits, TimeProvider time,
+        IDomainEvents events,
         CancellationToken ct)
     {
         var run = await db.Set<EngineRun>().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
@@ -77,18 +83,24 @@ public static class EngineEndpoints
 
         await hits.WriteChunkAsync(run, part, result.Hits, ct);
         run.LeaseUntil = time.GetUtcNow() + EngineRun.Lease;
-        if (last) await hits.CompleteAsync(run, result.Stats, ct);
+        if (last)
+        {
+            await hits.CompleteAsync(run, result.Stats, ct);
+            events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
+        }
         else await db.SaveChangesAsync(ct);
         return Results.Ok();
     }
 
-    private static async Task<IResult> FailAsync(Guid id, EngineFailure failure, ToadFlowDb db, DraftHits hits, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> FailAsync(Guid id, EngineFailure failure, ToadFlowDb db, DraftHits hits, TimeProvider time, IDomainEvents events,
+        CancellationToken ct)
     {
         var run = await db.Set<EngineRun>().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
         if (run is null) return NotRunning();
 
         await hits.DiscardAsync(run.Id, ct);
         Release(run, failure.Retry, failure.Error, time.GetUtcNow());
+        events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         await db.SaveChangesAsync(ct);
         return Results.Ok();
     }

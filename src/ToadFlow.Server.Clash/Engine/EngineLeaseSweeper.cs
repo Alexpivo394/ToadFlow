@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Events;
 
 namespace ToadFlow.Server.Clash.Engine;
 
@@ -35,6 +36,7 @@ public sealed class EngineLeaseSweeper(IServiceScopeFactory scopes, TimeProvider
         {
             await hits.DiscardAsync(run.Id, ct);
             EngineEndpoints.Release(run, retry: true, "движок перестал отвечать во время прогона", now);
+            scope.ServiceProvider.GetRequiredService<IDomainEvents>().Publish(new ClashDraftChanged(Actor.System, run.PartId));
             logger.LogWarning("Прогон движка {Run}: аренда истекла, попытка {Attempt} из {Max}", run.Id, run.Attempt, run.MaxAttempts);
         }
 

@@ -759,3 +759,66 @@ export interface SetPreviewResult {
   total: number;
   sample: { modelKey: string; uniqueId: string; elementId: number; category: string; family: string | null; type: string | null }[];
 }
+
+export type EngineRunState = 'Queued' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled';
+
+export interface EngineRunStats {
+  elements: number;
+  triangles: number;
+  candidatePairs: number;
+  loadSeconds: number;
+  broadSeconds: number;
+  narrowSeconds: number;
+  peakManagedBytes: number;
+  peakWorkingSetBytes: number;
+}
+
+export interface DraftRunSummary {
+  runId: string;
+  state: EngineRunState;
+  stage: string | null;
+  hitCount: number | null;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  stats: EngineRunStats | null;
+}
+
+export interface DraftSummary {
+  total: number;
+  byDisciplines: { disciplinePair: string; count: number; enabled: boolean; toleranceMm: number }[];
+  bySets: { setA: string; setAName: string; setB: string; setBName: string; count: number }[];
+}
+
+export interface DraftHitView {
+  number: number;
+  depthMm: number;
+  x: number;
+  y: number;
+  z: number;
+  modelA: string;
+  modelNameA: string;
+  uniqueIdA: string;
+  elementIdA: number;
+  disciplineA: string;
+  setNamesA: string[];
+  categoryA: string;
+  familyA: string | null;
+  typeA: string | null;
+  levelA: string | null;
+  modelB: string;
+  modelNameB: string;
+  uniqueIdB: string;
+  elementIdB: number;
+  disciplineB: string;
+  setNamesB: string[];
+  categoryB: string;
+  familyB: string | null;
+  typeB: string | null;
+  levelB: string | null;
+}
+
+export interface HitPage {
+  total: number;
+  items: DraftHitView[];
+}
