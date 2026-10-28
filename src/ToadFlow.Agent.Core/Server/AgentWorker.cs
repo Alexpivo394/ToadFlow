@@ -88,7 +88,10 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
         if (all.Count(i => i.Year == limit.Year && i.State != InstanceState.Idle) + pendingYear >= limit.MaxInstances) return false;
 
         var idleOfYear = all.Count(i => i.Year == limit.Year && i.State == InstanceState.Idle);
-        return idleOfYear > pendingYear || all.Count + _pending.Values.Sum() < instances.MaxSlots;
+        if (idleOfYear > pendingYear) return true;
+
+        // Новый Revit этого года сейчас не запустится — взятое задание сразу упало бы и потеряло попытку.
+        return !instances.StartDeferred(limit.Year) && all.Count + _pending.Values.Sum() < instances.MaxSlots;
     }
 
     /// <summary>Хватит ли памяти на ещё одно задание этого года. Решение пишется в журнал агента, только когда меняется.</summary>
@@ -132,12 +135,14 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             RevitInstance? instance = null;
             try
             {
-                instance = await instances.AcquireAsync(year, ct, assignment);
+                instance = await instances.AcquireAsync(year, ct, assignment, () => runner.IsCancelled(assignment.JobId));
             }
             catch (RevitStartException exception)
             {
                 logger.LogWarning("Задание {Job}: {Error}", assignment.JobId, exception.Message);
-                completion = new JobCompletionDto(assignment.JobId, JobOutcome.InfrastructureFailure, exception.Message, null);
+                completion = runner.IsCancelled(assignment.JobId)
+                    ? new JobCompletionDto(assignment.JobId, JobOutcome.Cancelled, "отменено пользователем, пока запускался Revit", null)
+                    : new JobCompletionDto(assignment.JobId, JobOutcome.InfrastructureFailure, exception.Message, null);
                 await connection.CompleteJobAsync(completion, ct);
                 return;
             }
@@ -147,7 +152,18 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             }
 
             var current = connection.Settings ?? settings;
-            completion = await runner.RunAsync(instance, assignment, current, connection, ct, options.SilenceTimeoutOverride);
+            try
+            {
+                completion = await runner.RunAsync(instance, assignment, current, connection, ct, options.SilenceTimeoutOverride);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                // Иначе задание осталось бы «выполняется»: heartbeat продлевал бы его аренду, пока жив этот Revit.
+                logger.LogError(exception, "Задание {Job} упало в агенте — Revit в слоте {Slot} будет перезапущен", assignment.JobId, instance.Slot);
+                instances.Kill(instance.Slot, "сбой агента во время задания");
+                completion = new JobCompletionDto(assignment.JobId, JobOutcome.InfrastructureFailure, $"сбой агента: {exception.Message}", null);
+            }
+
             if (instance.KillReason is null && !instance.Process.HasExited)
             {
                 // Аддин сообщил о внутренней ошибке Revit — этот процесс больше не доверяем, повтор пойдёт в новом.
@@ -173,6 +189,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
         }
         finally
         {
+            runner.Forget(assignment.JobId);
             _running.TryRemove(assignment.JobId, out _);
         }
     }

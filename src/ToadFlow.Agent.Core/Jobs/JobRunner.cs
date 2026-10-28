@@ -36,6 +36,12 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
     /// <summary>Попросить бросить задание: аддин получит отмену и ответит «отменено».</summary>
     public void Cancel(Guid jobId) => _cancelled[jobId] = true;
 
+    /// <summary>Задание отменили — в том числе пока под него запускался Revit.</summary>
+    public bool IsCancelled(Guid jobId) => _cancelled.ContainsKey(jobId);
+
+    /// <summary>Задание закончилось, не дойдя до <see cref="RunAsync" />: отмена ему больше не нужна.</summary>
+    public void Forget(Guid jobId) => _cancelled.TryRemove(jobId, out _);
+
     /// <param name="silenceOverride">Только для тестов и диагностики: молчание вместо минут из настроек.</param>
     public async Task<JobCompletionDto> RunAsync(RevitInstance instance, JobAssignmentDto assignment, AgentSettingsDto settings, IJobReporter reporter,
         CancellationToken ct, TimeSpan? silenceOverride = null)
@@ -111,20 +117,38 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
                 if (next != verdict) OnVerdictChanged(next, now);
                 verdict = next;
 
-                // Аддин молчит — возможно, поток Revit API ждёт ответа в окне-сообщении: закрываем его, а не ждём таймаута.
-                if (sampled && verdict != HangVerdict.Active && await Task.Run(instance.Process.CloseMessageDialogs, CancellationToken.None) is { Count: > 0 } closed)
+                // Аддин молчит — возможно, поток Revit API ждёт ответа в окне-диалоге: на известное окно агент отвечает сам,
+                // окно, ответ на которое за человеком, прерывает задание с его текстом, а не держит Revit до таймаута.
+                if (sampled && verdict != HangVerdict.Active)
                 {
-                    foreach (var dialog in closed)
+                    foreach (var dialog in await Task.Run(instance.Dialogs.Check, CancellationToken.None))
                     {
-                        dialogs.Add(dialog);
-                        buffer.Add(new JobLogDto(now, DiagnosticsStage, $"Revit ждал ответа в окне {dialog} на этапе «{stages.Current}» — агент закрыл окно"));
-                        logger.LogWarning("Revit в слоте {Slot} (PID {Pid}), задание {Job}: закрыто окно {Dialog}", instance.Slot, instance.Process.Pid, jobId, dialog);
+                        switch (dialog.Outcome)
+                        {
+                            case DialogOutcome.Closed:
+                                dialogs.Add(dialog.Window);
+                                buffer.Add(new JobLogDto(now, DiagnosticsStage, $"Revit ждал ответа в окне {dialog.Window} на этапе «{stages.Current}» — агент закрыл окно"));
+                                // Отсчёт молчания — заново: Revit продолжает работу после окна.
+                                instance.Touch();
+                                verdict = HangVerdict.Active;
+                                instance.MarkResponsive();
+                                break;
+                            case DialogOutcome.NotClosed:
+                                buffer.Add(new JobLogDto(now, DiagnosticsStage, $"агент ответил на окно Revit {dialog.Window}, но окно не закрылось"));
+                                break;
+                            case DialogOutcome.NeedsPerson:
+                                buffer.Add(new JobLogDto(now, DiagnosticsStage,
+                                    $"Revit ждёт ответа в окне {dialog.Window} на этапе «{stages.Current}» — {DialogRules.Describe(dialog.Kind)}; " +
+                                    $"задание прервётся через {Format(DialogWatcher.AnswerGrace)}"));
+                                break;
+                            case DialogOutcome.Fatal:
+                                return await KillAsync($"показал окно {dialog.Window} на этапе «{stages.Current}» — {DialogRules.Describe(dialog.Kind)}");
+                        }
                     }
 
-                    // Отсчёт молчания — заново: Revit продолжает работу после окна.
-                    instance.Touch();
-                    verdict = HangVerdict.Active;
-                    instance.MarkResponsive();
+                    if (instance.Dialogs.Blocking is { } blocked && now - instance.LastActivityAt >= DialogWatcher.AnswerGrace)
+                        return await KillAsync($"ждал ответа в окне {blocked.Describe()} на этапе «{stages.Current}» — " +
+                                               DialogRules.Describe(DialogRules.Classify(blocked)));
                 }
 
                 if (verdict == HangVerdict.Hung)
@@ -230,6 +254,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
             };
             if (instance.Process.Sample() is { } sample) parts.Add($"память Revit {sample.WorkingSetMb} МБ (private {sample.PrivateMb} МБ)");
             if (memory?.Snapshot() is { } ram) parts.Add($"свободно RAM {ram.AvailableMb} из {ram.TotalMb} МБ");
+            if (StartDiagnostics.Session() is { } session) parts.Add(session);
             if (instance.JournalPath is { } journal) parts.Add($"журнал Revit: {journal}");
             return string.Join(", ", parts);
         }

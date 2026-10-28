@@ -20,6 +20,9 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
     public static readonly TimeSpan StartBackoff = TimeSpan.FromMinutes(1);
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(10);
 
+    /// <summary>Как часто при запуске Revit проверять его окна-диалоги.</summary>
+    private static readonly TimeSpan DialogPoll = TimeSpan.FromSeconds(1);
+
     private readonly object _sync = new();
     private readonly List<RevitInstance> _instances = [];
     private readonly Dictionary<int, DateTimeOffset> _failedStarts = [];
@@ -51,10 +54,25 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
         lock (_sync) return _instances.Any(i => i.Year == year && i.State == InstanceState.Idle) || _instances.Count < MaxSlots;
     }
 
-    /// <summary>Экземпляр Revit этого года под задание: свободный готовый или новый (ждём hello до 5 минут).</summary>
+    /// <summary>
+    ///     Новый Revit этого года сейчас не запустится: недавний запуск не удался. Задания этого года, для которых нет
+    ///     свободного экземпляра, брать не надо — иначе каждое сразу упадёт и потеряет попытку.
+    /// </summary>
+    public bool StartDeferred(int year)
+    {
+        lock (_sync) return _failedStarts.TryGetValue(year, out var failedAt) && time.GetUtcNow() - failedAt < StartBackoff;
+    }
+
+    /// <summary>
+    ///     Экземпляр Revit этого года под задание: свободный готовый или новый. Новый готов, когда аддин сообщил, что Revit
+    ///     закончил запуск (до 5 минут). Пока Revit запускается, его окна-диалоги проверяет <see cref="DialogWatcher" />:
+    ///     известные окна агент закрывает, а окно, которое ждёт человека дольше <see cref="DialogWatcher.AnswerGrace" />,
+    ///     и окно ошибки — сразу сбой запуска с текстом окна.
+    /// </summary>
     /// <param name="job">Задание, под которое запускается Revit: пока он стартует, heartbeat держит аренду задания.</param>
-    /// <exception cref="RevitStartException">Revit этого года нет, слотов нет или он не запустился.</exception>
-    public async Task<RevitInstance> AcquireAsync(int year, CancellationToken ct, JobAssignmentDto? job = null)
+    /// <param name="abandoned">Задание отменили, пока Revit запускается: запуск прерывается.</param>
+    /// <exception cref="RevitStartException">Revit этого года нет, слотов нет, он не запустился или задание отменили.</exception>
+    public async Task<RevitInstance> AcquireAsync(int year, CancellationToken ct, JobAssignmentDto? job = null, Func<bool>? abandoned = null)
     {
         RevitInstance instance;
         RevitInstallation revit;
@@ -82,7 +100,8 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
         var pipe = PipeChannel.Listen(instance.InstanceId);
         try
         {
-            instance.Attach(launcher.Start(year, revit.RevitExe, new Dictionary<string, string> { [PipeNames.InstanceIdVariable] = instance.InstanceId.ToString() }), pipe);
+            instance.Attach(launcher.Start(year, revit.RevitExe, new Dictionary<string, string> { [PipeNames.InstanceIdVariable] = instance.InstanceId.ToString() }), pipe,
+                logger);
         }
         catch (Exception exception) when (exception is not RevitStartException)
         {
@@ -91,18 +110,29 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
             throw new RevitStartException($"Не удалось запустить Revit {year}: {exception.Message}");
         }
 
+        logger.LogInformation("Revit {Year} запускается в слоте {Slot}, PID {Pid}", year, instance.Slot, instance.Process.Pid);
         using var timeout = new CancellationTokenSource(StartTimeout, time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
-        var hello = instance.Hello.WaitAsync(linked.Token);
-        await Task.WhenAny(hello, instance.Process.Exited);
-
-        if (!hello.IsCompletedSuccessfully)
+        var failure = await WaitReadyAsync(instance, abandoned, linked.Token);
+        if (failure is not null)
         {
-            var reason = instance.Process.HasExited ? $"Revit {year} закрылся при запуске" : $"Revit {year} не запустился за {StartTimeout.TotalMinutes:0} мин";
-            logger.LogWarning("{Reason}", reason);
-            KillCore(instance, reason);
+            if (ct.IsCancellationRequested)
+            {
+                KillCore(instance, "агент остановлен");
+                ct.ThrowIfCancellationRequested();
+            }
+
+            if (abandoned?.Invoke() == true)
+            {
+                logger.LogInformation("Revit {Year} в слоте {Slot}, PID {Pid}: задание отменено во время запуска — Revit закрыт", year, instance.Slot, instance.Process.Pid);
+                KillCore(instance, "задание отменено во время запуска");
+                throw new RevitStartException($"задание отменено, пока запускался Revit {year}");
+            }
+
+            var reason = instance.Process.Describe() is { } details ? $"{failure}; {details}" : failure;
+            logger.LogWarning("Revit {Year} в слоте {Slot}, PID {Pid}: {Reason}", year, instance.Slot, instance.Process.Pid, reason);
+            KillCore(instance, failure);
             lock (_sync) _failedStarts[year] = time.GetUtcNow();
-            ct.ThrowIfCancellationRequested();
             throw new RevitStartException(reason);
         }
 
@@ -191,6 +221,52 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
     {
         foreach (var instance in Instances) KillCore(instance, "агент остановлен");
         await Task.CompletedTask;
+    }
+
+    /// <returns>null — Revit готов; иначе почему запуск не удался (для отмены и остановки агента текст не важен).</returns>
+    private async Task<string?> WaitReadyAsync(RevitInstance instance, Func<bool>? abandoned, CancellationToken ct)
+    {
+        var year = instance.Year;
+        var loaded = false;
+        while (true)
+        {
+            if (instance.Ready.IsCompletedSuccessfully) return null;
+            if (instance.Process.HasExited) return $"Revit {year} закрылся при запуске";
+            if (instance.Ready.IsFaulted) return $"аддин ToadFlow в Revit {year} отключился от агента при запуске";
+            if (abandoned?.Invoke() == true) return "";
+            if (ct.IsCancellationRequested) return NotStarted(instance);
+
+            foreach (var dialog in await Task.Run(instance.Dialogs.Check, CancellationToken.None))
+            {
+                switch (dialog.Outcome)
+                {
+                    case DialogOutcome.Fatal:
+                        return $"Revit {year} при запуске показал окно {dialog.Window} — {DialogRules.Describe(dialog.Kind)}";
+                    case DialogOutcome.NeedsPerson:
+                        instance.SetStage($"Запуск Revit: ждёт ответа в окне {dialog.Window}");
+                        break;
+                }
+            }
+
+            if (instance.Dialogs.Blocking is { } blocked)
+                return $"Revit {year} при запуске ждёт ответа в окне {blocked.Describe()} — {DialogRules.Describe(DialogRules.Classify(blocked))}";
+
+            if (!loaded && instance.Hello.IsCompletedSuccessfully)
+            {
+                loaded = true;
+                logger.LogInformation("Revit {Year} (PID {Pid}): аддин ToadFlow загружен, ждём конца запуска Revit", year, instance.Process.Pid);
+                instance.SetStage("Запуск Revit: аддин загружен");
+            }
+
+            await Task.WhenAny(instance.Ready, instance.Process.Exited, Task.Delay(DialogPoll, time, ct));
+        }
+    }
+
+    private static string NotStarted(RevitInstance instance)
+    {
+        var stage = instance.Hello.IsCompletedSuccessfully ? "аддин ToadFlow загружен, но Revit не закончил запуск" : "аддин ToadFlow не загрузился";
+        var open = instance.Dialogs.Open;
+        return $"Revit {instance.Year} не запустился за {StartTimeout.TotalMinutes:0} мин: {stage}" + (open.Count == 0 ? "" : $"; открыто окно {string.Join("; ", open)}");
     }
 
     private void KillCore(RevitInstance instance, string reason)

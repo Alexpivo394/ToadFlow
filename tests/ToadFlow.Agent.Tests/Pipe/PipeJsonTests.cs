@@ -12,7 +12,8 @@ public class PipeJsonTests
 
     public static IEnumerable<Func<PipeMessage>> Messages() =>
     [
-        () => new HelloMessage { InstanceId = Guid.NewGuid(), RevitYear = 2024, Pid = 42, HasNwcExporter = true, AddinVersion = "1.0.0" },
+        () => new HelloMessage { InstanceId = Guid.NewGuid(), RevitYear = 2024, Pid = 42, HasNwcExporter = true, AddinVersion = "1.0.0", SendsReady = true },
+        () => new ReadyMessage(),
         () => new JobMessage { JobId = JobId, ModuleKind = ModuleKinds.Loi, PayloadJson = """{"modelName":"АР.rvt"}""", TimeoutMinutes = 30 },
         () => new ProgressMessage { JobId = JobId, Stage = "Открытие", Text = "открытие модели", At = DateTimeOffset.Parse("2026-10-23T12:00:00Z") },
         () => new AliveMessage { LastActivityAt = DateTimeOffset.Parse("2026-10-23T12:00:05Z") },
@@ -34,6 +35,7 @@ public class PipeJsonTests
 
     [Test]
     [Arguments("hello.json", typeof(HelloMessage))]
+    [Arguments("ready.json", typeof(ReadyMessage))]
     [Arguments("job.json", typeof(JobMessage))]
     [Arguments("progress.json", typeof(ProgressMessage))]
     [Arguments("alive.json", typeof(AliveMessage))]
@@ -60,6 +62,7 @@ public class PipeJsonTests
         var result = PipeJson.Deserialize("""{"type":"result","jobId":"0f4f21fd-5ab8-45fd-b322-fd9b4af4c8f2","outcome":"Succeeded","note":null,"resultJson":null}""");
 
         hello.ShouldBeOfType<HelloMessage>().JournalPath.ShouldBeNull();
+        ((HelloMessage)hello).SendsReady.ShouldBeFalse();
         result.ShouldBeOfType<ResultMessage>().RecycleReason.ShouldBeNull();
     }
 

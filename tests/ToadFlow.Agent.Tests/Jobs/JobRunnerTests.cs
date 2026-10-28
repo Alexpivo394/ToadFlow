@@ -252,16 +252,10 @@ public class JobRunnerTests : IAsyncDisposable
         const string message = "«Navisworks»: Не найдена подходящая геометрия.";
         _launcher.Then(async (addin, job, _) =>
         {
-            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             addin.Process.Sampler = () => new ProcessSample(TimeSpan.FromSeconds(42), 1_000_000, 5000, 5200); // ждёт окна — простаивает
-            addin.Process.Dialogs = () =>
-            {
-                if (closed.Task.IsCompleted) return [];
-                closed.SetResult();
-                return [message];
-            };
+            var window = addin.Process.Dialogs.Show("Navisworks", ["Не найдена подходящая геометрия."], ["ОК"]);
             await addin.ProgressAsync(job, "Экспорт NWC", "экспорт NWC");
-            await closed.Task;
+            await window.Closed.Task;
             await addin.ResultAsync(job, JobOutcome.Failed, "NWC: Navisworks Exporter не создал файл NWC", """{"nwc":"Failed"}""");
         });
 
@@ -272,6 +266,75 @@ public class JobRunnerTests : IAsyncDisposable
         _reporter.Killed.ShouldBeEmpty();
         ((FakeRevitProcess)instance.Process).Killed.ShouldBeFalse();
         _reporter.Lines.ShouldContain(l => l.Text.Contains("агент закрыл окно") && l.Text.Contains("Экспорт NWC"));
+    }
+
+    [Test]
+    public async Task QuestionDialog_NotAnswered_JobStopsWithWindowText_LongBeforeSilenceLimit()
+    {
+        _launcher.Then(async (addin, job, _) =>
+        {
+            addin.Process.Sampler = () => new ProcessSample(TimeSpan.FromSeconds(42), 1_000_000, 5000, 5200);
+            addin.Process.Dialogs.Show("Autodesk Revit 2022", ["Сохранить изменения в «АР.rvt»?"], ["Да", "Нет", "Отмена"]);
+            await addin.ProgressAsync(job, "Открытие", "открытие модели");
+        });
+        var started = _time.GetUtcNow();
+
+        var (completion, instance) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 30));
+
+        completion.Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        _reporter.Killed.ShouldHaveSingleItem().Reason.ShouldContain("ждал ответа в окне «Autodesk Revit 2022»: Сохранить изменения в «АР.rvt»?");
+        (_time.GetUtcNow() - started).ShouldBeLessThan(TimeSpan.FromMinutes(10));
+        ((FakeRevitProcess)instance.Process).Dialogs.Answers.ShouldBeEmpty();
+        _reporter.Lines.ShouldContain(l => l.Text.Contains("Revit ждёт ответа в окне") && l.Text.Contains("Открытие"));
+    }
+
+    [Test]
+    public async Task DialogThatWillNotClose_DoesNotResetSilence()
+    {
+        _launcher.Then(async (addin, job, _) =>
+        {
+            addin.Process.Sampler = () => new ProcessSample(TimeSpan.FromSeconds(42), 1_000_000, 5000, 5200);
+            addin.Process.Dialogs.Show("Navisworks", ["Не найдена подходящая геометрия."], ["ОК"], closes: false);
+            await addin.ProgressAsync(job, "Экспорт NWC", "экспорт NWC");
+        });
+
+        var (completion, instance) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 30));
+
+        completion.Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        _reporter.Killed.ShouldHaveSingleItem().Reason.ShouldContain("ждал ответа в окне «Navisworks»");
+        ((FakeRevitProcess)instance.Process).Dialogs.Answers.Count.ShouldBe(DialogWatcher.MaxAttempts);
+        _reporter.Lines.ShouldContain(l => l.Text.Contains("но окно не закрылось"));
+    }
+
+    [Test]
+    public async Task FatalDialog_KillsAtOnce()
+    {
+        _launcher.Then(async (addin, job, _) =>
+        {
+            addin.Process.Dialogs.Show("Autodesk Revit 2022", ["Revit has encountered a serious error."], ["Save", "Close"]);
+            await addin.ProgressAsync(job, "Открытие", "открытие модели");
+        });
+
+        var (completion, _) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 30));
+
+        completion.Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        _reporter.Killed.ShouldHaveSingleItem().Reason.ShouldContain("серьёзная ошибка Revit");
+    }
+
+    [Test]
+    public async Task WindowsUnreadable_JobStillFinishes()
+    {
+        _launcher.Then(async (addin, job, ct) =>
+        {
+            addin.Process.Dialogs.Failure = () => new TimeoutException("UIA_E_TIMEOUT");
+            await addin.ProgressAsync(job, "Открытие", "открытие модели");
+            await Task.Delay(1000, ct);
+            await addin.ResultAsync(job, JobOutcome.Succeeded, null, """{"rvt":"Done"}""");
+        });
+
+        var (completion, _) = await RunAsync(Assignment(timeoutMinutes: 120), InstanceManagerTests.Settings(silence: 30));
+
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
     }
 
     [Test]

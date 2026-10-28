@@ -21,12 +21,12 @@ public sealed class FakeAddin : IAsyncDisposable
     private NamedPipeClientStream? _pipe;
     private StreamWriter? _writer;
 
-    public FakeAddin(FakeRevitProcess process, int year, FakeJobBehavior behavior, bool sendHello)
+    public FakeAddin(FakeRevitProcess process, int year, FakeJobBehavior behavior, FakeStartup startup)
     {
         Process = process;
         Year = year;
         Behavior = behavior;
-        Run = Task.Run(() => RunAsync(sendHello));
+        Run = Task.Run(() => RunAsync(startup));
     }
 
     public FakeRevitProcess Process { get; }
@@ -60,9 +60,15 @@ public sealed class FakeAddin : IAsyncDisposable
         }
     }
 
-    private async Task RunAsync(bool sendHello)
+    private async Task RunAsync(FakeStartup startup)
     {
-        if (!sendHello) return; // «Revit не стартовал»: к пайпу никто не подключается
+        if (!startup.Hello) return; // «Revit не стартовал»: к пайпу никто не подключается
+        if (startup.BeforeHello is not null)
+        {
+            // Агент убил «Revit», так и не дождавшийся ответа в окне.
+            await Task.WhenAny(startup.BeforeHello(Process), Process.Exited, Task.Delay(Timeout.Infinite, _stop.Token));
+            if (Process.HasExited || _stop.IsCancellationRequested) return;
+        }
 
         var instanceId = Guid.Parse(Process.Environment[PipeNames.InstanceIdVariable]);
         _pipe = new NamedPipeClientStream(".", PipeNames.ForInstance(instanceId), PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -70,7 +76,11 @@ public sealed class FakeAddin : IAsyncDisposable
         _writer = new StreamWriter(_pipe, new UTF8Encoding(false)) { AutoFlush = true };
         var reader = new StreamReader(_pipe, new UTF8Encoding(false));
 
-        await SendAsync(new HelloMessage { InstanceId = instanceId, RevitYear = Year, Pid = Process.Pid, HasNwcExporter = true, AddinVersion = "test" });
+        await SendAsync(new HelloMessage
+        {
+            InstanceId = instanceId, RevitYear = Year, Pid = Process.Pid, HasNwcExporter = true, AddinVersion = "test", SendsReady = startup.Ready is not null
+        });
+        if (startup.Ready == true) await SendAsync(new ReadyMessage());
 
         while (!_stop.IsCancellationRequested && await reader.ReadLineAsync(_stop.Token) is { } line)
         {

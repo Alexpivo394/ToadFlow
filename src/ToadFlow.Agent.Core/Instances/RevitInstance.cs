@@ -1,16 +1,18 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Pipe;
 
 namespace ToadFlow.Agent.Instances;
 
 /// <summary>
-///     Один экземпляр Revit в слоте агента. Сообщения из пайпа разбирает сам: hello и alive обновляют состояние,
+///     Один экземпляр Revit в слоте агента. Сообщения из пайпа разбирает сам: hello, ready и alive обновляют состояние,
 ///     шаги и результат текущего задания уходят исполнителю в <see cref="JobEvents" />.
 /// </summary>
 public sealed class RevitInstance
 {
     private readonly TaskCompletionSource<HelloMessage> _hello = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TimeProvider _time;
     private readonly object _sync = new();
     private Channel<PipeMessage> _jobEvents = Channel.CreateUnbounded<PipeMessage>();
@@ -52,6 +54,12 @@ public sealed class RevitInstance
     internal PipeChannel Pipe { get; private set; } = null!;
     internal Task<HelloMessage> Hello => _hello.Task;
 
+    /// <summary>Revit закончил запуск и готов к заданиям: ready от аддина, а у аддина до 1.7 — hello.</summary>
+    internal Task Ready => _ready.Task;
+
+    /// <summary>Окна-диалоги этого процесса — от запуска до выхода.</summary>
+    internal DialogWatcher Dialogs { get; private set; } = null!;
+
     /// <summary>Завершается, когда процесс закрылся или аддин отключился от пайпа.</summary>
     internal Task Closed { get; private set; } = Task.CompletedTask;
 
@@ -63,10 +71,11 @@ public sealed class RevitInstance
         }
     }
 
-    internal void Attach(IRevitProcess process, PipeChannel pipe)
+    internal void Attach(IRevitProcess process, PipeChannel pipe, ILogger logger)
     {
         Process = process;
         Pipe = pipe;
+        Dialogs = new DialogWatcher(process.Windows, Year, process.Pid, _time, logger);
         Closed = Task.WhenAny(process.Exited, pipe.Completion);
         _ = Task.Run(PumpAsync);
     }
@@ -145,6 +154,11 @@ public sealed class RevitInstance
                     JournalPath = hello.JournalPath;
                     Touch();
                     _hello.TrySetResult(hello);
+                    if (!hello.SendsReady) _ready.TrySetResult();
+                    break;
+                case ReadyMessage:
+                    Touch();
+                    _ready.TrySetResult();
                     break;
                 case AliveMessage alive:
                     // Часы аддина и агента одни (одна машина), но не позже «сейчас» агента.
@@ -158,5 +172,9 @@ public sealed class RevitInstance
         }
 
         _hello.TrySetException(new IOException("Аддин отключился, не поздоровавшись"));
+        _ready.TrySetException(new IOException("Аддин отключился до конца запуска Revit"));
+        // Сбой запуска сообщает AcquireAsync своей причиной; исключения задач только отмечаются прочитанными.
+        _ = _hello.Task.Exception;
+        _ = _ready.Task.Exception;
     }
 }

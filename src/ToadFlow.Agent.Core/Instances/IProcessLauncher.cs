@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 
 namespace ToadFlow.Agent.Instances;
@@ -28,8 +27,11 @@ public interface IRevitProcess
     /// <summary>Счётчики процесса сейчас; null — процесс закрылся или счётчики недоступны.</summary>
     ProcessSample? Sample() => null;
 
-    /// <summary>Закрывает окна-сообщения, которых ждёт Revit (<see cref="RevitMessageDialogs" />); возвращает их тексты.</summary>
-    IReadOnlyList<string> CloseMessageDialogs() => [];
+    /// <summary>Окна-диалоги этого процесса для <see cref="DialogWatcher" />.</summary>
+    IRevitWindows Windows => NoRevitWindows.Instance;
+
+    /// <summary>Для причины неудачного запуска: сессия Windows и журнал Revit этого процесса; null — сказать нечего.</summary>
+    string? Describe() => null;
 }
 
 public interface IProcessLauncher
@@ -38,10 +40,10 @@ public interface IProcessLauncher
 }
 
 /// <summary>
-///     Запуск настоящего Revit.exe с переменными окружения для аддина. Окно «Надстройка без подписи» на машине с агентом
-///     нажать некому: аддин помечается «Всегда загружать» в реестре, а если Revit всё равно спросит — агент отвечает сам.
+///     Запуск настоящего Revit.exe с переменными окружения для аддина. Аддин помечается «Всегда загружать» в реестре;
+///     Revit 2022 эту отметку не учитывает, и на окно «Надстройка без подписи» отвечает <see cref="DialogWatcher" />.
 /// </summary>
-public sealed partial class ProcessLauncher(AddinTrust trust, ILogger<ProcessLauncher> logger) : IProcessLauncher
+public sealed partial class ProcessLauncher(AddinTrust trust) : IProcessLauncher
 {
     public IRevitProcess Start(int year, string exe, IReadOnlyDictionary<string, string> environment)
     {
@@ -49,9 +51,7 @@ public sealed partial class ProcessLauncher(AddinTrust trust, ILogger<ProcessLau
         var info = new ProcessStartInfo(exe, "/nosplash") { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! };
         foreach (var (name, value) in environment) info.Environment[name] = value;
         var process = Process.Start(info) ?? throw new InvalidOperationException($"Не удалось запустить {exe}");
-        var revit = new RevitProcess(process);
-        _ = Task.Run(() => UnsignedAddinDialog.WatchAsync(process.Id, revit.Exited, InstanceManager.StartTimeout, logger));
-        return revit;
+        return new RevitProcess(process, year);
     }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
@@ -73,17 +73,22 @@ public sealed partial class ProcessLauncher(AddinTrust trust, ILogger<ProcessLau
     {
         private const long Mb = 1024 * 1024;
         private readonly Process _process;
+        private readonly int _year;
+        private readonly DateTime _startedAt = DateTime.Now;
 
-        public RevitProcess(Process process)
+        public RevitProcess(Process process, int year)
         {
             _process = process;
+            _year = year;
             _process.EnableRaisingEvents = true;
             Exited = _process.WaitForExitAsync();
+            Windows = new RevitWindows(process.Id);
         }
 
         public int Pid => _process.Id;
         public bool HasExited => _process.HasExited;
         public Task Exited { get; }
+        public IRevitWindows Windows { get; }
 
         public long WorkingSetMb
         {
@@ -118,7 +123,12 @@ public sealed partial class ProcessLauncher(AddinTrust trust, ILogger<ProcessLau
             }
         }
 
-        public IReadOnlyList<string> CloseMessageDialogs() => _process.HasExited ? [] : RevitMessageDialogs.Close(_process.Id);
+        public string? Describe()
+        {
+            var parts = new[] { StartDiagnostics.Session(), StartDiagnostics.Journal(_year, _startedAt) is { } journal ? $"журнал Revit: {journal}" : null };
+            var known = parts.OfType<string>().ToList();
+            return known.Count == 0 ? null : string.Join(", ", known);
+        }
 
         public void Kill()
         {

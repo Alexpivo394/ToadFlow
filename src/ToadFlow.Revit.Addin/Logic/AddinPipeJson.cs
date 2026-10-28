@@ -29,6 +29,7 @@ public static class AddinPipeJson
     private static readonly Dictionary<string, Type> Types = new()
     {
         [HelloMessage.Kind] = typeof(HelloMessage),
+        [ReadyMessage.Kind] = typeof(ReadyMessage),
         [JobMessage.Kind] = typeof(JobMessage),
         [ProgressMessage.Kind] = typeof(ProgressMessage),
         [AliveMessage.Kind] = typeof(AliveMessage),

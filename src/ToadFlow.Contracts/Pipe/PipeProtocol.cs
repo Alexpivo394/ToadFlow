@@ -11,7 +11,7 @@ public abstract class PipeMessage
     public abstract string Type { get; }
 }
 
-/// <summary>Аддин → агент: экземпляр Revit запущен и готов.</summary>
+/// <summary>Аддин → агент: аддин загружен в Revit и подключился. Revit при этом может ещё запускаться — см. <see cref="ReadyMessage" />.</summary>
 public sealed class HelloMessage : PipeMessage
 {
     public const string Kind = "hello";
@@ -24,6 +24,16 @@ public sealed class HelloMessage : PipeMessage
 
     /// <summary>Журнал этого процесса Revit — для разбора сбоев. null — аддин до 1.6 или Revit не сообщил путь.</summary>
     public string? JournalPath { get; set; }
+
+    /// <summary>Аддин пришлёт <see cref="ReadyMessage" />, когда Revit закончит запуск. false — аддин до 1.7: готов сразу после hello.</summary>
+    public bool SendsReady { get; set; }
+}
+
+/// <summary>Аддин → агент: Revit закончил запуск (ApplicationInitialized) и готов выполнять задания.</summary>
+public sealed class ReadyMessage : PipeMessage
+{
+    public const string Kind = "ready";
+    public override string Type => Kind;
 }
 
 /// <summary>Агент → аддин: выполнить задание над моделью.</summary>

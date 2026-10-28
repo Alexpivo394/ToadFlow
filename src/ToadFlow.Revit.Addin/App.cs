@@ -1,4 +1,5 @@
 using Alexpivo394.Revit.Export.Core;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Nice3point.Revit.Toolkit.External;
 using ToadFlow.Revit.Addin.Logic;
@@ -27,7 +28,15 @@ public sealed class App : ExternalApplication
             Application.ControlledApplication.RecordingJournalFilename, executor,
             Autodesk.Revit.UI.ExternalEvent.Create(executor), progress);
         _client.Start();
+        Application.ControlledApplication.ApplicationInitialized += OnApplicationInitialized;
     }
 
-    public override void OnShutdown() => _client?.Dispose();
+    public override void OnShutdown()
+    {
+        Application.ControlledApplication.ApplicationInitialized -= OnApplicationInitialized;
+        _client?.Dispose();
+    }
+
+    /// <summary>Revit закончил запуск: остальные аддины загружены, стартовые окна закрыты — агент может слать задания.</summary>
+    private void OnApplicationInitialized(object? sender, ApplicationInitializedEventArgs args) => _client?.MarkReady();
 }

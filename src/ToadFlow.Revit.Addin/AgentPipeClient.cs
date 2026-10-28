@@ -10,8 +10,8 @@ using ToadFlow.Revit.Addin.Logic;
 namespace ToadFlow.Revit.Addin;
 
 /// <summary>
-///     Клиент пайпа агента (фоновый поток): hello, приём заданий и отмен, «Revit жив» каждые 10 секунд.
-///     Задание выполняется в потоке Revit API через внешнее событие.
+///     Клиент пайпа агента (фоновый поток): hello, ready после запуска Revit, приём заданий и отмен, «Revit жив» каждые
+///     10 секунд. Задание выполняется в потоке Revit API через внешнее событие.
 /// </summary>
 internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNwcExporter, string? journalPath, JobExecutor executor, ExternalEvent externalEvent,
     PipeProgress progress) : IDisposable
@@ -25,6 +25,20 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
     private NamedPipeClientStream? _pipe;
     private StreamWriter? _writer;
     private Timer? _alive;
+    private bool _ready;
+
+    /// <summary>
+    ///     Revit закончил запуск. ApplicationInitialized может прийти раньше, чем фоновый поток подключится к пайпу, —
+    ///     тогда ready уходит сразу после hello.
+    /// </summary>
+    public void MarkReady()
+    {
+        lock (_write)
+        {
+            _ready = true;
+            if (_writer is not null) Write(new ReadyMessage());
+        }
+    }
 
     public void Start()
     {
@@ -47,17 +61,22 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
             _pipe = new NamedPipeClientStream(".", PipeNames.ForInstance(instanceId), PipeDirection.InOut, PipeOptions.Asynchronous);
             _pipe.Connect(ConnectTimeoutMs);
             var encoding = new UTF8Encoding(false);
-            _writer = new StreamWriter(_pipe, encoding) { AutoFlush = true };
-
-            Send(new HelloMessage
+            lock (_write)
             {
-                InstanceId = instanceId,
-                RevitYear = revitYear,
-                Pid = Process.GetCurrentProcess().Id,
-                HasNwcExporter = hasNwcExporter,
-                AddinVersion = typeof(AgentPipeClient).Assembly.GetName().Version?.ToString() ?? "0",
-                JournalPath = journalPath
-            });
+                _writer = new StreamWriter(_pipe, encoding) { AutoFlush = true };
+                Write(new HelloMessage
+                {
+                    InstanceId = instanceId,
+                    RevitYear = revitYear,
+                    Pid = Process.GetCurrentProcess().Id,
+                    HasNwcExporter = hasNwcExporter,
+                    AddinVersion = typeof(AgentPipeClient).Assembly.GetName().Version?.ToString() ?? "0",
+                    JournalPath = journalPath,
+                    SendsReady = true
+                });
+                if (_ready) Write(new ReadyMessage());
+            }
+
             _alive = new Timer(_ => Send(new AliveMessage { LastActivityAt = progress.LastActivityAt }), null, AliveEvery, AliveEvery);
 
             using var reader = new StreamReader(_pipe, encoding);
@@ -84,16 +103,19 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
 
     private void Send(PipeMessage message)
     {
-        lock (_write)
+        lock (_write) Write(message);
+    }
+
+    /// <summary>Под <see cref="_write" />.</summary>
+    private void Write(PipeMessage message)
+    {
+        try
         {
-            try
-            {
-                _writer?.WriteLine(AddinPipeJson.Serialize(message));
-            }
-            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
-            {
-                // пайп закрыт
-            }
+            _writer?.WriteLine(AddinPipeJson.Serialize(message));
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            // пайп закрыт
         }
     }
 

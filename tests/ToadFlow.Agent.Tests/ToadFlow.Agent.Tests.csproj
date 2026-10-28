@@ -4,6 +4,8 @@
         <TargetFramework>net10.0-windows</TargetFramework>
         <OutputType>Exe</OutputType>
         <IsPackable>false</IsPackable>
+        <!-- MessageBox и TaskDialog для проверки поиска и закрытия окон агентом на настоящих окнах Windows -->
+        <UseWindowsForms>true</UseWindowsForms>
     </PropertyGroup>
 
     <ItemGroup>
