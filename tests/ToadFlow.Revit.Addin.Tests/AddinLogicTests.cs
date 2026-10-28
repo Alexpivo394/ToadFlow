@@ -121,6 +121,21 @@ public class PayloadMappingTests
             .Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
 
     [Test]
+    public void ToResult_NwcMissing_WithAttemptsLeft_RetriedInFreshRevit() =>
+        PayloadMapping.ToResult(new ModelResult { Name = "АР.rvt", Rvt = StepResult.Done, Nwc = StepResult.Skipped, NwcMissing = true }, Payload(nwc: true), canRetry: true)
+            .Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+
+    [Test]
+    public void ToResult_NwcMissing_LastAttempt_KeepsOutcome() =>
+        PayloadMapping.ToResult(new ModelResult { Name = "АР.rvt", Rvt = StepResult.Done, Nwc = StepResult.Skipped, NwcMissing = true }, Payload(nwc: true), canRetry: false)
+            .Outcome.ShouldNotBe(JobOutcome.InfrastructureFailure);
+
+    [Test]
+    public void ToResult_NwcSkippedForMissingView_NotRetried() =>
+        PayloadMapping.ToResult(new ModelResult { Name = "АР.rvt", Rvt = StepResult.Done, Nwc = StepResult.Skipped, Note = "вид «Navisworks» не найден" }, Payload(nwc: true),
+            canRetry: true).Outcome.ShouldNotBe(JobOutcome.InfrastructureFailure);
+
+    [Test]
     public void ToResult_SkippedByUser_Cancelled() =>
         PayloadMapping.ToResult(new ModelResult { Name = "АР.rvt", SkippedByUser = true }, Payload()).Outcome.ShouldBe(JobOutcome.Cancelled);
 

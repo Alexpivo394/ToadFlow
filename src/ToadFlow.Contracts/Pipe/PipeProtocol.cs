@@ -48,6 +48,9 @@ public sealed class JobMessage : PipeMessage
 
     public string PayloadJson { get; set; } = "";
     public int TimeoutMinutes { get; set; }
+
+    /// <summary>У задания остались попытки: сбой, который в новом Revit может не повториться, лучше вернуть повтором. false — агент до 1.7.1.</summary>
+    public bool CanRetry { get; set; }
 }
 
 /// <summary>Аддин → агент: шаг выгрузки или строка журнала.</summary>

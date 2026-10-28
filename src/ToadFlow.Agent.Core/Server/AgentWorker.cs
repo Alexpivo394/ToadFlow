@@ -171,7 +171,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
                 if (completion.Outcome == JobOutcome.InfrastructureFailure)
                 {
                     instances.RecordPeak(instance.PeakWorkingSetMb);
-                    instances.Kill(instance.Slot, "внутренняя ошибка Revit — перезапуск");
+                    instances.Kill(instance.Slot, "аддин сообщил о сбое Revit — перезапуск");
                 }
                 else instances.Release(instance, current);
             }

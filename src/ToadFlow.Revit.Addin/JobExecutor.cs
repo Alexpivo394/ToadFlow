@@ -120,8 +120,11 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
         if (model.Rvt == StepResult.Done || model.Nwc == StepResult.Done) progress.Status("Публикация результатов");
         ResultPublisher.PublishOutputs(model, payload, staging.Directory, text => progress.Step(payload.ModelName, text));
 
-        var (outcome, result) = PayloadMapping.ToResult(model, payload);
-        Result(job, outcome, model.Note, AddinPipeJson.SerializeObject(result));
+        var (outcome, result) = PayloadMapping.ToResult(model, payload, job.CanRetry);
+        var note = outcome == JobOutcome.InfrastructureFailure && model is { NwcMissing: true, RevitFailure: false }
+            ? $"NWC не получился, модель повторится в новом Revit: {model.Note}"
+            : model.Note;
+        Result(job, outcome, note, AddinPipeJson.SerializeObject(result));
     }
 
     private void Check(UIApplication application, JobMessage job)

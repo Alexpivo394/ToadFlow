@@ -47,7 +47,7 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         var job = claimed[0];
         await runs.UpdateAsync(job.RunId);
         events.Publish(new JobChanged(AgentActor(agent), job.Id, job.RunId));
-        return new JobAssignmentDto(job.Id, job.ModuleKind, job.ModelName, job.PayloadJson, job.TimeoutMinutes, job.Attempt);
+        return new JobAssignmentDto(job.Id, job.ModuleKind, job.ModelName, job.PayloadJson, job.TimeoutMinutes, job.Attempt, job.MaxAttempts);
     }
 
     public async Task AppendLogAsync(Guid agentId, JobProgressDto progress)

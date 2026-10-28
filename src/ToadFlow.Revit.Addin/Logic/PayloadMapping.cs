@@ -51,7 +51,11 @@ public static class PayloadMapping
         payload.RevitYear == revitYear ? null : $"Задание для Revit {payload.RevitYear}, а этот экземпляр — Revit {revitYear}";
 
     /// <summary>Итог выгрузки → итог задания и результат для истории (статусы форматов, размеры и пути файлов).</summary>
-    public static (JobOutcome Outcome, ExportJobResult Result) ToResult(ModelResult model, ExportJobPayload payload)
+    /// <param name="canRetry">
+    ///     У задания остались попытки: NWC, который не получился, хотя модель открылась (<see cref="ModelResult.NwcMissing" />), —
+    ///     сбой инфраструктуры, сервис повторит модель в новом Revit. На последней попытке остаётся итог как есть.
+    /// </param>
+    public static (JobOutcome Outcome, ExportJobResult Result) ToResult(ModelResult model, ExportJobPayload payload, bool canRetry = false)
     {
         var rvtPath = Path.Combine(payload.OutputFolder, payload.ModelName);
         var nwcPath = Path.Combine(payload.OutputFolder, Path.GetFileNameWithoutExtension(payload.ModelName) + ".nwc");
@@ -62,7 +66,8 @@ public static class PayloadMapping
             model.Rvt == StepResult.Done ? rvtPath : null,
             model.Nwc == StepResult.Done ? nwcPath : null);
         // Внутренняя ошибка Revit — не вина модели: сбой инфраструктуры, сервис повторит модель в новом Revit.
-        var outcome = model.RevitFailure && !model.SkippedByUser ? JobOutcome.InfrastructureFailure : ExportOutcome.From(result, model.SkippedByUser);
+        var retry = !model.SkippedByUser && (model.RevitFailure || (canRetry && model.NwcMissing));
+        var outcome = retry ? JobOutcome.InfrastructureFailure : ExportOutcome.From(result, model.SkippedByUser);
         return (outcome, result);
     }
 

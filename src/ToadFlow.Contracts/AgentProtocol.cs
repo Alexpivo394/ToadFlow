@@ -72,13 +72,15 @@ public sealed record AgentHeartbeatDto(double CpuPercent, long RamUsedMb, Instan
 
 public sealed record JobRequestDto(int Slot, int Year, bool HasNwcExporter);
 
+/// <param name="MaxAttempts">Сколько всего попыток у задания; 1 — сервер до 1.7.1, повтора не будет.</param>
 public sealed record JobAssignmentDto(
     Guid JobId,
     string ModuleKind,
     string ModelName,
     string PayloadJson,
     int TimeoutMinutes,
-    int Attempt);
+    int Attempt,
+    int MaxAttempts = 1);
 
 public sealed record JobLogDto(DateTimeOffset At, string Stage, string Text);
 

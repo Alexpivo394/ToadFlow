@@ -69,7 +69,8 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
         {
             await instance.Pipe.SendAsync(new JobMessage
             {
-                JobId = jobId, ModuleKind = assignment.ModuleKind, PayloadJson = assignment.PayloadJson, TimeoutMinutes = assignment.TimeoutMinutes
+                JobId = jobId, ModuleKind = assignment.ModuleKind, PayloadJson = assignment.PayloadJson, TimeoutMinutes = assignment.TimeoutMinutes,
+                CanRetry = assignment.Attempt < assignment.MaxAttempts
             });
 
             while (true)

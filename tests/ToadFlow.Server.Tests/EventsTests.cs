@@ -70,8 +70,15 @@ public class EventsTests : ServerTest
         hub.On<string, string>("changed", (entity, id) => received.TrySetResult((entity, id)));
         await hub.StartAsync();
 
+        // StartAsync завершается по ответу на рукопожатие, а в Clients.All сервер добавляет подключение чуть позже:
+        // событие, опубликованное в этот промежуток, клиенту не уходит. Публикуем, пока клиент не получит.
         var runId = Guid.NewGuid();
-        Server.Services.GetRequiredService<IDomainEvents>().Publish(new RunChanged(Actor.System, runId));
+        var events = Server.Services.GetRequiredService<IDomainEvents>();
+        for (var attempt = 0; attempt < 50 && !received.Task.IsCompleted; attempt++)
+        {
+            events.Publish(new RunChanged(Actor.System, runId));
+            await Task.WhenAny(received.Task, Task.Delay(200));
+        }
 
         var (entity, changedId) = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         entity.ShouldBe("runs");
