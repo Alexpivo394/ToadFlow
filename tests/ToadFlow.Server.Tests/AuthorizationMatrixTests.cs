@@ -18,7 +18,8 @@ public class AuthorizationMatrixTests : ServerTest
     ///     профилей моделей — они ничего не сохраняют, POST только из-за тела запроса.
     /// </summary>
     private static readonly string[] Personal =
-        ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/loi/checks", "/api/loi/naming/preview", "/api/loi/routing/preview"];
+        ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/loi/checks", "/api/loi/naming/preview", "/api/loi/routing/preview",
+         "/api/clash/parts/{id:guid}/preview"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()
