@@ -45,7 +45,10 @@ public class AuthorizationMatrixTests : ServerTest
             };
 
             var response = await viewer.SendAsync(request);
-            if (response.StatusCode != HttpStatusCode.Forbidden) allowed.Add($"{method} {path} → {(int)response.StatusCode}");
+            // Маршруты агентов пускают только по ключу агента: пользователя они не узнают вовсе (401), а не запрещают (403).
+            var rejected = response.StatusCode == HttpStatusCode.Forbidden
+                           || (path.StartsWith("/api/agent/") && response.StatusCode == HttpStatusCode.Unauthorized);
+            if (!rejected) allowed.Add($"{method} {path} → {(int)response.StatusCode}");
         }
 
         allowed.ShouldBeEmpty();
