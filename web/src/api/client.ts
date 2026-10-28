@@ -63,6 +63,19 @@ export async function apiFetch<T>(path: string, init: RequestInit & { json?: unk
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** Двоичный ответ API (сетки просмотрщика): токен в заголовке, ошибка — с текстом сервера, как у <c>apiFetch</c>. */
+export async function apiFetchBinary(path: string): Promise<ArrayBuffer> {
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(path, { headers });
+  if (response.status === 401) {
+    onUnauthorized();
+    throw new ApiError(401, 'Сессия истекла — войдите снова');
+  }
+  if (!response.ok) throw new ApiError(response.status, await errorText(response));
+  return response.arrayBuffer();
+}
+
 async function errorText(response: Response): Promise<string> {
   try {
     const body = await response.json();

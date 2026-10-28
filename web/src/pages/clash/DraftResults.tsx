@@ -3,6 +3,7 @@ import { Button, Group, NumberInput, Pagination, Select, Stack, Table, Text, Tex
 import { useApi } from '../../api/queries';
 import type { DraftHitView, DraftSummary, HitPage } from '../../api/types';
 import { Empty, Panel } from '../../components/ui';
+import { HitViewer } from './viewer/HitViewer';
 
 const PageSize = 50;
 
@@ -30,6 +31,7 @@ function Side({ hit, side }: { hit: DraftHitView; side: 'A' | 'B' }) {
 export function DraftResults({ partId }: { partId: string }) {
   const [filters, setFilters] = useState<Filters>({ disciplines: null, sets: null, level: '', minDepth: null, sort: 'number' });
   const [page, setPage] = useState(1);
+  const [opened, setOpened] = useState<number | null>(null);
   const summary = useApi<DraftSummary>(['clash-parts', partId, 'summary'], `/api/clash/parts/${partId}/draft/summary`);
 
   const query = new URLSearchParams({ page: String(page), pageSize: String(PageSize), sort: filters.sort });
@@ -96,8 +98,8 @@ export function DraftResults({ partId }: { partId: string }) {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {(hits.data?.items ?? []).map((h) => (
-            <Table.Tr key={h.number}>
+          {(hits.data?.items ?? []).map((h, i) => (
+            <Table.Tr key={h.number} onClick={() => setOpened(i)} style={{ cursor: 'pointer' }} title="Открыть в 3D">
               <Table.Td>{h.number}</Table.Td>
               <Table.Td ta="right">{Math.round(h.depthMm)} мм</Table.Td>
               <Table.Td><Side hit={h} side="A" /></Table.Td>
@@ -108,6 +110,9 @@ export function DraftResults({ partId }: { partId: string }) {
         </Table.Tbody>
       </Table>
       {pages > 1 && <Pagination total={pages} value={page} onChange={setPage} />}
+      {opened != null && hits.data?.items[opened] && (
+        <HitViewer runId={hits.data.items[opened].runId} hits={hits.data.items} index={opened} onIndex={setOpened} onClose={() => setOpened(null)} />
+      )}
     </Stack>
   );
 }

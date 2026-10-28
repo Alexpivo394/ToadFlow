@@ -28,7 +28,18 @@ vi.mock('@microsoft/signalr', () => {
   return { HubConnectionBuilder: Builder, LogLevel: { Warning: 3 } };
 });
 
-/** Ответы сервера по пути (без query); `null` — ответ 204; /api/auth/me — вошедший администратор. */
+/** Ответ сервера с ошибкой: статус и текст в поле <c>error</c>, как у API. */
+export class Failure {
+  constructor(
+    public readonly status: number,
+    public readonly error: string,
+  ) {}
+}
+
+/**
+ * Ответы сервера по пути (без query); `null` — ответ 204; `ArrayBuffer` — двоичный ответ; `Failure` — ошибка;
+ * /api/auth/me — вошедший администратор.
+ */
 export function renderApp(path: string, responses: Record<string, unknown>) {
   const all: Record<string, unknown> = {
     '/api/auth/me': { id: 'u1', login: 'admin', displayName: 'Администратор', role: 'Admin', isDisabled: false, lastLoginAt: null },
@@ -40,6 +51,9 @@ export function renderApp(path: string, responses: Record<string, unknown>) {
       const key = input.split('?')[0];
       const body = all[key];
       if (body === null) return new Response(null, { status: 204 });
+      if (body instanceof ArrayBuffer) return new Response(body, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
+      if (body instanceof Failure)
+        return new Response(JSON.stringify({ error: body.error }), { status: body.status, headers: { 'Content-Type': 'application/json' } });
       return new Response(body === undefined ? JSON.stringify({ error: 'нет в тесте: ' + key }) : JSON.stringify(body), {
         status: body === undefined ? 404 : 200,
         headers: { 'Content-Type': 'application/json' },
