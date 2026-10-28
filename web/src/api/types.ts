@@ -791,6 +791,7 @@ export interface DraftSummary {
 }
 
 export interface DraftHitView {
+  runId: string;
   number: number;
   depthMm: number;
   x: number;
@@ -821,4 +822,55 @@ export interface DraftHitView {
 export interface HitPage {
   total: number;
   items: DraftHitView[];
+}
+
+/** Элемент сцены просмотрщика; габарит — мм относительно точки коллизии. */
+export interface ViewerElementView {
+  index: number;
+  role: 'A' | 'B' | 'context';
+  modelId: string;
+  modelName: string;
+  discipline: string;
+  uniqueId: string;
+  elementId: number;
+  category: string;
+  family: string | null;
+  type: string | null;
+  level: string | null;
+  min: [number, number, number];
+  max: [number, number, number];
+  triangles: number;
+  mesh: boolean;
+}
+
+export interface ViewerSceneView {
+  runId: string;
+  number: number;
+  x: number;
+  y: number;
+  z: number;
+  radiusMm: number;
+  depthMm: number;
+  elements: ViewerElementView[];
+  meshTriangles: number;
+  truncated: boolean;
+}
+
+export interface ViewerParameter {
+  name: string;
+  text: string | null;
+  number: number | null;
+}
+
+export interface ViewerElementProperties {
+  modelName: string;
+  discipline: string;
+  uniqueId: string;
+  elementId: number;
+  category: string;
+  family: string | null;
+  type: string | null;
+  level: string | null;
+  workset: string | null;
+  parameters: ViewerParameter[];
 }
