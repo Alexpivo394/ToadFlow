@@ -27,7 +27,7 @@ const responses = {
 
 describe('ClashPage', () => {
   it('ClashPage_ShowsModelsAndLatestSnapshot', async () => {
-    renderApp('/clash', responses);
+    renderApp('/clash/snapshots', responses);
 
     expect(await screen.findByText('RSN://rs22/ЖК/АР_К1.rvt')).toBeTruthy();
     expect(screen.getByText('32 419')).toBeTruthy();
@@ -38,7 +38,7 @@ describe('ClashPage', () => {
   });
 
   it('CatalogPanel_FiltersParametersBySearch', async () => {
-    renderApp('/clash', responses);
+    renderApp('/clash/snapshots', responses);
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Параметры' }));
     expect(await screen.findByText('Диаметр')).toBeTruthy();

@@ -709,3 +709,53 @@ export interface ModelCatalog {
 export interface ClashStorageSettings {
   keepSnapshots: number;
 }
+
+export interface PartModelView {
+  modelId: string;
+  name: string;
+  modelPath: string;
+  parsedDiscipline: string | null;
+  disciplineOverride: string | null;
+  /** Раздел в проверке: поправка или разбор имени; null — не определён. */
+  discipline: string | null;
+  latest: ClashSnapshotView | null;
+}
+
+export interface ClashPartSummary {
+  id: string;
+  name: string;
+  object: string | null;
+  part: string | null;
+  models: number;
+  sets: number;
+  updatedAt: string;
+}
+
+export interface ClashPartView {
+  id: string;
+  name: string;
+  object: string | null;
+  part: string | null;
+  updatedAt: string;
+  models: PartModelView[];
+}
+
+export interface DraftView {
+  configuration: import('../lib/clashConfig').ClashConfig;
+  disciplines: string[];
+  problems: string[];
+}
+
+export interface ClashTemplateView {
+  id: string;
+  name: string;
+  sets: number;
+  disciplines: string[];
+  updatedAt: string;
+}
+
+export interface SetPreviewResult {
+  matched: number;
+  total: number;
+  sample: { modelKey: string; uniqueId: string; elementId: number; category: string; family: string | null; type: string | null }[];
+}

@@ -1,11 +1,13 @@
 import { Fragment, useState } from 'react';
-import { Stack, Table, Text } from '@mantine/core';
+import { useNavigate } from 'react-router';
+import { Stack, Table, Tabs, Text } from '@mantine/core';
 import { useApi } from '../../api/queries';
 import type { ClashModelView, ClashSnapshotView } from '../../api/types';
 import { Empty, PageTitle, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { CatalogPanel } from './CatalogPanel';
+import { PartsList } from './PartsList';
 
 const number = (value: number) => value.toLocaleString('ru-RU');
 
@@ -36,14 +38,35 @@ function History({ modelId }: { modelId: string }) {
   );
 }
 
+/** «Коллизии»: части проекта с черновиками проверок и выгрузки моделей. */
+export function ClashPage({ tab }: { tab: 'parts' | 'snapshots' }) {
+  const navigate = useNavigate();
+  return (
+    <>
+      <PageTitle>{t.nav.clash}</PageTitle>
+      <Tabs value={tab} onChange={(v) => navigate(v === 'snapshots' ? '/clash/snapshots' : '/clash')} keepMounted={false}>
+        <Tabs.List mb="md">
+          <Tabs.Tab value="parts">Части</Tabs.Tab>
+          <Tabs.Tab value="snapshots">Выгрузки</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="parts">
+          <PartsList />
+        </Tabs.Panel>
+        <Tabs.Panel value="snapshots">
+          <Snapshots />
+        </Tabs.Panel>
+      </Tabs>
+    </>
+  );
+}
+
 /** Выгрузки моделей для коллизий: последний слепок каждой модели, история слепков и каталог параметров. */
-export function ClashPage() {
+function Snapshots() {
   const models = useApi<ClashModelView[]>(['clash-models'], '/api/clash/models');
   const [open, setOpen] = useState<string | null>(null);
 
   return (
     <>
-      <PageTitle>{t.nav.clash}</PageTitle>
       <Stack gap="md">
         <Panel title="Выгрузки моделей">
           {(models.data ?? []).length === 0 ? (

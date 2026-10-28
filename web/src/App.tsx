@@ -6,6 +6,7 @@ import { AppShell } from './layout/AppShell';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { ClashPage } from './pages/clash/ClashPage';
+import { PartEditor } from './pages/clash/PartEditor';
 import { HistoryPage } from './pages/history/HistoryPage';
 import { SchedulesPage } from './pages/schedules/SchedulesPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -36,7 +37,9 @@ export function App() {
         <Route path="schedules/:id?" element={<SchedulesPage />} />
         <Route path="history/*" element={<HistoryPage />} />
         <Route path="analytics/*" element={<AnalyticsPage />} />
-        <Route path="clash" element={<ClashPage />} />
+        <Route path="clash" element={<ClashPage tab="parts" />} />
+        <Route path="clash/snapshots" element={<ClashPage tab="snapshots" />} />
+        <Route path="clash/parts/:id" element={<PartEditor />} />
         <Route path="settings">
           <Route index element={<Navigate to="agents" replace />} />
           <Route path=":section" element={<SettingsPage />} />
