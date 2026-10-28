@@ -6,12 +6,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
 import { useApi, useApiMutation } from '../../api/queries';
 import type {
-  ExportScheduleSettings, LoiProfileSummary, LoiScheduleSettings, ModuleSettings, Preset, ScheduleChange, ScheduleRequest, ScheduleView, Selection, Source,
+  ClashScheduleSettings, ExportScheduleSettings, LoiProfileSummary, LoiScheduleSettings, ModuleSettings, Preset, ScheduleChange, ScheduleRequest, ScheduleView, Selection, Source,
 } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { ExportSettingsForm } from '../../components/ExportSettingsForm';
 import { ConfirmButton, Empty, Panel } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
+import { ClashScheduleForm } from './ClashScheduleForm';
 import { LoiScheduleForm } from './LoiScheduleForm';
 import { RecurrenceFields } from './RecurrenceFields';
 import { duplicateNames, fromSelectionDto, setFormats, toSelectionDto, type SelectionState } from './selection';
@@ -20,20 +21,31 @@ import { SourceTree } from './SourceTree';
 const moduleOptions = [
   { value: 'export', label: 'Выгрузка RVT / NWC' },
   { value: 'loi', label: 'Проверка LOI (заполнение параметров)' },
+  { value: 'clash-extract', label: 'Выгрузка геометрии для коллизий' },
 ];
 
+/** Пусто — задаче папка результатов не нужна: выгрузка для коллизий хранится на сервере. */
 const defaultFolders: Record<string, string> = {
   export: '\\\\nas\\exports\\{расписание}\\{дата}',
   loi: '\\\\nas\\loi\\{расписание}\\{дата}',
+  'clash-extract': '',
 };
 
 const loiDefaults = (profileId: string | null): LoiScheduleSettings => ({
   profileId, modelProfiles: [], disciplines: [], fallbackProfileId: null, viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
 });
 
+const clashDefaults = (): ClashScheduleSettings => ({ viewName: 'Navisworks', worksetKeyword: '' });
+
 const isLoiSettings = (settings: ModuleSettings): settings is LoiScheduleSettings => 'profileId' in settings;
 
-/** У проверки LOI формата нет: отмеченное уходит как «RVT» — так его понимают и сервер, и агенты прежних версий. */
+function defaultsFor(moduleKind: string, presetId: string): ModuleSettings {
+  if (moduleKind === 'loi') return loiDefaults(null);
+  if (moduleKind === 'clash-extract') return clashDefaults();
+  return { presetId, overrides: {} };
+}
+
+/** У проверки LOI и выгрузки для коллизий формата нет: отмеченное уходит как «RVT» — так его понимают и сервер, и агенты прежних версий. */
 function forModule(selection: Selection, moduleKind: string): Selection {
   if (moduleKind === 'export') return selection;
   return {
@@ -65,9 +77,11 @@ function blank(presetId: string): ScheduleRequest {
 function fromView(view: ScheduleView): ScheduleRequest {
   const { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings, recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority,
     modelTimeoutMinutes, maxRetries, isEnabled } = view;
-  const settings: ModuleSettings = isLoiSettings(moduleSettings)
-    ? { ...loiDefaults(null), ...moduleSettings, modelProfiles: moduleSettings.modelProfiles ?? [], disciplines: moduleSettings.disciplines ?? [] }
-    : { presetId: moduleSettings.presetId, overrides: moduleSettings.overrides ?? {} };
+  const settings: ModuleSettings = moduleKind === 'clash-extract'
+    ? { ...clashDefaults(), ...(moduleSettings as ClashScheduleSettings) }
+    : isLoiSettings(moduleSettings)
+      ? { ...loiDefaults(null), ...moduleSettings, modelProfiles: moduleSettings.modelProfiles ?? [], disciplines: moduleSettings.disciplines ?? [] }
+      : { presetId: (moduleSettings as ExportScheduleSettings).presetId, overrides: (moduleSettings as ExportScheduleSettings).overrides ?? {} };
   return { name, moduleKind, sourceId, outputFolderTemplate, selection, moduleSettings: settings,
     recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority, modelTimeoutMinutes, maxRetries, isEnabled };
 }
@@ -89,8 +103,10 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
   const [errors, setErrors] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const exportSettings = isLoiSettings(form.moduleSettings) ? null : form.moduleSettings;
-  const loiSettings = isLoiSettings(form.moduleSettings) ? form.moduleSettings : null;
+  const isClash = form.moduleKind === 'clash-extract';
+  const exportSettings = form.moduleKind === 'export' ? (form.moduleSettings as ExportScheduleSettings) : null;
+  const loiSettings = !isClash && isLoiSettings(form.moduleSettings) ? form.moduleSettings : null;
+  const clashSettings = isClash ? (form.moduleSettings as ClashScheduleSettings) : null;
 
   useEffect(() => {
     if (!schedule && exportSettings && !exportSettings.presetId && defaultPreset)
@@ -110,7 +126,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
     set({
       moduleKind,
       outputFolderTemplate: form.outputFolderTemplate === defaultFolders[form.moduleKind] ? defaultFolders[moduleKind] : form.outputFolderTemplate,
-      moduleSettings: moduleKind === 'loi' ? loiDefaults(null) : { presetId: defaultPreset, overrides: {} },
+      moduleSettings: defaultsFor(moduleKind, defaultPreset),
     });
   }
 
@@ -151,7 +167,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
         <Tabs.List mb="md">
           <Tabs.Tab value="main">Настройка</Tabs.Tab>
           <Tabs.Tab value="models">Модели ({selected.models.length + selected.folders.length})</Tabs.Tab>
-          <Tabs.Tab value="module">{isExport ? 'Параметры RVT / NWC' : 'Проверка LOI'}</Tabs.Tab>
+          <Tabs.Tab value="module">{isExport ? 'Параметры RVT / NWC' : isClash ? 'Выгрузка для коллизий' : 'Проверка LOI'}</Tabs.Tab>
           {schedule && <Tabs.Tab value="history">История изменений</Tabs.Tab>}
         </Tabs.List>
 
@@ -169,13 +185,15 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
                 disabled={readOnly}
                 onChange={(v) => set({ sourceId: v ?? '' })}
               />
-              <TextInput
-                label="Папка результатов"
-                description="Подстановки: {дата}, {время}, {расписание}"
-                value={form.outputFolderTemplate}
-                disabled={readOnly}
-                onChange={(e) => set({ outputFolderTemplate: e.currentTarget.value })}
-              />
+              {!isClash && (
+                <TextInput
+                  label="Папка результатов"
+                  description="Подстановки: {дата}, {время}, {расписание}"
+                  value={form.outputFolderTemplate}
+                  disabled={readOnly}
+                  onChange={(e) => set({ outputFolderTemplate: e.currentTarget.value })}
+                />
+              )}
             </Stack>
             <Stack gap="sm">
               <RecurrenceFields value={form} readOnly={readOnly} onChange={(v) => set(v)} />
@@ -264,6 +282,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
           {loiSettings && (
             <LoiScheduleForm value={loiSettings} profiles={profiles.data ?? []} scheduleId={schedule?.id} models={selected.models} readOnly={readOnly} onChange={(moduleSettings) => set({ moduleSettings })} />
           )}
+          {clashSettings && <ClashScheduleForm value={clashSettings} readOnly={readOnly} onChange={(moduleSettings) => set({ moduleSettings })} />}
         </Tabs.Panel>
 
         {schedule && (

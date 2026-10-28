@@ -50,3 +50,16 @@ describe('SettingsPage', () => {
     expect(await screen.findByDisplayValue('90')).toBeTruthy();
   });
 });
+
+describe('SettingsPage clash', () => {
+  it('ClashSettings_RejectsOutOfRange', async () => {
+    renderApp('/settings/clash', { '/api/clash/settings': { keepSnapshots: 3 } });
+
+    const keep = await screen.findByLabelText('Сколько выгрузок хранить у каждой модели');
+    expect((keep as HTMLInputElement).value).toBe('3');
+    fireEvent.change(keep, { target: { value: '25' } });
+
+    expect(await screen.findByText('От 1 до 20')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Сохранить' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

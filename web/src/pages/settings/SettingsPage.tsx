@@ -3,6 +3,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { PageTitle } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { AgentsSettings } from './AgentsSettings';
+import { ClashSettings } from './ClashSettings';
 import { GeneralSettingsForm } from './GeneralSettingsForm';
 import { AnalyticsSettings } from './loi/AnalyticsSettings';
 import { LoiSettings } from './loi/LoiSettings';
@@ -21,6 +22,7 @@ export function SettingsPage() {
     presets: <PresetsSettings />,
     loi: <LoiSettings />,
     analytics: <AnalyticsSettings />,
+    clash: <ClashSettings />,
     tokens: <TokensSettings />,
     users: can('Admin') ? <UsersSettings /> : null,
     general: <GeneralSettingsForm />,

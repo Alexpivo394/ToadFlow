@@ -74,7 +74,13 @@ export function SchedulesPage() {
                       <Table.Td>
                         <Box style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           <Box miw={92} style={{ flexShrink: 0 }}>
-                            {s.moduleKind === 'loi' ? <Badge color="grape" variant="light">LOI</Badge> : <Badge color="blue" variant="light">RVT / NWC</Badge>}
+                            {s.moduleKind === 'loi' ? (
+                              <Badge color="grape" variant="light">LOI</Badge>
+                            ) : s.moduleKind === 'clash-extract' ? (
+                              <Badge color="orange" variant="light">Коллизии</Badge>
+                            ) : (
+                              <Badge color="blue" variant="light">RVT / NWC</Badge>
+                            )}
                           </Box>
                           <span>
                             {s.modelCount} {pluralRu(s.modelCount, ['модель', 'модели', 'моделей'])}

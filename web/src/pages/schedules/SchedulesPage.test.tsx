@@ -98,3 +98,35 @@ describe('SchedulesPage for LOI', () => {
     expect(screen.getByRole('button', { name: '+ Раздел' })).toBeTruthy();
   });
 });
+
+describe('SchedulesPage for clash extraction', () => {
+  const clash = {
+    ...schedule, id: 's3', name: 'Коллизии ЖК «Север»', moduleKind: 'clash-extract', outputFolderTemplate: '',
+    selection: { models: [{ name: 'АР_К1.rvt', modelPath: 'RSN://rs22/ЖК/АР_К1.rvt', rvt: true, nwc: false }], folders: [] },
+    moduleSettings: { viewName: 'Вид КЛ', worksetKeyword: '#Связи' },
+  };
+  const clashResponses = { ...responses, '/api/schedules': [clash], '/api/schedules/s3/changes': [] };
+
+  it('ScheduleEditor_ClashExtract_HidesOutputFolderAndSavesViewName', async () => {
+    renderApp('/schedules/s3', clashResponses);
+
+    expect(await screen.findByText('Расписание «Коллизии ЖК «Север»»')).toBeTruthy();
+    expect(screen.getAllByText('Коллизии').some((el) => el.closest('.mantine-Badge-root'))).toBe(true); // метка вида задачи в списке
+    expect(screen.queryByLabelText('Папка результатов')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Выгрузка для коллизий' }));
+    const view = await screen.findByLabelText(/^3D-вид/);
+    expect((view as HTMLInputElement).value).toBe('Вид КЛ');
+    fireEvent.change(view, { target: { value: 'Navisworks' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    await screen.findByText('Расписание «Коллизии ЖК «Север»»');
+    const put = calls.find(([url, init]) => url === '/api/schedules/s3' && init?.method === 'PUT');
+    expect(put).toBeTruthy();
+    const body = JSON.parse(String(put![1]!.body));
+    expect(body.moduleKind).toBe('clash-extract');
+    expect(body.moduleSettings).toEqual({ viewName: 'Navisworks', worksetKeyword: '#Связи' });
+    expect(body.outputFolderTemplate).toBe('');
+    expect(body.selection.models[0].rvt).toBe(true);
+  });
+});

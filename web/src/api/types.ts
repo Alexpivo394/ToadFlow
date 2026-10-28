@@ -310,7 +310,7 @@ export interface Dashboard {
 
 // ── Проверка LOI ──────────────────────────────────────────────────────────────────────────────────────────────
 
-export type ModuleKind = 'export' | 'loi' | 'loi-catalog';
+export type ModuleKind = 'export' | 'loi' | 'loi-catalog' | 'clash-extract';
 
 /** Настройки LOI в расписании: null у вида и РН — как в профиле. */
 /** Исключение расписания: этой модели (имя без расширения) — этот профиль. */
@@ -336,7 +336,7 @@ export interface LoiScheduleSettings {
   analytics: boolean;
 }
 
-export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings;
+export type ModuleSettings = ExportScheduleSettings | LoiScheduleSettings | ClashScheduleSettings;
 
 export interface DisciplineProfile {
   discipline: string;
@@ -651,4 +651,61 @@ export interface ApiToken {
   prefix: string;
   createdAt: string;
   lastUsedAt: string | null;
+}
+
+// ── Коллизии ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Выгрузка геометрии для коллизий в расписании: 3D-вид — фильтр выгружаемых элементов. */
+export interface ClashScheduleSettings {
+  viewName: string;
+  worksetKeyword: string;
+}
+
+export interface ClashSnapshotView {
+  id: string;
+  extractedAt: string;
+  revitYear: number;
+  viewName: string;
+  elements: number;
+  triangles: number;
+  inventory: number;
+  geometryBytes: number;
+  parametersBytes: number;
+  jobId: string;
+}
+
+export interface ClashModelView {
+  id: string;
+  name: string;
+  modelPath: string;
+  latest: ClashSnapshotView | null;
+  snapshotCount: number;
+}
+
+export interface CatalogCategory {
+  /** Имя BuiltInCategory, например OST_Walls. */
+  key: string;
+  count: number;
+}
+
+export interface CatalogParameter {
+  name: string;
+  sharedGuid: string | null;
+  count: number;
+  isNumeric: boolean;
+  categories: string[];
+}
+
+/** Что встречается в выгруженных элементах моделей — подсказки редактору наборов. */
+export interface ModelCatalog {
+  categories: CatalogCategory[];
+  parameters: CatalogParameter[];
+  families: string[];
+  types: string[];
+  levels: string[];
+  worksets: string[];
+}
+
+export interface ClashStorageSettings {
+  keepSnapshots: number;
 }

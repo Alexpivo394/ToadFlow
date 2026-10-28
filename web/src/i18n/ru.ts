@@ -13,6 +13,8 @@ export const t = {
     presets: 'Пресеты выгрузки',
     loi: 'Профили LOI',
     analytics: 'Аналитика LOI',
+    clash: 'Коллизии',
+    clashSettings: 'Коллизии',
     tokens: 'Токены доступа',
     users: 'Пользователи',
     general: 'Общие',
