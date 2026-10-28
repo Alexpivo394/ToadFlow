@@ -71,6 +71,7 @@ public static class ServerSetup
 
         var agentApi = app.MapGroup("/api/agent").RequireAuthorization(Policies.Agent);
         agentApi.MapModuleAgentEndpoints(app.Services);
+        app.MapModuleExternalEndpoints(app.Services);
 
         app.MapHub<UiHub>("/hubs/ui");
         app.MapHub<AgentHub>("/hubs/agent");

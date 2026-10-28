@@ -178,6 +178,217 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_uploads", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Engine.ClashDraftHit", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("CategoryA")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("category_a");
+
+                    b.Property<string>("CategoryB")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("category_b");
+
+                    b.Property<float>("DepthMm")
+                        .HasColumnType("real")
+                        .HasColumnName("depth_mm");
+
+                    b.Property<string>("DisciplineA")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("discipline_a");
+
+                    b.Property<string>("DisciplineB")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("discipline_b");
+
+                    b.Property<string>("DisciplinePair")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("discipline_pair");
+
+                    b.Property<long>("ElementIdA")
+                        .HasColumnType("bigint")
+                        .HasColumnName("element_id_a");
+
+                    b.Property<long>("ElementIdB")
+                        .HasColumnType("bigint")
+                        .HasColumnName("element_id_b");
+
+                    b.Property<string>("FamilyA")
+                        .HasColumnType("text")
+                        .HasColumnName("family_a");
+
+                    b.Property<string>("FamilyB")
+                        .HasColumnType("text")
+                        .HasColumnName("family_b");
+
+                    b.Property<string>("LevelA")
+                        .HasColumnType("text")
+                        .HasColumnName("level_a");
+
+                    b.Property<string>("LevelB")
+                        .HasColumnType("text")
+                        .HasColumnName("level_b");
+
+                    b.Property<string>("ModelA")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_a");
+
+                    b.Property<string>("ModelB")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_b");
+
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.PrimitiveCollection<Guid[]>("SetsA")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("sets_a");
+
+                    b.PrimitiveCollection<Guid[]>("SetsB")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("sets_b");
+
+                    b.Property<string>("TypeA")
+                        .HasColumnType("text")
+                        .HasColumnName("type_a");
+
+                    b.Property<string>("TypeB")
+                        .HasColumnType("text")
+                        .HasColumnName("type_b");
+
+                    b.Property<string>("UniqueIdA")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("unique_id_a");
+
+                    b.Property<string>("UniqueIdB")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("unique_id_b");
+
+                    b.Property<double>("X")
+                        .HasColumnType("double precision")
+                        .HasColumnName("x");
+
+                    b.Property<double>("Y")
+                        .HasColumnType("double precision")
+                        .HasColumnName("y");
+
+                    b.Property<double>("Z")
+                        .HasColumnType("double precision")
+                        .HasColumnName("z");
+
+                    b.HasKey("RunId", "Number")
+                        .HasName("pk_clash_draft_hits");
+
+                    b.HasIndex("PartId")
+                        .HasDatabaseName("ix_clash_draft_hits_part_id");
+
+                    b.HasIndex("PartId", "DisciplinePair")
+                        .HasDatabaseName("ix_clash_draft_hits_part_id_discipline_pair");
+
+                    b.ToTable("clash_draft_hits", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Engine.EngineRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<int?>("HitCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("hit_count");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_attempts");
+
+                    b.Property<string>("Models")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("models");
+
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<string>("Stage")
+                        .HasColumnType("text")
+                        .HasColumnName("stage");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Stats")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("stats");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clash_engine_runs");
+
+                    b.HasIndex("PartId", "CreatedAt")
+                        .HasDatabaseName("ix_clash_engine_runs_part_id_created_at");
+
+                    b.HasIndex("State", "CreatedAt")
+                        .HasDatabaseName("ix_clash_engine_runs_state_created_at");
+
+                    b.ToTable("clash_engine_runs", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPart", b =>
                 {
                     b.Property<Guid>("Id")
@@ -205,6 +416,10 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<string>("Part")
                         .HasColumnType("text")
                         .HasColumnName("part");
+
+                    b.Property<Guid?>("ResultRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_run_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1294,6 +1509,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_snapshots_clash_models_model_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Engine.EngineRun", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_engine_runs_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPartModel", b =>

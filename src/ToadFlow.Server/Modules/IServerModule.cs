@@ -28,6 +28,11 @@ public interface IServerModule
     {
     }
 
+    /// <summary>Маршруты со своей схемой входа вне групп <c>/api</c> и <c>/api/agent</c> — например, для своего рабочего процесса модуля.</summary>
+    void MapExternalEndpoints(IEndpointRouteBuilder app)
+    {
+    }
+
     /// <summary>Ошибки настроек расписания для показа пользователю; пусто — всё в порядке.</summary>
     Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct);
 

@@ -20,6 +20,11 @@ public static class ModuleExtensions
     {
         foreach (var module in services.GetServices<IServerModule>()) module.MapAgentEndpoints(agentApi);
     }
+
+    internal static void MapModuleExternalEndpoints(this IEndpointRouteBuilder app, IServiceProvider services)
+    {
+        foreach (var module in services.GetServices<IServerModule>()) module.MapExternalEndpoints(app);
+    }
 }
 
 /// <summary>Модули по виду задания.</summary>

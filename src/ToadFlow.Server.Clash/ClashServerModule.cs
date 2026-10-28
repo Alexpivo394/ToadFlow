@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
+using Microsoft.AspNetCore.Authentication;
+using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Templates;
 using ToadFlow.Server.Clash.Uploads;
@@ -38,6 +40,11 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<PartModels>();
         services.AddScoped<PartElements>();
         services.AddSingleton<PartElementsCache>();
+        services.AddScoped<DraftHits>();
+        services.AddHostedService<EngineLeaseSweeper>();
+        services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
+        services.AddAuthorization(options => options.AddPolicy(EngineAuthHandler.Policy,
+            policy => policy.AddAuthenticationSchemes(EngineAuthHandler.SchemeName).RequireAuthenticatedUser()));
     }
 
     public void ConfigureModel(ModelBuilder model)
@@ -89,7 +96,29 @@ public sealed class ClashServerModule : IServerModule
             entity.Property(t => t.ConfigurationJson).HasColumnType("jsonb");
             entity.HasIndex(t => t.Name).IsUnique();
         });
+
+        model.Entity<EngineRun>(entity =>
+        {
+            entity.ToTable("clash_engine_runs");
+            entity.Property(r => r.Id).ValueGeneratedNever();
+            entity.Property(r => r.ConfigurationJson).HasColumnType("jsonb");
+            entity.Property(r => r.Models).AsJson();
+            entity.Property(r => r.Stats).AsJson();
+            entity.HasIndex(r => new { r.State, r.CreatedAt });
+            entity.HasIndex(r => new { r.PartId, r.CreatedAt });
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(r => r.PartId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ClashDraftHit>(entity =>
+        {
+            entity.ToTable("clash_draft_hits");
+            entity.HasKey(h => new { h.RunId, h.Number });
+            entity.HasIndex(h => new { h.PartId, h.DisciplinePair });
+            entity.HasIndex(h => h.PartId);
+        });
     }
+
+    public void MapExternalEndpoints(IEndpointRouteBuilder app) => app.MapClashEngine();
 
     public void MapEndpoints(RouteGroupBuilder api)
     {
@@ -97,6 +126,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashParts();
         api.MapClashDrafts();
         api.MapClashSetPreview();
+        api.MapClashDraftRuns();
         api.MapClashTemplates();
     }
 

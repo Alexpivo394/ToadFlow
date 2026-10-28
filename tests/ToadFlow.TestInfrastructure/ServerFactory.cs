@@ -12,6 +12,9 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
     public const string AdminLogin = "admin";
     public const string AdminPassword = "admin-pass";
 
+    /// <summary>Ключ работника движка коллизий (<c>Clash:EngineKey</c>).</summary>
+    public const string EngineKey = "test-engine-key-0123456789";
+
     /// <summary>Своё хранилище слепков коллизий у каждого сервера тестов.</summary>
     public string ClashStorageRoot { get; } = Path.Combine(Path.GetTempPath(), "toadflow-clash-tests", Guid.NewGuid().ToString("N"));
 
@@ -24,6 +27,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         builder.UseSetting("Admin:Login", AdminLogin);
         builder.UseSetting("Admin:Password", AdminPassword);
         builder.UseSetting("Clash:StorageRoot", ClashStorageRoot);
+        builder.UseSetting("Clash:EngineKey", EngineKey);
         if (time is not null) builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Singleton(time)));
     }
 }

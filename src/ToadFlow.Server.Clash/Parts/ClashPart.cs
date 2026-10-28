@@ -16,6 +16,9 @@ public sealed class ClashPart
     /// <summary>Черновик конфигурации в формате <see cref="ConfigurationJson" />.</summary>
     public string DraftJson { get; set; } = EmptyDraft;
 
+    /// <summary>Прогон, чьи коллизии — нынешний результат черновика; null — удачных прогонов не было.</summary>
+    public Guid? ResultRunId { get; set; }
+
     public Guid UpdatedByUserId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
