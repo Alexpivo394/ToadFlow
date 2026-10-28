@@ -38,7 +38,7 @@ public sealed class PartElementsCache : IDisposable
             entry.Size = Math.Max(1, index.Elements.Count);
             entry.SlidingExpiration = Sliding;
             return new CachedSnapshot(index, parameters);
-        });
+        })!;
 
     public void Dispose() => _cache.Dispose();
 }
