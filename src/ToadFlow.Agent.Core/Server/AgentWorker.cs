@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ToadFlow.Agent.Clash;
 using ToadFlow.Agent.Instances;
 using ToadFlow.Agent.Jobs;
 using ToadFlow.Contracts;
@@ -12,10 +13,13 @@ namespace ToadFlow.Agent.Server;
 ///     простаивающих Revit. Задание берётся до запуска Revit — так лицензия занята, только когда есть что выгружать.
 ///     Сверх лимитов экземпляров задание берётся, только если на него хватает физической памяти (<see cref="MemoryGate" />).
 /// </summary>
-public sealed class AgentWorker(ServerConnection connection, InstanceManager instances, JobRunner runner, AgentOptions options, TimeProvider time,
-    ISystemMemory memory, ILogger<AgentWorker> logger) : BackgroundService
+public sealed class AgentWorker(ServerConnection connection, InstanceManager instances, JobRunner runner, ClashUploader clash, AgentOptions options,
+    TimeProvider time, ISystemMemory memory, ILogger<AgentWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan IdleCheckEvery = TimeSpan.FromMinutes(1);
+
+    /// <summary>Слепки старше этого — от заданий, которые агент не успел загрузить до остановки.</summary>
+    private static readonly TimeSpan StaleStaging = TimeSpan.FromDays(1);
 
     private readonly ConcurrentDictionary<Guid, Task> _running = new();
     private readonly ConcurrentDictionary<int, int> _pending = new(); // задания, под которые ещё запускается Revit
@@ -24,6 +28,15 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        try
+        {
+            ClashUploader.CleanupStale(StaleStaging);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Не удалось убрать старые слепки коллизий");
+        }
+
         await connection.StartAsync(ct);
 
         var lastPoll = DateTimeOffset.MinValue;
@@ -177,6 +190,8 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             }
             else instances.RecordPeak(instance.PeakWorkingSetMb);
 
+            // Слепок для коллизий загружается после того, как Revit отпущен: загрузке Revit не нужен, а её сбой — не сбой Revit.
+            completion = await clash.FinishAsync(assignment, instance.Slot, completion, connection, ct);
             await connection.CompleteJobAsync(completion, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

@@ -39,6 +39,7 @@ public sealed class AgentHarness : IAsyncDisposable
         services.AddToadFlowAgentCore(config, new AgentOptions
         {
             MachineName = machineName,
+            AgentVersion = "1.8.0", // сборка тестов — 1.0.0, а такому агенту сервер не даёт ничего, кроме выгрузки RVT/NWC
             HttpMessageHandlerFactory = server.Server.CreateHandler,
             Transport = HttpTransportType.LongPolling,
             HeartbeatInterval = TimeSpan.FromMilliseconds(500),

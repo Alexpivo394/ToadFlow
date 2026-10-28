@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Agents;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
@@ -34,7 +35,7 @@ public static class ClashUploadEndpoints
             return Results.BadRequest(new { error = "Контрольная сумма — SHA-256 в шестнадцатеричном виде" });
 
         var agentId = http.User.AgentId();
-        var job = await RunningJobAsync(db, request.JobId, agentId, http.RequestAborted);
+        var job = await RunningJobAsync(db, request.JobId, agentId, time, http.RequestAborted);
         if (job is null) return NotRunning();
         if (ModelIdOf(job) is not { } modelId) return Results.UnprocessableEntity(new { error = "В задании нет ключа модели" });
 
@@ -67,13 +68,13 @@ public static class ClashUploadEndpoints
         return upload is null ? Results.NotFound() : Results.Ok(StateOf(storage, upload));
     }
 
-    private static async Task<IResult> AppendAsync(Guid id, string file, long offset, HttpContext http, ToadFlowDb db, ClashStorage storage)
+    private static async Task<IResult> AppendAsync(Guid id, string file, long offset, HttpContext http, ToadFlowDb db, ClashStorage storage, TimeProvider time)
     {
         if (ClashUploads.FileName(file) is not { } fileName) return Results.NotFound();
         var upload = await UploadAsync(db, id, http);
         if (upload is null) return Results.NotFound();
         if (upload.SnapshotId is not null) return Results.Conflict(StateOf(storage, upload));
-        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, http.RequestAborted) is null) return NotRunning();
+        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, time, http.RequestAborted) is null) return NotRunning();
 
         var declared = file == ClashUploads.Geometry ? upload.GeometryBytes : upload.ParametersBytes;
         var path = Path.Combine(storage.UploadFolder(upload.Id), fileName);
@@ -104,7 +105,7 @@ public static class ClashUploadEndpoints
         return Results.Ok(StateOf(storage, upload));
     }
 
-    private static async Task<IResult> CompleteAsync(Guid id, HttpContext http, ToadFlowDb db, ClashStorage storage, SnapshotPublisher publisher)
+    private static async Task<IResult> CompleteAsync(Guid id, HttpContext http, ToadFlowDb db, ClashStorage storage, SnapshotPublisher publisher, TimeProvider time)
     {
         var upload = await db.Set<ClashUpload>().SingleOrDefaultAsync(u => u.Id == id && u.AgentId == http.User.AgentId(), http.RequestAborted);
         if (upload is null) return Results.NotFound();
@@ -114,7 +115,7 @@ public static class ClashUploadEndpoints
             return snapshot is null ? Results.Conflict(new { error = "Слепок этой загрузки уже удалён" }) : Results.Ok(SnapshotPublisher.ResultOf(snapshot));
         }
 
-        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, http.RequestAborted) is null) return NotRunning();
+        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, time, http.RequestAborted) is null) return NotRunning();
 
         try
         {
@@ -126,9 +127,21 @@ public static class ClashUploadEndpoints
         }
     }
 
-    private static Task<Job?> RunningJobAsync(ToadFlowDb db, Guid jobId, Guid agentId, CancellationToken ct) =>
-        db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId && j.AgentId == agentId && j.Status == JobStatus.Running
-                                                         && j.ModuleKind == ModuleKinds.ClashExtract, ct);
+    /// <summary>
+    ///     Задание, если оно выполняется у этого агента, — с продлённой арендой: агент загружает слепок, уже отпустив Revit,
+    ///     и heartbeat экземпляра аренду больше не продлевает. Загрузка идёт — значит, агент жив.
+    /// </summary>
+    private static async Task<Job?> RunningJobAsync(ToadFlowDb db, Guid jobId, Guid agentId, TimeProvider time, CancellationToken ct)
+    {
+        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId && j.AgentId == agentId && j.Status == JobStatus.Running
+                                                                         && j.ModuleKind == ModuleKinds.ClashExtract, ct);
+        if (job is null) return null;
+
+        var leaseUntil = time.GetUtcNow() + AgentHub.Lease;
+        await db.Jobs.Where(j => j.Id == jobId && j.Status == JobStatus.Running && (j.LeaseUntil == null || j.LeaseUntil < leaseUntil))
+            .ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, leaseUntil), ct);
+        return job;
+    }
 
     private static Task<ClashUpload?> UploadAsync(ToadFlowDb db, Guid id, HttpContext http) =>
         db.Set<ClashUpload>().AsNoTracking().SingleOrDefaultAsync(u => u.Id == id && u.AgentId == http.User.AgentId(), http.RequestAborted);

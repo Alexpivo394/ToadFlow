@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ToadFlow.Agent.Config;
+using ToadFlow.Agent.Clash;
 using ToadFlow.Agent.Instances;
 using ToadFlow.Agent.Jobs;
 using ToadFlow.Agent.Revit;
@@ -23,6 +24,7 @@ public static class AgentCoreSetup
             provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InstanceManager>>()));
         services.AddSingleton<ISystemMemory>(options.Memory ?? new SystemLoad());
         services.AddSingleton<JobRunner>();
+        services.AddSingleton(provider => new ClashUploader(config, options, provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ClashUploader>>()));
         services.AddSingleton<SourceBrowser>();
         services.AddSingleton<ServerConnection>();
         services.AddHostedService<AgentWorker>();

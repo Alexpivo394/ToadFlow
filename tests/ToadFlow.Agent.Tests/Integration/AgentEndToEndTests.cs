@@ -5,7 +5,9 @@ using Shouldly;
 using ToadFlow.Agent.Server;
 using ToadFlow.Agent.Tests.Infrastructure;
 using ToadFlow.Contracts;
+using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Agents;
+using ToadFlow.Server.Clash;
 using ToadFlow.Server.Tests.Infrastructure;
 
 namespace ToadFlow.Agent.Tests.Integration;
@@ -88,6 +90,52 @@ public class AgentEndToEndTests : ServerTest
         _launcher.Started.Count.ShouldBe(1); // один Revit выгрузил обе модели
         var log = await _admin.GetJsonAsync<LogLine[]>($"/api/jobs/{details.Jobs[0].Id}/log");
         log.ShouldContain(l => l.Text == "открытие модели");
+    }
+
+    [Test]
+    public async Task EndToEnd_ClashExtract_SnapshotUploadedBeforeCompletion()
+    {
+        _models.Model(@"ЖК\АР.rvt", 2022);
+        // Аддин пишет слепок туда же, куда его кладёт настоящий, и сообщает агенту папку.
+        _launcher.Then(async (addin, job, _) =>
+        {
+            var payload = JsonSerializer.Deserialize<ClashExtractPayload>(job.PayloadJson, TestJson.Options)!;
+            var files = ClashFixtures.ModelFiles(payload.ModelKey);
+            var folder = ClashStaging.Folder(job.JobId);
+            Directory.CreateDirectory(folder);
+            await File.WriteAllBytesAsync(Path.Combine(folder, "model.tcg"), files.Geometry);
+            await File.WriteAllBytesAsync(Path.Combine(folder, "model.tcp"), files.Parameters);
+            var staged = new ClashStagedSnapshot(folder, files.Elements, files.Triangles, files.Inventory);
+            await addin.ResultAsync(job, JobOutcome.Succeeded, null, JsonSerializer.Serialize(staged, TestJson.Options));
+        });
+        await AgentAsync();
+        var sourceId = await FolderSourceAsync();
+        var schedule = await ScheduleApi.CreateAsync(_admin, new
+        {
+            name = "Коллизии ЖК",
+            moduleKind = ModuleKinds.ClashExtract,
+            sourceId,
+            outputFolderTemplate = "",
+            selection = new SelectionDto([], [new FolderSelectionDto("", true, false)]),
+            moduleSettings = new { viewName = "Navisworks" },
+            recurrenceKind = RecurrenceKind.Weekly,
+            daysOfWeekMask = 0b0011111,
+            timeOfDay = "20:00:00",
+            priority = 0,
+            modelTimeoutMinutes = 30,
+            maxRetries = 1,
+            isEnabled = false
+        });
+
+        var runId = (await (await _admin.PostAsync($"/api/schedules/{schedule.Id}/run", null)).ReadJsonAsync<RunCreated>()).RunId;
+
+        var job = (await UntilAsync(runId, d => d.Run.State == RunState.Completed)).Jobs.ShouldHaveSingleItem();
+        job.Status.ShouldBe(JobStatus.Succeeded);
+        var result = job.Result.ShouldNotBeNull().Deserialize<ClashExtractResult>(TestJson.Options)!;
+        var snapshot = await DbAsync(db => db.Set<ClashSnapshot>().SingleAsync());
+        snapshot.Id.ShouldBe(result.SnapshotId);
+        snapshot.JobId.ShouldBe(job.Id);
+        Directory.Exists(ClashStaging.Folder(job.Id)).ShouldBeFalse();
     }
 
     [Test]
