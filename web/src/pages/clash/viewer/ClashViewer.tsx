@@ -156,10 +156,14 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
         geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
         geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
         geometry.computeVertexNormals();
+        // Все материалы прозрачные, чтобы порядок задавал renderOrder: окружение (глубину не пишет) рисуется первым,
+        // A и B — поверх него. Иначе в плотном узле сотни полупрозрачных слоёв закрывают пару целиком.
+        const pair = element.role !== 'context';
         object = new THREE.Mesh(
           geometry,
-          new THREE.MeshLambertMaterial({ color, opacity, transparent: opacity < 1, depthWrite: opacity === 1, side: THREE.DoubleSide }),
+          new THREE.MeshLambertMaterial({ color, opacity, transparent: true, depthWrite: pair, side: THREE.DoubleSide }),
         );
+        object.renderOrder = pair ? 2 : 1;
       } else {
         const size = element.max.map((v, i) => Math.max(v - element.min[i], 1)) as [number, number, number];
         object = new THREE.LineSegments(
@@ -182,7 +186,7 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     if (!s) return;
     const pair = scene.elements.filter((e) => e.role !== 'context');
     const extent = Math.max(
-      1000,
+      300,
       ...pair.flatMap((e) => [0, 1, 2].map((axis) => Math.max(Math.abs(e.min[axis]), Math.abs(e.max[axis])))),
     );
     const distance = Math.min(extent * 4, scene.radiusMm * 1.5);
@@ -208,6 +212,9 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
       material.needsUpdate = true;
       if (object instanceof THREE.LineSegments) {
         (material as THREE.LineBasicMaterial).color.set(object.userData.index === selected ? Selected : roleColor(element.role).color);
+      } else {
+        // Выбранный подсвечивается и сам: его контур может целиком уйти за секущий куб.
+        (material as THREE.MeshLambertMaterial).emissive.set(object.userData.index === selected ? '#8a6500' : '#000000');
       }
     }
 

@@ -10,6 +10,10 @@ using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
+using ToadFlow.Server.Clash.Viewer;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using ToadFlow.Server.Tests.Infrastructure;
 
 namespace ToadFlow.Clash.Worker.Tests;
@@ -30,11 +34,97 @@ public class RealSnapshotsCheck : ServerTest
     [Test, Explicit]
     public async Task RealSnapshots_DraftRunWithinBudget()
     {
+        var report = new StringBuilder();
+        var (admin, partId) = await PreparePartAsync(report);
+        var elapsed = await RunWorkerAsync(admin, partId);
+        await ReportRunAsync(admin, partId, elapsed, report);
+    }
+
+    /// <summary>
+    ///     Просмотрщик на реальной части: время и размер сцены и сеток для самых глубоких коллизий и для коллизий с самым
+    ///     плотным окружением. С <c>TOADCLASH_HOLD_MINUTES</c> сервер остаётся доступен на http://localhost:5000 (вход
+    ///     <c>admin</c> / <c>admin-pass</c>) — веб открывается через <c>npm run dev</c>.
+    /// </summary>
+    [Test, Explicit]
+    public async Task RealSnapshots_ViewerScenes()
+    {
+        var report = new StringBuilder();
+        var (admin, partId) = await PreparePartAsync(report);
+        await RunWorkerAsync(admin, partId);
+
+        var deepest = (await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits?sort=depth&pageSize=3")).Items;
+        var ordinary = (await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits?page=200&pageSize=40")).Items;
+        var dense = (await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits?disciplines={Uri.EscapeDataString("ОВО × ОВО")}&pageSize=40")).Items;
+        var measured = new List<(DraftHitView Hit, ViewerSceneView Scene, double SceneSeconds, double MeshSeconds, long Bytes)>();
+        foreach (var hit in deepest.Concat(ordinary).Concat(dense))
+        {
+            var watch = Stopwatch.StartNew();
+            var scene = await admin.GetJsonAsync<ViewerSceneView>($"/api/clash/runs/{hit.RunId}/hits/{hit.Number}/scene");
+            var sceneSeconds = watch.Elapsed.TotalSeconds;
+            watch.Restart();
+            var bytes = await admin.GetByteArrayAsync($"/api/clash/runs/{hit.RunId}/hits/{hit.Number}/meshes");
+            measured.Add((hit, scene, sceneSeconds, watch.Elapsed.TotalSeconds, bytes.Length));
+        }
+
+        report.AppendLine($"Просмотрщик, {measured.Count} коллизий (самые глубокие, обычные, ОВО × ОВО):");
+        foreach (var m in measured.Take(3).Concat(measured.OrderByDescending(m => m.Scene.MeshTriangles).Take(5)).Distinct())
+            report.AppendLine($"  № {m.Hit.Number} {m.Hit.DisciplineA} × {m.Hit.DisciplineB}: элементов {m.Scene.Elements.Count}, с сеткой {m.Scene.Elements.Count(e => e.Mesh)}, " +
+                              $"треугольников {m.Scene.MeshTriangles:N0}{(m.Scene.Truncated ? ", урезано" : "")}; сцена {m.SceneSeconds:0.00} с, " +
+                              $"сетки {m.MeshSeconds:0.00} с, {m.Bytes / 1e6:0.0} МБ");
+        report.AppendLine($"  Медиана: сцена {Median(measured.Select(m => m.SceneSeconds)):0.00} с, сетки {Median(measured.Select(m => m.MeshSeconds)):0.00} с, " +
+                          $"{Median(measured.Select(m => m.Bytes / 1e6)):0.0} МБ; максимум сеток {measured.Max(m => m.MeshSeconds):0.00} с, " +
+                          $"{measured.Max(m => m.Bytes) / 1e6:0.0} МБ");
+        await WriteReportAsync(report);
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("TOADCLASH_HOLD_MINUTES"), out var minutes) && minutes > 0)
+            await HoldAsync(TimeSpan.FromMinutes(minutes));
+
+        measured.ShouldAllBe(m => m.Scene.Elements.Count >= 2 && m.Bytes > 8);
+    }
+
+    private static double Median(IEnumerable<double> values)
+    {
+        var sorted = values.Order().ToArray();
+        return sorted[sorted.Length / 2];
+    }
+
+    /// <summary>
+    ///     Прокси на http://localhost:5000 к серверу теста в памяти: так к нему ходит веб из <c>npm run dev</c>. Хабы SignalR
+    ///     не проксируются — живых обновлений в браузере не будет.
+    /// </summary>
+    private async Task HoldAsync(TimeSpan duration)
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls("http://localhost:5000");
+        await using var app = builder.Build();
+        var inner = new HttpClient(Server.Server.CreateHandler()) { BaseAddress = new Uri("http://localhost/"), Timeout = TimeSpan.FromMinutes(5) };
+        app.Map("/{**path}", async (HttpContext context) =>
+        {
+            using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), context.Request.Path + context.Request.QueryString);
+            if (context.Request.ContentLength > 0 || context.Request.Headers.ContainsKey("Transfer-Encoding"))
+            {
+                request.Content = new StreamContent(context.Request.Body);
+                if (context.Request.ContentType is { } type) request.Content.Headers.TryAddWithoutValidation("Content-Type", type);
+            }
+
+            if (context.Request.Headers.Authorization.ToString() is { Length: > 0 } auth) request.Headers.TryAddWithoutValidation("Authorization", auth);
+            using var response = await inner.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+            context.Response.StatusCode = (int)response.StatusCode;
+            if (response.Content.Headers.ContentType is { } contentType) context.Response.ContentType = contentType.ToString();
+            await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+        });
+        await app.StartAsync();
+        Console.WriteLine($"Сервер с реальной частью: http://localhost:5000 до {DateTime.Now + duration:HH:mm}");
+        await Task.Delay(duration);
+        await app.StopAsync();
+    }
+
+    private async Task<(HttpClient Admin, Guid PartId)> PreparePartAsync(StringBuilder report)
+    {
         var folder = Environment.GetEnvironmentVariable("TOADCLASH_REAL_WORK")
                      ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ToadClashData", "real-work");
         var snapshots = Directory.GetDirectories(folder, "*.toadclash-*").Order().ToList();
         snapshots.ShouldNotBeEmpty();
-        var report = new StringBuilder();
         var admin = await AdminAsync();
         await using var agent = await FakeAgent.RegisterAsync(Server, admin);
         await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
@@ -64,8 +154,12 @@ public class RealSnapshotsCheck : ServerTest
         var single = new ClashConfiguration([config.Sets.Single(s => s.Discipline == "ВК")], [], []);
         var counted = await (await admin.PostAsync($"/api/clash/parts/{part.Id}/preview", Json(single))).ReadJsonAsync<JsonElement>();
         report.AppendLine($"Предпросмотр набора ВК «Все»: {counted.GetProperty("matched")} из {counted.GetProperty("total")}, {preview.Elapsed.TotalSeconds:0.0} с");
+        return (admin, part.Id);
+    }
 
-        (await admin.PostAsync($"/api/clash/parts/{part.Id}/draft/run", null)).EnsureSuccessStatusCode();
+    private async Task<TimeSpan> RunWorkerAsync(HttpClient admin, Guid partId)
+    {
+        (await admin.PostAsync($"/api/clash/parts/{partId}/draft/run", null)).EnsureSuccessStatusCode();
         var cache = Path.Combine(Path.GetTempPath(), "toadflow-engine-cache-real");
         var http = new HttpClient(Server.Server.CreateHandler()) { BaseAddress = new Uri("http://localhost/"), Timeout = TimeSpan.FromMinutes(10) };
         http.DefaultRequestHeaders.Add(EngineApi.KeyHeader, ServerFactory.EngineKey);
@@ -75,17 +169,20 @@ public class RealSnapshotsCheck : ServerTest
 
         var watch = Stopwatch.StartNew();
         (await worker.RunOnceAsync(CancellationToken.None)).ShouldBe(RunOutcome.Succeeded);
-        watch.Stop();
+        return watch.Elapsed;
+    }
 
-        var run = await admin.GetJsonAsync<DraftRunSummary>($"/api/clash/parts/{part.Id}/draft/run");
+    private async Task ReportRunAsync(HttpClient admin, Guid partId, TimeSpan elapsed, StringBuilder report)
+    {
+        var run = await admin.GetJsonAsync<DraftRunSummary>($"/api/clash/parts/{partId}/draft/run");
         var stats = run.Stats.ShouldNotBeNull();
-        var summary = await admin.GetJsonAsync<DraftSummary>($"/api/clash/parts/{part.Id}/draft/summary");
-        var deepest = await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{part.Id}/draft/hits?sort=depth&pageSize=5");
+        var summary = await admin.GetJsonAsync<DraftSummary>($"/api/clash/parts/{partId}/draft/summary");
+        var deepest = await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits?sort=depth&pageSize=5");
         var paged = Stopwatch.StartNew();
-        await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{part.Id}/draft/hits?page=100&pageSize=50");
+        await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits?page=100&pageSize=50");
         var pageSeconds = paged.Elapsed.TotalSeconds;
 
-        report.AppendLine($"Прогон: {watch.Elapsed.TotalSeconds:0} с (загрузка моделей {stats.LoadSeconds:0} с, поиск {stats.BroadSeconds + stats.NarrowSeconds:0} с), " +
+        report.AppendLine($"Прогон: {elapsed.TotalSeconds:0} с (загрузка моделей {stats.LoadSeconds:0} с, поиск {stats.BroadSeconds + stats.NarrowSeconds:0} с), " +
                           $"элементов {stats.Elements:N0}, треугольников {stats.Triangles:N0}, пар-кандидатов {stats.CandidatePairs:N0}, " +
                           $"память работника до {stats.PeakWorkingSetBytes / 1e9:0.0} ГБ");
         report.AppendLine($"Коллизий: {summary.Total:N0}; страница 100 списка — {pageSeconds:0.00} с");
@@ -94,13 +191,18 @@ public class RealSnapshotsCheck : ServerTest
         foreach (var hit in deepest.Items)
             report.AppendLine($"  {hit.DepthMm:0} мм: {hit.ModelNameA} {hit.CategoryA} {hit.ElementIdA} × {hit.ModelNameB} {hit.CategoryB} {hit.ElementIdB}");
 
-        var output = Environment.GetEnvironmentVariable("TOADCLASH_REPORT") ?? Path.Combine(Path.GetTempPath(), "toadclash-real-check.txt");
-        await File.WriteAllTextAsync(output, report.ToString());
-        Console.WriteLine(report);
+        await WriteReportAsync(report);
 
         run.State.ShouldBe(EngineRunState.Succeeded);
         summary.Total.ShouldBeGreaterThan(0);
-        watch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(300)); // бюджет спека
+        elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(300)); // бюджет спека
+    }
+
+    private static async Task WriteReportAsync(StringBuilder report)
+    {
+        var output = Environment.GetEnvironmentVariable("TOADCLASH_REPORT") ?? Path.Combine(Path.GetTempPath(), "toadclash-real-check.txt");
+        await File.WriteAllTextAsync(output, report.ToString());
+        Console.WriteLine(report);
     }
 
     /// <summary>Слепок этапа 0 под ключом модели ToadFlow (ключ входит в TCG), загрузка частями по 8 МиБ, как у агента.</summary>
