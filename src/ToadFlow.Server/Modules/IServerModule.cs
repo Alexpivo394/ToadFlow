@@ -23,6 +23,11 @@ public interface IServerModule
     /// <param name="api">Группа <c>/api</c>; по умолчанию требует роль Наблюдатель.</param>
     void MapEndpoints(RouteGroupBuilder api);
 
+    /// <param name="agentApi">Группа <c>/api/agent</c>: вызовы агентов по их ключу (политика <c>Agent</c>), без пользовательских ролей.</param>
+    void MapAgentEndpoints(RouteGroupBuilder agentApi)
+    {
+    }
+
     /// <summary>Ошибки настроек расписания для показа пользователю; пусто — всё в порядке.</summary>
     Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct);
 

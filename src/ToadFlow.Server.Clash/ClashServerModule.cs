@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Modules;
 
@@ -28,6 +29,7 @@ public sealed class ClashServerModule : IServerModule
                     : "/data/clash");
         services.AddScoped<ClashStorage>();
         services.AddScoped<ClashSettingsStore>();
+        services.AddScoped<SnapshotPublisher>();
     }
 
     public void ConfigureModel(ModelBuilder model)
@@ -61,6 +63,8 @@ public sealed class ClashServerModule : IServerModule
     public void MapEndpoints(RouteGroupBuilder api)
     {
     }
+
+    public void MapAgentEndpoints(RouteGroupBuilder agentApi) => agentApi.MapClashUploads();
 
     public Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct)
     {

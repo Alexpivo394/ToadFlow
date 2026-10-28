@@ -41,11 +41,13 @@ public static class ServerSetup
         builder.Services.AddSingleton<ServerModuleRegistry>();
         builder.Services.AddSchedules();
         builder.Services.AddHostedService<RetentionCleaner>();
+        builder.Services.AddRequestDecompression(); // агенты сжимают части загрузок (Content-Encoding: gzip)
         return builder;
     }
 
     public static void UseToadFlowServer(this WebApplication app)
     {
+        app.UseRequestDecompression();
         app.UseAuthentication();
         app.UseAuthorization();
 
@@ -64,6 +66,9 @@ public static class ServerSetup
         api.MapDashboard();
         api.MapInstances();
         api.MapModules(app.Services);
+
+        var agentApi = app.MapGroup("/api/agent").RequireAuthorization(Policies.Agent);
+        agentApi.MapModuleAgentEndpoints(app.Services);
 
         app.MapHub<UiHub>("/hubs/ui");
         app.MapHub<AgentHub>("/hubs/agent");

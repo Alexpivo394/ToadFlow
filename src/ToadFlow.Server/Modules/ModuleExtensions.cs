@@ -15,6 +15,11 @@ public static class ModuleExtensions
     {
         foreach (var module in services.GetServices<IServerModule>()) module.MapEndpoints(api);
     }
+
+    internal static void MapModuleAgentEndpoints(this RouteGroupBuilder agentApi, IServiceProvider services)
+    {
+        foreach (var module in services.GetServices<IServerModule>()) module.MapAgentEndpoints(agentApi);
+    }
 }
 
 /// <summary>Модули по виду задания.</summary>
