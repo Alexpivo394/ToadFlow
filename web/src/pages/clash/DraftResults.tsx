@@ -31,7 +31,9 @@ function Side({ hit, side }: { hit: DraftHitView; side: 'A' | 'B' }) {
 export function DraftResults({ partId }: { partId: string }) {
   const [filters, setFilters] = useState<Filters>({ disciplines: null, sets: null, level: '', minDepth: null, sort: 'number' });
   const [page, setPage] = useState(1);
-  const [opened, setOpened] = useState<number | null>(null);
+  // Окно держит строки страницы на момент открытия: если список перечитается после нового прогона, под тем же номером строки
+  // окажется чужая коллизия, а окно старой коллизии должно сказать, что результат обновился.
+  const [opened, setOpened] = useState<{ hits: DraftHitView[]; index: number } | null>(null);
   const summary = useApi<DraftSummary>(['clash-parts', partId, 'summary'], `/api/clash/parts/${partId}/draft/summary`);
 
   const query = new URLSearchParams({ page: String(page), pageSize: String(PageSize), sort: filters.sort });
@@ -99,7 +101,7 @@ export function DraftResults({ partId }: { partId: string }) {
         </Table.Thead>
         <Table.Tbody>
           {(hits.data?.items ?? []).map((h, i) => (
-            <Table.Tr key={h.number} onClick={() => setOpened(i)} style={{ cursor: 'pointer' }} title="Открыть в 3D">
+            <Table.Tr key={h.number} onClick={() => setOpened({ hits: hits.data!.items, index: i })} style={{ cursor: 'pointer' }} title="Открыть в 3D">
               <Table.Td>{h.number}</Table.Td>
               <Table.Td ta="right">{Math.round(h.depthMm)} мм</Table.Td>
               <Table.Td><Side hit={h} side="A" /></Table.Td>
@@ -110,8 +112,9 @@ export function DraftResults({ partId }: { partId: string }) {
         </Table.Tbody>
       </Table>
       {pages > 1 && <Pagination total={pages} value={page} onChange={setPage} />}
-      {opened != null && hits.data?.items[opened] && (
-        <HitViewer runId={hits.data.items[opened].runId} hits={hits.data.items} index={opened} onIndex={setOpened} onClose={() => setOpened(null)} />
+      {opened && (
+        <HitViewer runId={opened.hits[opened.index].runId} hits={opened.hits} index={opened.index}
+          onIndex={(index) => setOpened({ ...opened, index })} onClose={() => setOpened(null)} />
       )}
     </Stack>
   );

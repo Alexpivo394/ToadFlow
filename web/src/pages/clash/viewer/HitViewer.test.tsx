@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import type { ViewerElementView } from '../../../api/types';
 import { Failure, renderApp } from '../../../test/renderApp';
@@ -139,5 +140,26 @@ describe('Hit viewer', () => {
     expect(await within(dialog).findByText('результат черновика обновился или коллизия не найдена')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Обновить список' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('HitViewer_ListRefreshedByNewRun_KeepsOpenHit', async () => {
+    const dialog = await openHit();
+    await within(dialog).findByText('сеток 3');
+
+    // Новый прогон закончился, пока окно открыто: список перечитан, под тем же номером строки — другая коллизия другого прогона.
+    const fetchMock = vi.mocked(fetch);
+    const original = fetchMock.getMockImplementation()!;
+    const replaced = { ...hit(1), runId: 'r2', number: 77, disciplineB: 'КР' };
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input).startsWith('/api/clash/parts/p1/draft/hits')
+        ? new Response(JSON.stringify({ total: 1, items: [replaced] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        : original(input, init));
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() => expect(calls().filter((url) => url.startsWith('/api/clash/parts/p1/draft/hits')).length).toBeGreaterThan(1));
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(within(dialog).getByText(/Коллизия № 1/)).toBeTruthy();
+    expect(calls().some((url) => url.startsWith('/api/clash/runs/r2/'))).toBe(false);
   });
 });
