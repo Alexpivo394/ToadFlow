@@ -4,8 +4,14 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace ToadFlow.Server.Clash.Parts;
 
+/// <summary>Разобранный слепок без сеток: оглавление TCG (габариты и смещения сеток) и параметры TCP.</summary>
+public sealed record CachedSnapshot(ModelIndex Index, ModelParameters Parameters)
+{
+    public IReadOnlyList<ElementInfo> Elements { get; } = Index.Elements.Select(e => e.Info).ToArray();
+}
+
 /// <summary>
-///     Разобранные слепки для предпросмотра наборов: описания элементов из оглавления TCG и параметры из TCP, без сеток.
+///     Разобранные слепки для предпросмотра наборов и просмотрщика: оглавление TCG и параметры TCP, без сеток.
 ///     Редактор спрашивает предпросмотр на каждое изменение условия, поэтому слепок держится в памяти, пока им пользуются.
 /// </summary>
 public sealed class PartElementsCache : IDisposable
@@ -21,7 +27,7 @@ public sealed class PartElementsCache : IDisposable
     /// <summary>Сколько раз слепок читался с диска (для тестов).</summary>
     public int Loads => Volatile.Read(ref _loads);
 
-    public (IReadOnlyList<ElementInfo> Elements, ModelParameters Parameters, string ModelKey) Get(Guid snapshotId, string folder) =>
+    public CachedSnapshot Get(Guid snapshotId, string folder) =>
         _cache.GetOrCreate(snapshotId, entry =>
         {
             Interlocked.Increment(ref _loads);
@@ -31,7 +37,7 @@ public sealed class PartElementsCache : IDisposable
             using (var values = File.OpenRead(Path.Combine(folder, "model.tcp"))) parameters = ModelParametersFile.Read(values);
             entry.Size = Math.Max(1, index.Elements.Count);
             entry.SlidingExpiration = Sliding;
-            return ((IReadOnlyList<ElementInfo>)index.Elements.Select(e => e.Info).ToArray(), parameters, index.Header.ModelKey);
+            return new CachedSnapshot(index, parameters);
         });
 
     public void Dispose() => _cache.Dispose();
@@ -47,8 +53,8 @@ public sealed class PartElements(PartModels models, ClashStorage storage, PartEl
         foreach (var model in await models.OfPartAsync(partId, ct))
         {
             if (model is not { Discipline: { } discipline, Latest: { } latest }) continue;
-            var (elements, parameters, key) = cache.Get(latest.Id, storage.SnapshotFolder(model.ModelId, latest.Id));
-            result.Add(new ElementsInput(discipline, key, elements, parameters));
+            var snapshot = cache.Get(latest.Id, storage.SnapshotFolder(model.ModelId, latest.Id));
+            result.Add(new ElementsInput(discipline, snapshot.Index.Header.ModelKey, snapshot.Elements, snapshot.Parameters));
         }
 
         return result;
