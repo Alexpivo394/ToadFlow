@@ -2,7 +2,7 @@ using Alexpivo394.Revit.ParamCheck.Profiles;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Loi.Analytics;
-using ToadFlow.Server.Loi.Naming;
+using ToadFlow.Server.Naming;
 
 namespace ToadFlow.Server.Loi;
 

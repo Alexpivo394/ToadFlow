@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
-using ToadFlow.Server.Loi.Naming;
+using ToadFlow.Server.Naming;
 
 namespace ToadFlow.Server.Loi.Analytics;
 

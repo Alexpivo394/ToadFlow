@@ -13,6 +13,8 @@
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL"/>
         <PackageReference Include="EFCore.NamingConventions"/>
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer"/>
+        <!-- ModelNames из профилей ParamChecker — разбору имён моделей (Naming), общему для LOI и коллизий -->
+        <PackageReference Include="Alexpivo394.Revit.ParamCheck.Profiles"/>
     </ItemGroup>
 
     <!-- Встроенный Postgres для разработки без Docker — только в Debug, в продакшен-сборку не попадает -->

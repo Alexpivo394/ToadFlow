@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Alexpivo394.Revit.ParamCheck.Profiles;
 
-namespace ToadFlow.Server.Loi.Naming;
+namespace ToadFlow.Server.Naming;
 
 /// <summary>Что удалось понять из имени модели.</summary>
 /// <param name="Fields">Свои поля из справочника (например «Стадия»).</param>

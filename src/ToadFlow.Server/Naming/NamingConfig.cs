@@ -1,4 +1,4 @@
-namespace ToadFlow.Server.Loi.Naming;
+namespace ToadFlow.Server.Naming;
 
 /// <summary>
 ///     Как из имени модели понять заказчика, объект, раздел и часть здания. Имя режется на куски по разделителям, и каждый

@@ -1,5 +1,5 @@
 using Shouldly;
-using ToadFlow.Server.Loi.Naming;
+using ToadFlow.Server.Naming;
 
 namespace ToadFlow.Server.Tests;
 

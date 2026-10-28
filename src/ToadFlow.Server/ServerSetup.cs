@@ -7,6 +7,7 @@ using ToadFlow.Server.Data;
 using ToadFlow.Server.Maintenance;
 using ToadFlow.Server.Events;
 using ToadFlow.Server.Modules;
+using ToadFlow.Server.Naming;
 using ToadFlow.Server.Queue;
 using ToadFlow.Server.Runs;
 using ToadFlow.Server.Schedules;
@@ -36,6 +37,7 @@ public static class ServerSetup
         builder.AddToadFlowAuth();
         builder.Services.AddDomainEvents();
         builder.Services.AddScoped<ISettingsStore, SettingsStore>();
+        builder.Services.AddScoped<NamingStore>();
         builder.Services.AddAgents();
         builder.Services.AddQueue();
         builder.Services.AddSingleton<ServerModuleRegistry>();

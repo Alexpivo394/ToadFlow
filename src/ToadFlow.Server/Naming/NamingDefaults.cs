@@ -1,4 +1,4 @@
-namespace ToadFlow.Server.Loi.Naming;
+namespace ToadFlow.Server.Naming;
 
 /// <summary>
 ///     Стандартный справочник именования: коды разделов (ГОСТ Р 21.101 и распространённые английские), стилобат и паркинг,

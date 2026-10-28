@@ -9,7 +9,7 @@ using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Loi.Analytics;
-using ToadFlow.Server.Loi.Naming;
+using ToadFlow.Server.Naming;
 using ToadFlow.Server.Tests.Infrastructure;
 
 namespace ToadFlow.Server.Tests;
