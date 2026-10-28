@@ -22,7 +22,9 @@ public sealed record ClashFiles(byte[] Geometry, byte[] Parameters, int Elements
 public static class ClashFixtures
 {
     /// <param name="padding">Сколько добавить элементов-коробок: так файл геометрии становится больше.</param>
-    public static ClashFiles ModelFiles(string modelKey, bool complete = true, DateTimeOffset? extractedAt = null, int padding = 0)
+    /// <param name="custom">Своя геометрия по ключу модели вместо стены и трубы; параметры те же.</param>
+    public static ClashFiles ModelFiles(string modelKey, bool complete = true, DateTimeOffset? extractedAt = null, int padding = 0,
+        Func<string, ModelGeometry>? custom = null)
     {
         var header = new ModelHeader(modelKey, @"C:\models\АР.rvt", 2022, extractedAt ?? DateTimeOffset.UtcNow, complete, "Navisworks", 0, 0, 0);
         var elements = new List<ElementGeometry>
@@ -31,7 +33,7 @@ public static class ClashFixtures
             Box(new ElementInfo("pipe-1", 2, "OST_PipeCurves", "Труба", "Сталь", "Этаж 1", "ВК", []), 1000)
         };
         for (var i = 0; i < padding; i++) elements.Add(Box(new ElementInfo($"pad-{i}", 100 + i, "OST_GenericModel", null, null, null, null, []), 2000 + i * 10));
-        var geometry = new ModelGeometry(header, elements, elements.Select(e => e.Info.UniqueId).Append("hidden-1").ToArray());
+        var geometry = custom?.Invoke(modelKey) ?? new ModelGeometry(header, elements, elements.Select(e => e.Info.UniqueId).Append("hidden-1").ToArray());
         var parameters = new ModelParameters(new Dictionary<string, IReadOnlyList<ParameterValue>>
         {
             ["wall-1"] = [new ParameterValue("Марка", null, "С1", null)],
@@ -42,7 +44,8 @@ public static class ClashFixtures
         ModelGeometryFile.Write(tcg, geometry);
         using var tcp = new MemoryStream();
         ModelParametersFile.Write(tcp, parameters);
-        return new ClashFiles(tcg.ToArray(), tcp.ToArray(), elements.Count, elements.Sum(e => (long)e.Mesh.TriangleCount), geometry.Inventory.Count);
+        return new ClashFiles(tcg.ToArray(), tcp.ToArray(), geometry.Elements.Count, geometry.Elements.Sum(e => (long)e.Mesh.TriangleCount),
+            geometry.Inventory.Count);
     }
 
     /// <summary>Задание выгрузки модели, взятое агентом: такие задания принимают загрузку.</summary>
@@ -76,10 +79,10 @@ public static class ClashFixtures
 
     /// <summary>Выгрузка модели целиком, как её делает агент: задание, загрузка обоих файлов одной частью, публикация.</summary>
     public static async Task<(Guid JobId, ClashModel Model, ClashExtractResult Result)> PublishAsync(ServerFactory server, FakeAgent agent,
-        string modelName = "АР.rvt", DateTimeOffset? extractedAt = null, int padding = 0)
+        string modelName = "АР.rvt", DateTimeOffset? extractedAt = null, int padding = 0, Func<string, ModelGeometry>? custom = null)
     {
         var (jobId, model) = await RunningJobAsync(server, agent, modelName);
-        var files = ModelFiles(model.SnapshotKey, extractedAt: extractedAt, padding: padding);
+        var files = ModelFiles(model.SnapshotKey, extractedAt: extractedAt, padding: padding, custom: custom);
         var client = AgentClient(server, agent);
         var started = await client.PostJsonAsync("/api/agent/clash/uploads", files.Request(jobId));
         var upload = await started.ReadJsonAsync<ClashUploadState>();
@@ -94,11 +97,15 @@ public static class ClashFixtures
         return (jobId, model, await completed.ReadJsonAsync<ClashExtractResult>());
     }
 
-    private static ElementGeometry Box(ElementInfo info, float x)
+    private static ElementGeometry Box(ElementInfo info, float x) => Box(info, x, 0, 0, 100);
+
+    /// <summary>Замкнутый куб: угол <paramref name="x" />, <paramref name="y" />, <paramref name="z" /> (мм от начала модели), ребро <paramref name="size" />.</summary>
+    public static ElementGeometry Box(ElementInfo info, float x, float y, float z, float size)
     {
-        float[] positions = [x, 0, 0, x + 100, 0, 0, x + 100, 100, 0, x, 100, 0, x, 0, 100, x + 100, 0, 100, x + 100, 100, 100, x, 100, 100];
+        float x1 = x + size, y1 = y + size, z1 = z + size;
+        float[] positions = [x, y, z, x1, y, z, x1, y1, z, x, y1, z, x, y, z1, x1, y, z1, x1, y1, z1, x, y1, z1];
         int[] indices = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
         var mesh = new ElementMesh(positions, indices);
-        return new ElementGeometry(info, mesh, new Aabb(new Vector3(x, 0, 0), new Vector3(x + 100, 100, 100)), (ulong)(x + 1));
+        return new ElementGeometry(info, mesh, new Aabb(new Vector3(x, y, z), new Vector3(x1, y1, z1)), (ulong)(x + 1));
     }
 }

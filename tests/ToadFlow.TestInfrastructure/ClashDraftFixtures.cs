@@ -17,11 +17,16 @@ public static class ClashDraftFixtures
     ///     Выгружает модели (разделы — по именам, например <c>POL_K1_AR.rvt</c> → АР), собирает из них часть и сохраняет черновик:
     ///     на каждый раздел набор «Все» (категория не пуста) и полная матрица 20 мм.
     /// </summary>
-    public static async Task<Guid> PartAsync(ServerFactory server, HttpClient admin, FakeAgent agent, params string[] models)
+    public static Task<Guid> PartAsync(ServerFactory server, HttpClient admin, FakeAgent agent, params string[] models) =>
+        PartAsync(server, admin, agent, models, null);
+
+    /// <param name="custom">Геометрия модели по имени и ключу; null — стена и труба из <see cref="ClashFixtures.ModelFiles" />.</param>
+    public static async Task<Guid> PartAsync(ServerFactory server, HttpClient admin, FakeAgent agent, IReadOnlyList<string> models,
+        Func<string, string, Alexpivo394.Revit.Clash.Geometry.ModelGeometry>? custom)
     {
         foreach (var model in models)
         {
-            var published = await ClashFixtures.PublishAsync(server, agent, model);
+            var published = await ClashFixtures.PublishAsync(server, agent, model, custom: custom is null ? null : key => custom(model, key));
             await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded, null, JsonSerializer.Serialize(published.Result, TestJson.Options));
         }
 

@@ -7,6 +7,7 @@ using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Templates;
 using ToadFlow.Server.Clash.Uploads;
+using ToadFlow.Server.Clash.Viewer;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
@@ -129,6 +130,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashDraftRuns();
         api.MapClashDraftResults();
         api.MapClashTemplates();
+        api.MapClashViewer();
     }
 
     /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>

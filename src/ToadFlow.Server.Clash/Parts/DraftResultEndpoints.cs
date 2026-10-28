@@ -14,6 +14,7 @@ public sealed record SetPairCount(Guid SetA, string SetAName, Guid SetB, string 
 public sealed record DraftSummary(int Total, IReadOnlyList<PairCount> ByDisciplines, IReadOnlyList<SetPairCount> BySets);
 
 public sealed record DraftHitView(
+    Guid RunId,
     int Number,
     float DepthMm,
     double X,
@@ -118,6 +119,7 @@ public static class DraftResultEndpoints
             .SingleOrDefaultAsync(ct);
 
     private static DraftHitView View(ClashDraftHit h, IReadOnlyDictionary<string, string> models, IReadOnlyDictionary<Guid, string> sets) => new(
+        h.RunId,
         h.Number, h.DepthMm, h.X, h.Y, h.Z,
         h.ModelA, models.GetValueOrDefault(h.ModelA, h.ModelA), h.UniqueIdA, h.ElementIdA, h.DisciplineA, Names(h.SetsA, sets), h.CategoryA, h.FamilyA, h.TypeA,
         h.LevelA,
