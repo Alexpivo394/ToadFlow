@@ -8,6 +8,7 @@ using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash;
+using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Viewer;
@@ -80,6 +81,77 @@ public class RealSnapshotsCheck : ServerTest
             await HoldAsync(TimeSpan.FromMinutes(minutes));
 
         measured.ShouldAllBe(m => m.Scene.Elements.Count >= 2 && m.Bytes > 8);
+    }
+
+    /// <summary>
+    ///     Цикл утверждённой проверки на реальной части: утверждение и прогон; повтор без новых выгрузок (номера те же,
+    ///     пары не пересчитываются); новая версия с допуском 50 мм («ушла из-за правил»); выгрузка ОВК, где удалены элементы
+    ///     открытых коллизий («исправлена»). С <c>TOADCLASH_HOLD_MINUTES</c> сервер остаётся для показа.
+    /// </summary>
+    [Test, Explicit]
+    public async Task RealSnapshots_ApprovedCycle()
+    {
+        var report = new StringBuilder();
+        var (admin, partId) = await PreparePartAsync(report);
+        var worker = Worker();
+
+        async Task<(ApprovedRunView Run, TimeSpan Elapsed)> RunAsync(string label)
+        {
+            var watch = Stopwatch.StartNew();
+            (await worker.RunOnceAsync(CancellationToken.None)).ShouldBe(RunOutcome.Succeeded);
+            var elapsed = watch.Elapsed;
+            var run = await admin.GetJsonAsync<ApprovedRunView>($"/api/clash/parts/{partId}/approved/run");
+            var s = run.Summary.ShouldNotBeNull();
+            var stats = run.Run.Stats.ShouldNotBeNull();
+            report.AppendLine($"{label}: {elapsed.TotalSeconds:0} с (поиск {stats.BroadSeconds + stats.NarrowSeconds:0.0} с, точная фаза {stats.NarrowSeconds:0.0} с), " +
+                              $"найдено {s.Found:N0}: новых {s.New:N0}, активных {s.Active:N0}, вернулись {s.Returned:N0}, исправлено {s.Fixed:N0}, " +
+                              $"ушли из-за правил {s.GoneByRules:N0}, не проверено {s.Unchecked:N0}; без пересчёта {s.ReusedPairs:N0} из {stats.CandidatePairs:N0} пар");
+            return (run, elapsed);
+        }
+
+        (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = "всё против всего, 20 мм", run = true })).EnsureSuccessStatusCode();
+        var first = await RunAsync("v1, первый прогон");
+        var numbers = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=200")).Items
+            .ToDictionary(c => (c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB), c => c.Number);
+
+        (await admin.PostAsync($"/api/clash/parts/{partId}/approved/run", null)).EnsureSuccessStatusCode();
+        var second = await RunAsync("v1, повтор без новых выгрузок");
+        var again = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=200")).Items;
+        foreach (var c in again) numbers[(c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB)].ShouldBe(c.Number);
+        second.Run.Summary!.New.ShouldBe(0);
+        second.Run.Summary.ReusedPairs.ShouldBe(second.Run.Run.Stats!.CandidatePairs);
+
+        var draft = ConfigurationJson.Deserialize((await admin.GetJsonAsync<DraftView>($"/api/clash/parts/{partId}/draft")).Configuration.GetRawText());
+        (await admin.PutAsync($"/api/clash/parts/{partId}/draft", Json(draft with { Matrix = draft.Matrix.Select(c => c with { ToleranceMm = 50 }).ToList() })))
+            .EnsureSuccessStatusCode();
+        (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = "допуск 50 мм", run = true })).EnsureSuccessStatusCode();
+        var third = await RunAsync("v2, допуск 50 мм");
+        third.Run.Summary!.GoneByRules.ShouldBeGreaterThan(0);
+        third.Run.Summary.Fixed.ShouldBe(0);
+
+        // Новая выгрузка ОВК: удалены элементы ОВК из 100 открытых коллизий.
+        var ovk = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models.Single(m => m.Name.Contains("_OVK_"));
+        var key = ovk.ModelId.ToString("N");
+        var open = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?model={key}&pageSize=100")).Items;
+        var removed = open.Select(c => c.ModelA == key ? c.UniqueIdA : c.UniqueIdB).ToHashSet();
+        var folder = Directory.GetDirectories(Environment.GetEnvironmentVariable("TOADCLASH_REAL_WORK")
+                                              ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ToadClashData", "real-work"),
+            "*_OVK_*.toadclash-*").Single();
+        await using (var agent = await FakeAgent.RegisterAsync(Server, admin))
+        {
+            await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
+            await using var heartbeat = HeartbeatLoop.Start(agent);
+            await PublishAsync(agent, ovk.Name, folder, removed);
+        }
+
+        (await admin.PostAsync($"/api/clash/parts/{partId}/approved/run", null)).EnsureSuccessStatusCode();
+        var fourth = await RunAsync($"v2, ОВК без {removed.Count} элементов");
+        fourth.Run.Summary!.Fixed.ShouldBeGreaterThan(0);
+        report.AppendLine($"Повтор быстрее первого прогона в {first.Elapsed / second.Elapsed:0.0} раза");
+        await WriteReportAsync(report);
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("TOADCLASH_HOLD_MINUTES"), out var minutes) && minutes > 0)
+            await HoldAsync(TimeSpan.FromMinutes(minutes));
     }
 
     private static double Median(IEnumerable<double> values)
@@ -160,6 +232,7 @@ public class RealSnapshotsCheck : ServerTest
         var admin = await AdminAsync();
         await using var agent = await FakeAgent.RegisterAsync(Server, admin);
         await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
+        await using var heartbeat = HeartbeatLoop.Start(agent);
 
         var upload = Stopwatch.StartNew();
         var names = new List<string>();
@@ -238,7 +311,8 @@ public class RealSnapshotsCheck : ServerTest
     }
 
     /// <summary>Слепок этапа 0 под ключом модели ToadFlow (ключ входит в TCG), загрузка частями по 8 МиБ, как у агента.</summary>
-    private async Task PublishAsync(FakeAgent agent, string name, string snapshot)
+    /// <param name="removed">Элементы, которых в этой выгрузке нет ни в геометрии, ни в описи, — как удалённые в Revit; выгрузка — новая, сейчас.</param>
+    private async Task PublishAsync(FakeAgent agent, string name, string snapshot, IReadOnlySet<string>? removed = null)
     {
         var (jobId, model) = await ClashFixtures.RunningJobAsync(Server, agent, name);
         ModelGeometry geometry;
@@ -246,6 +320,9 @@ public class RealSnapshotsCheck : ServerTest
         byte[] tcg;
         using (var target = new MemoryStream())
         {
+            if (removed is not null)
+                geometry = new ModelGeometry(geometry.Header with { ExtractedAt = DateTimeOffset.UtcNow }, geometry.Elements.Where(e => !removed.Contains(e.Info.UniqueId)).ToList(),
+                    geometry.Inventory.Where(id => !removed.Contains(id)).ToList());
             ModelGeometryFile.Write(target, new ModelGeometry(geometry.Header with { ModelKey = model.SnapshotKey }, geometry.Elements, geometry.Inventory));
             tcg = target.ToArray();
         }
@@ -268,4 +345,41 @@ public class RealSnapshotsCheck : ServerTest
     }
 
     private static StringContent Json(ClashConfiguration config) => new(ConfigurationJson.Serialize(config), Encoding.UTF8, "application/json");
+
+    /// <summary>
+    ///     Heartbeat тестового агента, пока идут долгие загрузки реальных слепков: без него сервер через 30 с тишины считает
+    ///     агента потерявшим связь и рвёт соединение.
+    /// </summary>
+    private sealed class HeartbeatLoop : IAsyncDisposable
+    {
+        private readonly CancellationTokenSource _stop = new();
+        private Task _loop = Task.CompletedTask;
+
+        public static HeartbeatLoop Start(FakeAgent agent)
+        {
+            var heartbeat = new HeartbeatLoop();
+            heartbeat._loop = Task.Run(async () =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        await agent.HeartbeatAsync();
+                        await Task.Delay(TimeSpan.FromSeconds(10), heartbeat._stop.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            });
+            return heartbeat;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _stop.CancelAsync();
+            await _loop;
+            _stop.Dispose();
+        }
+    }
 }
