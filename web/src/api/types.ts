@@ -990,3 +990,78 @@ export interface ViewerElementProperties {
   workset: string | null;
   parameters: ViewerParameter[];
 }
+
+export type CollisionStatus = 'New' | 'Active' | 'Returned' | 'Fake' | 'FixedPending' | 'Fixed' | 'GoneByRules' | 'Unchecked';
+export type CollisionAssignee = 'Both' | 'SideA' | 'SideB';
+
+/** Последний утверждённый прогон части. */
+export interface ApprovedRunView {
+  run: DraftRunSummary;
+  version: number | null;
+  summary: ApprovedRunSummary | null;
+}
+
+export interface CollisionSummary {
+  /** Открытые: новые, активные, вернувшиеся, отмеченные исправленными. */
+  total: number;
+  statuses: { status: CollisionStatus; count: number }[];
+  checks: CheckCount[];
+}
+
+export interface CollisionRow {
+  id: string;
+  number: number;
+  status: CollisionStatus;
+  assignee: CollisionAssignee;
+  /** Найдена последним прогоном. */
+  foundNow: boolean;
+  depthMm: number;
+  x: number;
+  y: number;
+  z: number;
+  modelA: string;
+  modelNameA: string;
+  uniqueIdA: string;
+  elementIdA: number;
+  disciplineA: string;
+  categoryA: string;
+  familyA: string | null;
+  typeA: string | null;
+  levelA: string | null;
+  modelB: string;
+  modelNameB: string;
+  uniqueIdB: string;
+  elementIdB: number;
+  disciplineB: string;
+  categoryB: string;
+  familyB: string | null;
+  typeB: string | null;
+  levelB: string | null;
+  checks: string[];
+  firstVersion: number;
+  lastFoundVersion: number;
+  suggestedPredecessorId: string | null;
+  suggestedPredecessorNumber: number | null;
+}
+
+export interface CollisionPage {
+  total: number;
+  items: CollisionRow[];
+}
+
+/** Запись ленты: kind — Note, Status, Assignee, Found, Suggestion, Merged или Depth (образец глубины прогона). */
+export interface FeedEntry {
+  at: string;
+  kind: string;
+  userName: string | null;
+  text: string;
+  fromStatus: CollisionStatus | null;
+  toStatus: CollisionStatus | null;
+  version: number | null;
+  depthMm: number | null;
+}
+
+export interface CollisionCard {
+  collision: CollisionRow;
+  feed: FeedEntry[];
+}

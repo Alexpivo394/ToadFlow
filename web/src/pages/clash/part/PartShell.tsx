@@ -9,6 +9,7 @@ import type { ApprovedVersionView, ClashPartView, ClashTemplateView, DraftView, 
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm, Panel } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
+import { ApprovedTab } from '../approved/ApprovedTab';
 import { VersionsDrawer } from '../approved/VersionsDrawer';
 import { DraftTab } from '../draft/DraftTab';
 import { ExclusionsTab } from '../matrix/ExclusionsTab';
@@ -17,9 +18,9 @@ import { SetsTab } from '../sets/SetsTab';
 import { ModelsTab } from './ModelsTab';
 import { type Conflicts, useDraft } from './useDraft';
 
-export type PartTab = 'models' | 'sets' | 'matrix' | 'exclusions' | 'draft';
+export type PartTab = 'models' | 'sets' | 'matrix' | 'exclusions' | 'draft' | 'approved';
 
-const tabNames: Record<string, string> = { models: 'модели', sets: 'наборы', matrix: 'матрица', exclusions: 'исключения', draft: 'черновик' };
+const tabNames: Record<string, string> = { models: 'модели', sets: 'наборы', matrix: 'матрица', exclusions: 'исключения', draft: 'черновик', approved: 'утверждённая' };
 
 /** Кто ещё открыл часть и где он. */
 function PresenceBadges({ present, me }: { present: PresenceView[]; me: string | undefined }) {
@@ -181,6 +182,7 @@ export function PartShell() {
             <Tabs.Tab value="matrix">Матрица</Tabs.Tab>
             <Tabs.Tab value="exclusions">Исключения</Tabs.Tab>
             <Tabs.Tab value="draft">Черновик</Tabs.Tab>
+            <Tabs.Tab value="approved">Утверждённая</Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="models"><ModelsTab part={part.data} readOnly={readOnly} /></Tabs.Panel>
           <Tabs.Panel value="sets">
@@ -195,6 +197,7 @@ export function PartShell() {
           <Tabs.Panel value="draft">
             <DraftTab partId={partId} readOnly={readOnly} dirty={draft.dirty} onSave={draft.save} />
           </Tabs.Panel>
+          <Tabs.Panel value="approved"><ApprovedTab partId={partId} readOnly={readOnly} /></Tabs.Panel>
         </Tabs>
       </Panel>
       {draft.conflicts && <ConflictDialog conflicts={draft.conflicts} onResolve={draft.resolve} onClose={draft.dismiss} />}

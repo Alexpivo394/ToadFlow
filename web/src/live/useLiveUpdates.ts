@@ -9,6 +9,8 @@ const affected: Record<string, string[]> = {
   runs: ['runs', 'jobs', 'dashboard', 'schedules'],
   agents: ['agents', 'dashboard'],
   schedules: ['schedules', 'dashboard'],
+  // Ход и итог прогона части — и черновика, и утверждённой версии.
+  'clash-parts': ['clash-parts', 'clash-collisions'],
 };
 
 /** Живые обновления: сервер шлёт changed(entity, id), страница перезапрашивает затронутые данные. */

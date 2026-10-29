@@ -14,15 +14,20 @@ const axes = ['X', 'Y', 'Z'] as const;
 
 const base = (runId: string, number: number) => `/api/clash/runs/${runId}/hits/${number}`;
 
-export const sceneQuery = (runId: string, number: number, radius: string) => ({
-  queryKey: ['clash-viewer', runId, number, radius, 'scene'],
-  queryFn: () => apiFetch<ViewerSceneView>(`${base(runId, number)}/scene?radius=${radius}`),
+/** Сцена по адресу: коллизия прогона черновика или коллизия утверждённой проверки. */
+const sceneAt = (path: string, radius: string) => ({
+  queryKey: ['clash-viewer', path, radius, 'scene'],
+  queryFn: () => apiFetch<ViewerSceneView>(`${path}/scene?radius=${radius}`),
 });
 
-export const meshesQuery = (runId: string, number: number, radius: string) => ({
-  queryKey: ['clash-viewer', runId, number, radius, 'meshes'],
-  queryFn: async () => parseMeshes(await apiFetchBinary(`${base(runId, number)}/meshes?radius=${radius}`)),
+const meshesAt = (path: string, radius: string) => ({
+  queryKey: ['clash-viewer', path, radius, 'meshes'],
+  queryFn: async () => parseMeshes(await apiFetchBinary(`${path}/meshes?radius=${radius}`)),
 });
+
+export const sceneQuery = (runId: string, number: number, radius: string) => sceneAt(base(runId, number), radius);
+
+export const meshesQuery = (runId: string, number: number, radius: string) => meshesAt(base(runId, number), radius);
 
 /** Заранее грузит сцену и сетки коллизии — листание стрелками не ждёт сервер. */
 export function prefetchHit(client: QueryClient, runId: string, number: number, radius = '5000') {
@@ -42,9 +47,11 @@ function plural(n: number, one: string, few: string, many: string) {
  * Сцена коллизии: 3D (A и B, окружение в радиусе), изоляция, секущий куб и свойства элемента плашкой поверх сцены.
  * Встраивается в черновик (и позже в отчёт); <c>focus</c> — какую сторону показать в свойствах (Enter в списке).
  */
-export function HitScene({ runId, number, title, focus, onRefresh }: {
+export function HitScene({ runId, number, collisionId, title, focus, onRefresh }: {
   runId: string;
   number: number;
+  /** Коллизия утверждённой проверки: сцена — по прогону, который нашёл её последним. */
+  collisionId?: string;
   title?: string;
   focus?: 'A' | 'B' | null;
   onRefresh?: () => void;
@@ -57,8 +64,9 @@ export function HitScene({ runId, number, title, focus, onRefresh }: {
   const [selected, setSelected] = useState<number | null>(null);
   const [showProps, setShowProps] = useState(true);
 
-  const scene = useQuery(sceneQuery(runId, number, radius));
-  const meshes = useQuery({ ...meshesQuery(runId, number, radius), enabled: !!scene.data });
+  const path = collisionId ? `/api/clash/collisions/${collisionId}` : base(runId, number);
+  const scene = useQuery(sceneAt(path, radius));
+  const meshes = useQuery({ ...meshesAt(path, radius), enabled: !!scene.data });
 
   // Другая коллизия — новый секущий куб вокруг её пары и сброс выбора.
   useEffect(() => {
@@ -80,6 +88,7 @@ export function HitScene({ runId, number, title, focus, onRefresh }: {
   const limit = scene.data?.radiusMm ?? Number(radius);
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['clash-parts'] });
+    queryClient.invalidateQueries({ queryKey: ['clash-collisions'] });
     onRefresh?.();
   };
 
@@ -143,7 +152,7 @@ export function HitScene({ runId, number, title, focus, onRefresh }: {
           <Paper withBorder shadow="sm" p="xs" radius="md" w={320} style={{ position: 'absolute', top: 8, right: 8, maxHeight: 'calc(100% - 16px)', display: 'flex' }}>
             <ScrollArea.Autosize mah="100%" style={{ flex: 1 }}>
               {meshes.error && <Text size="xs" c="red">{meshes.error.message}</Text>}
-              <ElementPanel runId={runId} scene={scene.data} selected={selected} />
+              <ElementPanel runId={scene.data.runId} scene={scene.data} selected={selected} />
             </ScrollArea.Autosize>
           </Paper>
         )}

@@ -13,7 +13,7 @@ import { defaultFilters, type HitFilters, PageSize, useHitNavigation } from './u
 const n = (value: number) => value.toLocaleString('ru-RU');
 
 /** Проверки в порядке матрицы, сгруппированные по группе строки; пустые — серым, чтобы было видно, что их проверили. */
-function ChecksList({ checks, selected, onSelect }: { checks: CheckCount[]; selected: string | null; onSelect: (key: string) => void }) {
+export function ChecksList({ checks, selected, onSelect }: { checks: CheckCount[]; selected: string | null; onSelect: (key: string) => void }) {
   const rows = new Map<string, CheckCount[]>();
   for (const c of checks) rows.set(c.groupAName, [...(rows.get(c.groupAName) ?? []), c]);
   return (
