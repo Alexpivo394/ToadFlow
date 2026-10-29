@@ -853,6 +853,11 @@ namespace ToadFlow.Server.Data.Migrations
                     b.HasIndex("PartId", "CreatedAt")
                         .HasDatabaseName("ix_clash_engine_runs_part_id_created_at");
 
+                    b.HasIndex("PartId", "TriggerRunId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_clash_engine_runs_part_id_trigger_run_id")
+                        .HasFilter("trigger_run_id IS NOT NULL");
+
                     b.HasIndex("State", "CreatedAt")
                         .HasDatabaseName("ix_clash_engine_runs_state_created_at");
 

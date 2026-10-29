@@ -132,6 +132,8 @@ public sealed class ClashServerModule : IServerModule
             // Ждущий утверждённый прогон части — один: расписание и кнопка не ставят второй.
             entity.HasIndex(r => r.PartId).IsUnique().HasDatabaseName("ix_clash_engine_runs_one_queued_approved")
                 .HasFilter("kind = 'Approved' AND state = 'Queued'");
+            // Запуск расписания ставит прогон части один раз, сколько бы заданий ни закончилось одновременно.
+            entity.HasIndex(r => new { r.PartId, r.TriggerRunId }).IsUnique().HasFilter("trigger_run_id IS NOT NULL");
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(r => r.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -194,10 +196,60 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashProjects();
     }
 
-    /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>
+    /// <summary>
+    ///     Выгрузка закончилась: опубликованный слепок — в «События системы»; если это последнее задание запуска расписания,
+    ///     утверждённые части из настроек расписания встают в очередь движка.
+    /// </summary>
     public async Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct)
     {
-        if (job is not { ModuleKind: ModuleKinds.ClashExtract, Status: JobStatus.Succeeded or JobStatus.Warning, ResultJson: { } json }) return;
+        if (job.ModuleKind != ModuleKinds.ClashExtract) return;
+        await ReportSnapshotAsync(job, services, ct);
+        await ScheduleSettledAsync(job, services, ct);
+    }
+
+    /// <summary>
+    ///     Все задания запуска закончились: по прогону на каждую утверждённую часть расписания. Модели части, чьё задание в
+    ///     запуске не удалось, — «не проверены». Отменённый запуск прогонов не ставит. Повторный вызов того же запуска второй
+    ///     прогон не добавит: прогон на запуск у части один.
+    /// </summary>
+    private static async Task ScheduleSettledAsync(Job job, IServiceProvider services, CancellationToken ct)
+    {
+        var db = services.GetRequiredService<ToadFlowDb>();
+        var run = await db.Runs.AsNoTracking().SingleOrDefaultAsync(r => r.Id == job.RunId, ct);
+        if (run is not { ScheduleId: { } scheduleId, CancelRequested: false }) return;
+        var jobs = await db.Jobs.AsNoTracking().Where(j => j.RunId == run.Id).Select(j => new { j.Status, j.PayloadJson }).ToListAsync(ct);
+        if (jobs.Any(j => !Job.IsFinal(j.Status))) return;
+
+        var settingsJson = await db.Schedules.Where(s => s.Id == scheduleId).Select(s => s.ModuleSettingsJson).SingleOrDefaultAsync(ct);
+        if (settingsJson is null) return;
+        using var document = JsonDocument.Parse(settingsJson);
+        if (ClashScheduleSettings.TryParse(document.RootElement) is not { Parts: { Count: > 0 } parts }) return;
+
+        var failed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var other in jobs.Where(j => j.Status is not (JobStatus.Succeeded or JobStatus.Warning)))
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<ClashExtractPayload>(other.PayloadJson, ToadFlowDb.Json)?.ModelKey is { } key) failed.Add(key);
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        var models = services.GetRequiredService<PartModels>();
+        var approvedRuns = services.GetRequiredService<ApprovedRuns>();
+        foreach (var partId in parts)
+        {
+            var partModels = await models.OfPartAsync(partId, ct);
+            var unchecked_ = partModels.Where(m => failed.Contains(m.ModelId.ToString("N"))).Select(m => m.ModelId).ToList();
+            await approvedRuns.EnqueueAsync(partId, run.Id, unchecked_, Actor.System, ct);
+        }
+    }
+
+    private static async Task ReportSnapshotAsync(Job job, IServiceProvider services, CancellationToken ct)
+    {
+        if (job is not { Status: JobStatus.Succeeded or JobStatus.Warning, ResultJson: { } json }) return;
 
         ClashExtractResult? result;
         try
@@ -226,15 +278,19 @@ public sealed class ClashServerModule : IServerModule
 
     public void MapAgentEndpoints(RouteGroupBuilder agentApi) => agentApi.MapClashUploads();
 
-    public Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct)
+    public async Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct)
     {
-        IReadOnlyList<string> errors = ClashScheduleSettings.TryParse(settings) switch
-        {
-            null => ["Не заданы параметры выгрузки для коллизий"],
-            { ViewName.Length: 0 } => ["Укажите имя 3D-вида для выгрузки"],
-            _ => []
-        };
-        return Task.FromResult(errors);
+        var parsed = ClashScheduleSettings.TryParse(settings);
+        if (parsed is null) return ["Не заданы параметры выгрузки для коллизий"];
+        if (parsed.ViewName.Length == 0) return ["Укажите имя 3D-вида для выгрузки"];
+        if (parsed.Parts is not { Count: > 0 } ids) return [];
+
+        var known = await services.GetRequiredService<ToadFlowDb>().Set<ClashPart>().AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name, p.ApprovedVersion }).ToListAsync(ct);
+        var errors = new List<string>();
+        if (ids.Any(id => known.All(p => p.Id != id))) errors.Add("Часть не найдена — уберите её из расписания");
+        errors.AddRange(known.Where(p => p.ApprovedVersion is null).Select(p => $"Часть {p.Name} не утверждена — расписание прогоняет только утверждённые"));
+        return errors;
     }
 
     public async Task<string> BuildPayloadAsync(JobBuildContext context, IServiceProvider services, CancellationToken ct)
