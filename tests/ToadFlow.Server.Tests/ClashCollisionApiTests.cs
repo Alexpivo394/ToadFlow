@@ -227,4 +227,45 @@ public class ClashCollisionApiTests : ServerTest
         (await viewer.PostJsonAsync($"/api/clash/collisions/{id}/status", new { status = "Fake", note = "x" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await viewer.PostAsync($"/api/clash/parts/{partId}/approved/run", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
+
+    [Test]
+    public async Task Merge_PredecessorFoundNow_Rejected()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1)), Fp(Hit(2))], approve: true);
+        var rows = await ListAsync(admin, partId);
+
+        var response = await admin.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/merge", new { predecessorId = rows[0].Id });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ListAsync(admin, partId)).Length.ShouldBe(2);
+    }
+
+    /// <summary>Сверка держит блокировку части: ручная правка ждёт её конца и видит итог сверки, а не затирается им.</summary>
+    [Test]
+    [Arguments("status")]
+    [Arguments("merge")]
+    public async Task ManualChange_WaitsForPartLock(string action)
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1))], approve: true);
+        await RunAsync(admin, engine, partId, [Fp(Hit(1)) with { UniqueIdA = "ua-1-new" }], [new EngineGonePair("a", "ua-1", "b", "ub-1", "Absent", "InGeometry", null)]);
+        var all = await ListAsync(admin, partId, "?status=all");
+        var (old, recreated) = (all.Single(c => c.UniqueIdA == "ua-1"), all.Single(c => c.UniqueIdA == "ua-1-new"));
+
+        using var scope = Server.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlow.Server.Data.ToadFlowDb>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM clash_parts WHERE id = {partId} FOR UPDATE");
+        var change = action == "status"
+            ? admin.PostJsonAsync($"/api/clash/collisions/{recreated.Id}/status", new { status = "Fake", note = "Гильза есть" })
+            : admin.PostJsonAsync($"/api/clash/collisions/{recreated.Id}/merge", new { predecessorId = old.Id });
+        await Task.Delay(500);
+
+        change.IsCompleted.ShouldBeFalse();
+        await transaction.CommitAsync();
+        (await change).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
 }

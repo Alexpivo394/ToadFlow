@@ -19,8 +19,12 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, discipline_pair, checks, x, y, z, depth_mm, " +
         "fingerprint_a, fingerprint_b, first_version, last_found_version, last_found_run_id, suggested_predecessor_id, created_at, updated_at";
 
-    /// <summary>Последняя часть утверждённого прогона пришла: сверяет коллизии, закрывает прогон, делает его основой следующего.</summary>
-    public async Task<ApprovedRunSummary> ApplyAsync(EngineRun run, IReadOnlyList<EngineGonePair> gone, IReadOnlyList<EngineIdentityMatch> matches,
+    /// <summary>
+    ///     Последняя часть утверждённого прогона пришла: сверяет коллизии, закрывает прогон, делает его основой следующего.
+    ///     Прогон, который успели отменить или вернуть в очередь, не сверяется.
+    /// </summary>
+    /// <returns>Итог сверки; null — прогон уже не в работе.</returns>
+    public async Task<ApprovedRunSummary?> ApplyAsync(EngineRun run, IReadOnlyList<EngineGonePair> gone, IReadOnlyList<EngineIdentityMatch> matches,
         EngineRunStats? stats, CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -30,6 +34,9 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {run.PartId} FOR UPDATE").SingleAsync(ct);
+            // Отмена и возврат в очередь могли пройти, пока писалась последняя часть: найденные пары уже удалены.
+            var state = await db.Database.SqlQuery<string>($"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} FOR UPDATE").SingleAsync(ct);
+            if (state != nameof(EngineRunState.Running)) return null;
             var hits = await db.Set<ClashApprovedHit>().AsNoTracking().Where(h => h.RunId == run.Id).OrderBy(h => h.Number).ToListAsync(ct);
             var existing = (await db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == run.PartId).ToListAsync(ct))
                 .ToDictionary(c => (c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB));

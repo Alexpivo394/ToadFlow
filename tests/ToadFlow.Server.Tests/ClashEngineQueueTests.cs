@@ -345,4 +345,23 @@ public class ClashEngineQueueTests : ServerTest
         SnapshotExists(first).ShouldBeFalse();
         SnapshotExists(second).ShouldBeTrue();
     }
+
+    [Test]
+    public async Task Part_SameExtractedAt_LatestIsLastPublished()
+    {
+        var (admin, agent) = await SetupAsync();
+        await using var _ = agent;
+        var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
+        var at = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models.Single().Latest!.ExtractedAt;
+        Guid last = default;
+        for (var i = 0; i < 2; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            var published = await ClashFixtures.PublishAsync(Server, agent, "POL_K1_AR.rvt", at);
+            await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded);
+            last = published.Result.SnapshotId;
+        }
+
+        (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models.Single().Latest!.Id.ShouldBe(last);
+    }
 }

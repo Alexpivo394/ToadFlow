@@ -29,12 +29,14 @@ public sealed class PartModels(ToadFlowDb db, NamingStore naming)
     {
         var models = await query.ToListAsync(ct);
         var ids = models.Select(m => m.Id).ToList();
+        // Одинаковое время выгрузки бывает у повторной загрузки того же слепка: последней считается загруженная позже.
         var latest = (await db.Set<ClashSnapshot>().AsNoTracking().Where(s => ids.Contains(s.ModelId))
+                .OrderByDescending(s => s.ExtractedAt).ThenByDescending(s => s.CreatedAt)
                 .Select(s => new { s.ModelId, View = new ClashSnapshotView(s.Id, s.ExtractedAt, s.RevitYear, s.ViewName, s.Elements, s.Triangles, s.Inventory,
                     s.GeometryBytes, s.ParametersBytes, s.JobId) })
                 .ToListAsync(ct))
             .GroupBy(s => s.ModelId)
-            .ToDictionary(g => g.Key, g => g.Select(s => s.View).MaxBy(v => v.ExtractedAt));
+            .ToDictionary(g => g.Key, g => g.First().View);
         var parser = new ModelNameParser(await naming.GetAsync(ct));
         return models.Select(m => new ClassifiedModel(m, parser.Parse(m.Name), latest.GetValueOrDefault(m.Id))).ToList();
     }

@@ -40,7 +40,8 @@ public static class ClashEndpoints
     private static async Task<ClashModelView[]> ModelsAsync(ToadFlowDb db, CancellationToken ct)
     {
         var models = await db.Set<ClashModel>().AsNoTracking().OrderBy(m => m.Name).ToListAsync(ct);
-        var snapshots = await Views(db.Set<ClashSnapshot>().AsNoTracking()).ToListAsync(ct);
+        // Порядок базы — по времени загрузки при одинаковом времени выгрузки; сортировка ниже его сохраняет.
+        var snapshots = await Views(db.Set<ClashSnapshot>().AsNoTracking().OrderByDescending(s => s.CreatedAt)).ToListAsync(ct);
         var byModel = snapshots.ToLookup(s => s.ModelId, s => s.View);
         return models.Select(m =>
         {
@@ -52,7 +53,7 @@ public static class ClashEndpoints
     private static async Task<IResult> SnapshotsAsync(Guid id, ToadFlowDb db, CancellationToken ct)
     {
         if (!await db.Set<ClashModel>().AnyAsync(m => m.Id == id, ct)) return Results.NotFound();
-        var snapshots = await Views(db.Set<ClashSnapshot>().AsNoTracking().Where(s => s.ModelId == id)).ToListAsync(ct);
+        var snapshots = await Views(db.Set<ClashSnapshot>().AsNoTracking().Where(s => s.ModelId == id).OrderByDescending(s => s.CreatedAt)).ToListAsync(ct);
         return Results.Ok(snapshots.Select(s => s.View).OrderByDescending(s => s.ExtractedAt).ToArray());
     }
 

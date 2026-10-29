@@ -349,4 +349,42 @@ public class ClashApprovedRunTests : ServerTest
         firstSeconds.ShouldBeLessThan(30);
         secondSeconds.ShouldBeLessThan(30);
     }
+
+    [Test]
+    public async Task Approved_QueuedWhileRunning_BasisIsRunFinishedBeforeClaim()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await FinishAsync(engine, await ApproveAndRunAsync(admin, partId), [Fp(Hit(1))]);
+        var running = await RerunAsync(partId);
+        (await ClaimAsync(engine)).RunId.ShouldBe(running);
+        var queued = await RerunAsync(partId);
+        (await PostApprovedResultAsync(engine, running, 0, true, [Fp(Hit(1)), Fp(Hit(2))], Stats, [], [])).EnsureSuccessStatusCode();
+
+        (await ClaimAsync(engine)).RunId.ShouldBe(queued);
+        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{queued}/basis");
+
+        (await RunAsync(queued)).PreviousRunId.ShouldBe(running);
+        basis.Open.Where(p => p.FoundByPrevious).Select(p => p.UniqueIdA).Order().ShouldBe(["ua-1", "ua-2"]);
+    }
+
+    [Test]
+    public async Task Approved_CancelledBeforeReconcile_CollisionsUntouched()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await FinishAsync(engine, await ApproveAndRunAsync(admin, partId), [Fp(Hit(1)), Fp(Hit(2))]);
+        var rerun = await RerunAsync(partId);
+        (await ClaimAsync(engine)).RunId.ShouldBe(rerun);
+        using var scope = Server.Services.CreateScope();
+        // Как в приёме последней части: прогон прочитан ещё в работе, отмена приходит до сверки.
+        var run = await scope.ServiceProvider.GetRequiredService<ToadFlow.Server.Data.ToadFlowDb>().Set<EngineRun>().SingleAsync(r => r.Id == rerun);
+        (await admin.PostAsync($"/api/clash/parts/{partId}/approved/run/cancel", null)).EnsureSuccessStatusCode();
+
+        var summary = await scope.ServiceProvider.GetRequiredService<CollisionReconciler>().ApplyAsync(run, [], [], Stats, CancellationToken.None);
+
+        summary.ShouldBeNull();
+        (await CollisionsAsync(partId)).ShouldAllBe(c => c.Status == CollisionStatus.New && c.FoundNow);
+        (await RunAsync(rerun)).State.ShouldBe(EngineRunState.Cancelled);
+    }
 }

@@ -141,6 +141,9 @@ public static class CollisionEndpoints
     private static async Task<IResult> CancelAsync(Guid id, ToadFlowDb db, DraftHits hits, TimeProvider time, HttpContext http, IDomainEvents events,
         CancellationToken ct)
     {
+        // Сверка идёт под той же блокировкой: отмена либо успевает до неё, либо видит прогон законченным.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await LockPartAsync(db, id, ct);
         var active = await db.Set<EngineRun>()
             .Where(r => r.PartId == id && r.Kind == EngineRunKind.Approved && (r.State == EngineRunState.Queued || r.State == EngineRunState.Running))
             .ToListAsync(ct);
@@ -153,6 +156,7 @@ public static class CollisionEndpoints
         }
 
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         if (active.Count > 0) events.Publish(new ClashDraftChanged(http.User.Actor(), id));
         return active.Count == 0 ? Results.NotFound(new { error = "Прогона нет" }) : Results.Ok();
     }
@@ -287,17 +291,22 @@ public static class CollisionEndpoints
 
     /// <summary>
     ///     Объединение с прежней коллизией: у прежней — пара этой (новые UniqueId, точка, глубина), её номер, статус и лента
-    ///     остаются; эта удаляется. Прежняя, если эта найдена, проходит переход «найдена».
+    ///     остаются; эта удаляется. Прежняя, если эта найдена, проходит переход «найдена». Прежняя, которую последний прогон
+    ///     нашёл, не объединяется: её пара ещё есть в моделях и следующим прогоном вернулась бы новой коллизией.
     /// </summary>
     private static async Task<IResult> MergeAsync(Guid id, CollisionMergeRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (await PartOfAsync(db, id, ct) is not { } partId) return Results.NotFound();
+        await LockPartAsync(db, partId, ct);
         var recreated = await db.Set<ClashCollision>().SingleOrDefaultAsync(c => c.Id == id, ct);
         var predecessor = await db.Set<ClashCollision>().SingleOrDefaultAsync(c => c.Id == request.PredecessorId, ct);
         if (recreated is null || predecessor is null) return Results.NotFound();
         if (predecessor.Id == recreated.Id || predecessor.PartId != recreated.PartId)
             return Results.BadRequest(new { error = "Объединять можно только две разные коллизии одной части" });
+        if (predecessor.FoundNow)
+            return Results.BadRequest(new { error = $"Коллизия №{predecessor.Number} найдена последним прогоном: её пара ещё есть в моделях" });
 
         var now = time.GetUtcNow();
         var changes = new List<string>();
@@ -345,6 +354,10 @@ public static class CollisionEndpoints
     private static async Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct,
         Func<ClashCollision, DateTimeOffset, Guid, ClashCollisionEvent> change)
     {
+        // Под блокировкой части, как сверка: правка видит статус после сверки и не затирается ею.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (await PartOfAsync(db, id, ct) is not { } partId) return Results.NotFound();
+        await LockPartAsync(db, partId, ct);
         var collision = await db.Set<ClashCollision>().SingleOrDefaultAsync(c => c.Id == id, ct);
         if (collision is null) return Results.NotFound();
         var now = time.GetUtcNow();
@@ -359,9 +372,17 @@ public static class CollisionEndpoints
 
         collision.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         events.Publish(new ClashCollisionsChanged(http.User.Actor(), collision.PartId, collision.Id));
         return Results.Ok();
     }
+
+    private static async Task<Guid?> PartOfAsync(ToadFlowDb db, Guid collisionId, CancellationToken ct) =>
+        await db.Set<ClashCollision>().AsNoTracking().Where(c => c.Id == collisionId).Select(c => (Guid?)c.PartId).SingleOrDefaultAsync(ct);
+
+    /// <summary>Блокировка строки части до конца транзакции — та же, что держит сверка утверждённого прогона.</summary>
+    private static Task LockPartAsync(ToadFlowDb db, Guid partId, CancellationToken ct) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM clash_parts WHERE id = {partId} FOR UPDATE", ct);
 
     private static ClashCollisionEvent Event(Guid collisionId, DateTimeOffset at, Guid? user, CollisionEventKind kind, string text) =>
         new() { Id = Guid.CreateVersion7(), CollisionId = collisionId, At = at, UserId = user, Kind = kind, Text = text };

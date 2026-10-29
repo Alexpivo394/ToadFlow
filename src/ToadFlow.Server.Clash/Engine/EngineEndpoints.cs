@@ -25,15 +25,20 @@ public static class EngineEndpoints
         engine.MapGet("/runs/{id:guid}/basis", BasisAsync);
     }
 
-    /// <summary>Следующий прогон очереди, если сейчас ни один не идёт: движок считает по одному прогону.</summary>
+    /// <summary>
+    ///     Следующий прогон очереди, если сейчас ни один не идёт: движок считает по одному прогону. Основа утверждённого
+    ///     прогона — утверждённый прогон части на момент выдачи: пока прогон ждал, мог закончиться другой.
+    /// </summary>
     private static async Task<IResult> ClaimAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var lease = now + EngineRun.Lease;
         var queued = nameof(EngineRunState.Queued);
         var running = nameof(EngineRunState.Running);
+        var approved = nameof(EngineRunKind.Approved);
         var claimed = await db.Set<EngineRun>().FromSql($"""
-            UPDATE clash_engine_runs SET state = {running}, attempt = attempt + 1, lease_until = {lease}, started_at = {now}, stage = NULL
+            UPDATE clash_engine_runs r SET state = {running}, attempt = attempt + 1, lease_until = {lease}, started_at = {now}, stage = NULL,
+                previous_run_id = CASE WHEN r.kind = {approved} THEN (SELECT p.approved_run_id FROM clash_parts p WHERE p.id = r.part_id) ELSE r.previous_run_id END
             WHERE id = (
                 SELECT id FROM clash_engine_runs
                 WHERE state = {queued} AND NOT EXISTS (SELECT 1 FROM clash_engine_runs WHERE state = {running})
@@ -107,7 +112,13 @@ public static class EngineEndpoints
         run.LeaseUntil = time.GetUtcNow() + EngineRun.Lease;
         if (last && run.Kind == EngineRunKind.Approved)
         {
-            await reconciler.ApplyAsync(run, result.Gone ?? [], result.Matches ?? [], result.Stats, ct);
+            if (await reconciler.ApplyAsync(run, result.Gone ?? [], result.Matches ?? [], result.Stats, ct) is null)
+            {
+                // Прогон отменили, пока писалась эта часть: она уже никому не нужна.
+                await hits.DiscardAsync(run.Id, ct);
+                return NotRunning();
+            }
+
             events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
             events.Publish(new ClashCollisionsChanged(Actor.System, run.PartId, null));
         }
