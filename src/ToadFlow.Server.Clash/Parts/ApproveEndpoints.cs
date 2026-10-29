@@ -30,7 +30,7 @@ public static class ApproveEndpoints
         ConfigurationJson.Serialize(ConfigurationJson.Deserialize(a)) == ConfigurationJson.Serialize(ConfigurationJson.Deserialize(b));
 
     private static async Task<IResult> ApproveAsync(Guid id, ApproveRequest request, ToadFlowDb db, PartModels models, HttpContext http, TimeProvider time,
-        IDomainEvents events, CancellationToken ct)
+        IDomainEvents events, Collisions.ApprovedRuns runs, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {id} FOR UPDATE").SingleOrDefaultAsync(ct);
@@ -59,7 +59,8 @@ public static class ApproveEndpoints
         await transaction.CommitAsync(ct);
 
         events.Publish(new ClashPartApproved(http.User.Actor(), id, part.Name, version.Version));
-        return Results.Ok(new ApprovedVersionView(version.Version, version.ApprovedAt, await UserNameAsync(db, version.UserId, ct), version.Comment));
+        var run = request.Run ? await runs.EnqueueAsync(id, null, [], http.User.Actor(), ct) : null;
+        return Results.Ok(new ApprovedVersionView(version.Version, version.ApprovedAt, await UserNameAsync(db, version.UserId, ct), version.Comment, run?.Id));
     }
 
     private static async Task<IResult> VersionsAsync(Guid id, ToadFlowDb db, CancellationToken ct)

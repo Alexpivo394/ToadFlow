@@ -1,4 +1,5 @@
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Collisions;
 
 namespace ToadFlow.Server.Clash.Engine;
 
@@ -11,14 +12,41 @@ public enum EngineRunState
     Cancelled
 }
 
+public enum EngineRunKind
+{
+    /// <summary>Прогон черновика: результат — временный список, статусов нет.</summary>
+    Draft,
+
+    /// <summary>Прогон утверждённой версии: коллизии сверяются с базой, статусы, лента.</summary>
+    Approved
+}
+
 /// <summary>
-///     Прогон черновика части в движке. Снимок конфигурации и слепков берётся при «Прогнать»: правка черновика во время
-///     прогона на него не влияет. Работник держит прогон арендой; без хода аренда истекает, и прогон возвращается в очередь.
+///     Прогон части в движке — черновика или утверждённой версии. Снимок конфигурации и слепков берётся при постановке в
+///     очередь: правка черновика во время прогона на него не влияет. Работник держит прогон арендой; без хода аренда истекает,
+///     и прогон возвращается в очередь.
 /// </summary>
 public sealed class EngineRun
 {
     public Guid Id { get; set; }
     public Guid PartId { get; set; }
+    public EngineRunKind Kind { get; set; }
+
+    /// <summary>Утверждённая версия, которую прогоняет прогон; null — черновик.</summary>
+    public int? Version { get; set; }
+
+    /// <summary>Запуск расписания, после выгрузок которого поставлен прогон; null — вручную.</summary>
+    public Guid? TriggerRunId { get; set; }
+
+    /// <summary>Модели, которые в этом цикле не выгрузились: их пары, которых не нашли, — «не проверена».</summary>
+    public Guid[] UncheckedModels { get; set; } = [];
+
+    /// <summary>Прошлый удачный утверждённый прогон части на момент постановки: основа инкрементальности и сверки.</summary>
+    public Guid? PreviousRunId { get; set; }
+
+    /// <summary>Итог сверки утверждённого прогона.</summary>
+    public ApprovedRunSummary? Summary { get; set; }
+
     public EngineRunState State { get; set; }
     public string ConfigurationJson { get; set; } = "";
     public List<EngineRunModel> Models { get; set; } = [];

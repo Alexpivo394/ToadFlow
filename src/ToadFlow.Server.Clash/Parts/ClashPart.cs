@@ -73,8 +73,10 @@ public sealed record PartModelView(
 /// <param name="Warnings">Модели без выгрузки или с устаревшей выгрузкой: «ЭОМ: нет выгрузки».</param>
 /// <param name="LastRun">Последний прогон черновика; null — не прогонялся.</param>
 /// <param name="ApprovedVersion">Последняя утверждённая версия; null — часть не утверждалась.</param>
+/// <param name="LastApproved">Итог последнего удачного утверждённого прогона; null — не было.</param>
 public sealed record ClashPartSummary(Guid Id, string Name, string? Object, string? Part, int Models, int Sets, DateTimeOffset UpdatedAt,
-    IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun, int? ApprovedVersion = null);
+    IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun, int? ApprovedVersion = null,
+    Collisions.ApprovedRunSummary? LastApproved = null);
 
 public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models);
 

@@ -140,3 +140,11 @@ public sealed class ClashCollisionEvent
     public CollisionStatus? ToStatus { get; set; }
     public int? Version { get; set; }
 }
+
+/// <summary>Коллизии части изменились (прогон, статус, примечание) — экрану утверждённой проверки пора обновиться. В журнал не пишется.</summary>
+/// <param name="CollisionId">Изменённая коллизия; null — изменилось много (сверка прогона).</param>
+public sealed record ClashCollisionsChanged(ToadFlow.Server.Events.Actor Actor, Guid PartId, Guid? CollisionId) : ToadFlow.Server.Events.DomainEvent(Actor)
+{
+    public override string UiEntity => "clash-collisions";
+    public override string UiId => PartId.ToString();
+}

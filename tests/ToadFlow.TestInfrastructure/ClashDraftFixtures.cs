@@ -64,6 +64,19 @@ public static class ClashDraftFixtures
         return engine.PostAsync($"/api/engine/runs/{runId}/result?part={part}&last={(last ? "true" : "false")}", content);
     }
 
+    /// <summary>Часть результата утверждённого прогона: последняя часть несёт ушедшие пары и сопоставления.</summary>
+    public static Task<HttpResponseMessage> PostApprovedResultAsync(HttpClient engine, Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits,
+        EngineRunStats? stats, IReadOnlyList<EngineGonePair> gone, IReadOnlyList<EngineIdentityMatch> matches)
+    {
+        using var packed = new MemoryStream();
+        using (var zip = new GZipStream(packed, CompressionLevel.Fastest, true))
+            JsonSerializer.Serialize(zip, new EngineRunResult(runId, hits, stats, last ? gone : null, last ? matches : null), TestJson.Options);
+        var content = new ByteArrayContent(packed.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        content.Headers.ContentEncoding.Add("gzip");
+        return engine.PostAsync($"/api/engine/runs/{runId}/result?part={part}&last={(last ? "true" : "false")}", content);
+    }
+
     public static EngineHit Hit(int i, string modelA = "a", string modelB = "b", string disciplineA = "АР", string disciplineB = "ОВ", float depth = 30) =>
         new(modelA, $"ua-{i}", i, disciplineA, [], "OST_Walls", "Стена", "200", "Этаж 1",
             modelB, $"ub-{i}", 100_000 + i, disciplineB, [], "OST_DuctCurves", "Воздуховод", "500x300", "Этаж 1", i, 0, 0, depth, []);

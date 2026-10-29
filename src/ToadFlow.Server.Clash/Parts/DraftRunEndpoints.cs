@@ -23,7 +23,8 @@ public static class DraftRunEndpoints
 
     private static async Task<IResult> LastAsync(Guid id, ToadFlowDb db, CancellationToken ct)
     {
-        var run = await db.Set<EngineRun>().AsNoTracking().Where(r => r.PartId == id).OrderByDescending(r => r.CreatedAt).FirstOrDefaultAsync(ct);
+        var run = await db.Set<EngineRun>().AsNoTracking().Where(r => r.PartId == id && r.Kind == EngineRunKind.Draft)
+            .OrderByDescending(r => r.CreatedAt).FirstOrDefaultAsync(ct);
         return run is null ? Results.NoContent() : Results.Ok(DraftRunSummary.Of(run));
     }
 
@@ -38,7 +39,7 @@ public static class DraftRunEndpoints
         var partModels = await models.OfPartAsync(id, ct);
 
         // Ещё не начатый прогон этой части уже не нужен: прогон по нынешнему черновику его заменяет.
-        await db.Set<EngineRun>().Where(r => r.PartId == id && r.State == EngineRunState.Queued)
+        await db.Set<EngineRun>().Where(r => r.PartId == id && r.Kind == EngineRunKind.Draft && r.State == EngineRunState.Queued)
             .ExecuteUpdateAsync(r => r.SetProperty(x => x.State, EngineRunState.Cancelled).SetProperty(x => x.FinishedAt, time.GetUtcNow()), ct);
 
         var run = new EngineRun
@@ -61,7 +62,8 @@ public static class DraftRunEndpoints
     private static async Task<IResult> CancelAsync(Guid id, ToadFlowDb db, DraftHits hits, TimeProvider time, HttpContext http, IDomainEvents events,
         CancellationToken ct)
     {
-        var active = await db.Set<EngineRun>().Where(r => r.PartId == id && (r.State == EngineRunState.Queued || r.State == EngineRunState.Running))
+        var active = await db.Set<EngineRun>()
+            .Where(r => r.PartId == id && r.Kind == EngineRunKind.Draft && (r.State == EngineRunState.Queued || r.State == EngineRunState.Running))
             .ToListAsync(ct);
         foreach (var run in active)
         {

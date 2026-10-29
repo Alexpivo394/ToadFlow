@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
 
@@ -18,19 +19,29 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
         "run_id, number, part_id, discipline_pair, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
         "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, x, y, z, depth_mm, checks";
 
-    /// <summary>Пишет часть результата: номера коллизий — <c>part * ResultChunkHits + i + 1</c>.</summary>
+    /// <summary>
+    ///     Пишет часть результата: номера коллизий — <c>part * ResultChunkHits + i + 1</c>. Утверждённый прогон пишет в
+    ///     <c>clash_approved_hits</c> с отпечатками — оттуда коллизии сверяются с базой после последней части.
+    /// </summary>
     public async Task WriteChunkAsync(EngineRun run, int part, IReadOnlyList<EngineHit> hits, CancellationToken ct)
     {
         var first = part * EngineApi.ResultChunkHits + 1;
         var last = first + EngineApi.ResultChunkHits - 1;
+        var approved = run.Kind == EngineRunKind.Approved;
         await db.Database.OpenConnectionAsync(ct);
         try
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            await db.Set<ClashDraftHit>().Where(h => h.RunId == run.Id && h.Number >= first && h.Number <= last).ExecuteDeleteAsync(ct);
+            if (approved)
+                await db.Set<ClashApprovedHit>().Where(h => h.RunId == run.Id && h.Number >= first && h.Number <= last).ExecuteDeleteAsync(ct);
+            else
+                await db.Set<ClashDraftHit>().Where(h => h.RunId == run.Id && h.Number >= first && h.Number <= last).ExecuteDeleteAsync(ct);
 
             var connection = (NpgsqlConnection)db.Database.GetDbConnection();
-            await using (var importer = await connection.BeginBinaryImportAsync($"COPY clash_draft_hits ({Columns}) FROM STDIN (FORMAT BINARY)", ct))
+            var copy = approved
+                ? $"COPY clash_approved_hits ({Columns}, fingerprint_a, fingerprint_b) FROM STDIN (FORMAT BINARY)"
+                : $"COPY clash_draft_hits ({Columns}) FROM STDIN (FORMAT BINARY)";
+            await using (var importer = await connection.BeginBinaryImportAsync(copy, ct))
             {
                 for (var i = 0; i < hits.Count; i++)
                 {
@@ -49,6 +60,9 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
                     await importer.WriteAsync(hit.Z, NpgsqlDbType.Double, ct);
                     await importer.WriteAsync(hit.DepthMm, NpgsqlDbType.Real, ct);
                     await importer.WriteAsync((hit.Checks ?? []).ToArray(), NpgsqlDbType.Array | NpgsqlDbType.Text, ct);
+                    if (!approved) continue;
+                    await importer.WriteAsync(hit.FingerprintA, NpgsqlDbType.Bigint, ct);
+                    await importer.WriteAsync(hit.FingerprintB, NpgsqlDbType.Bigint, ct);
                 }
 
                 await importer.CompleteAsync(ct);
@@ -81,7 +95,11 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
     }
 
     /// <summary>Строки прогона, который не дошёл до конца.</summary>
-    public Task DiscardAsync(Guid runId, CancellationToken ct) => db.Set<ClashDraftHit>().Where(h => h.RunId == runId).ExecuteDeleteAsync(ct);
+    public async Task DiscardAsync(Guid runId, CancellationToken ct)
+    {
+        await db.Set<ClashDraftHit>().Where(h => h.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.Set<ClashApprovedHit>().Where(h => h.RunId == runId).ExecuteDeleteAsync(ct);
+    }
 
     private static async Task WriteSideAsync(NpgsqlBinaryImporter importer, string model, string uniqueId, long elementId, string discipline,
         IReadOnlyList<Guid> sets, string category, string? family, string? type, string? level, CancellationToken ct)

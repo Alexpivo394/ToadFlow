@@ -33,8 +33,11 @@ public static class PartEndpoints
             query = string.IsNullOrWhiteSpace(@object) ? query.Where(p => p.Object == null) : query.Where(p => p.Object!.ToLower() == @object.Trim().ToLower());
         var parts = await query.OrderBy(p => p.Name).ToListAsync(ct);
         var ids = parts.Select(p => p.Id).ToList();
-        var runs = (await db.Set<Engine.EngineRun>().AsNoTracking().Where(r => ids.Contains(r.PartId)).ToListAsync(ct))
+        var runs = (await db.Set<Engine.EngineRun>().AsNoTracking().Where(r => ids.Contains(r.PartId) && r.Kind == Engine.EngineRunKind.Draft).ToListAsync(ct))
             .GroupBy(r => r.PartId).ToDictionary(g => g.Key, g => g.MaxBy(r => r.CreatedAt)!);
+        var approvedIds = parts.Select(p => p.ApprovedRunId).OfType<Guid>().ToList();
+        var approved = await db.Set<Engine.EngineRun>().AsNoTracking().Where(r => approvedIds.Contains(r.Id) && r.Summary != null)
+            .ToDictionaryAsync(r => r.Id, r => r.Summary!, ct);
 
         var now = time.GetUtcNow();
         var result = new List<ClashPartSummary>(parts.Count);
@@ -48,7 +51,8 @@ public static class PartEndpoints
                 .Select(m => m.Latest is null ? $"{m.Label}: нет выгрузки" : $"{m.Label}: выгрузка от {m.Latest.ExtractedAt:dd.MM}")
                 .ToList();
             result.Add(new ClashPartSummary(part.Id, part.Name, part.Object, part.Part, partModels.Count, config.Sets.Count, part.UpdatedAt,
-                config.Groups.Select(g => g.Name).ToList(), warnings, runs.TryGetValue(part.Id, out var run) ? Engine.DraftRunSummary.Of(run) : null, part.ApprovedVersion));
+                config.Groups.Select(g => g.Name).ToList(), warnings, runs.TryGetValue(part.Id, out var run) ? Engine.DraftRunSummary.Of(run) : null, part.ApprovedVersion,
+                part.ApprovedRunId is { } approvedRun ? approved.GetValueOrDefault(approvedRun) : null));
         }
 
         return [.. result];

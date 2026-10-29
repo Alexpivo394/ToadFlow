@@ -45,6 +45,8 @@ public sealed class ClashServerModule : IServerModule
         services.AddSingleton<PartElementsCache>();
         services.AddSingleton<PartPresence>();
         services.AddScoped<DraftHits>();
+        services.AddScoped<ApprovedRuns>();
+        services.AddScoped<CollisionReconciler>();
         services.AddHostedService<EngineLeaseSweeper>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
         services.AddAuthorization(options => options.AddPolicy(EngineAuthHandler.Policy,
@@ -124,8 +126,12 @@ public sealed class ClashServerModule : IServerModule
             entity.Property(r => r.ConfigurationJson).HasColumnType("jsonb");
             entity.Property(r => r.Models).AsJson();
             entity.Property(r => r.Stats).AsJson();
+            entity.Property(r => r.Summary).AsJson();
             entity.HasIndex(r => new { r.State, r.CreatedAt });
             entity.HasIndex(r => new { r.PartId, r.CreatedAt });
+            // Ждущий утверждённый прогон части — один: расписание и кнопка не ставят второй.
+            entity.HasIndex(r => r.PartId).IsUnique().HasDatabaseName("ix_clash_engine_runs_one_queued_approved")
+                .HasFilter("kind = 'Approved' AND state = 'Queued'");
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(r => r.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -136,6 +142,12 @@ public sealed class ClashServerModule : IServerModule
             entity.HasIndex(h => new { h.PartId, h.DisciplinePair });
             entity.HasIndex(h => h.PartId);
             entity.HasIndex(h => h.Checks).HasMethod("gin");
+        });
+
+        model.Entity<ClashApprovedHit>(entity =>
+        {
+            entity.ToTable("clash_approved_hits");
+            entity.HasKey(h => new { h.RunId, h.Number });
         });
 
         model.Entity<ClashCollision>(entity =>

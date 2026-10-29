@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
 
@@ -21,6 +22,7 @@ public static class EngineEndpoints
         engine.MapPost("/runs/{id:guid}/progress", ProgressAsync);
         engine.MapPost("/runs/{id:guid}/result", ResultAsync).WithMetadata(new DisableRequestSizeLimitAttribute());
         engine.MapPost("/runs/{id:guid}/fail", FailAsync);
+        engine.MapGet("/runs/{id:guid}/basis", BasisAsync);
     }
 
     /// <summary>Следующий прогон очереди, если сейчас ни один не идёт: движок считает по одному прогону.</summary>
@@ -44,7 +46,28 @@ public static class EngineEndpoints
 
         var run = claimed[0];
         events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
-        return Results.Ok(new EngineRunAssignment(run.Id, run.ConfigurationJson, run.Models, run.Attempt));
+        return Results.Ok(new EngineRunAssignment(run.Id, run.ConfigurationJson, run.Models, run.Attempt,
+            run.Kind == EngineRunKind.Approved ? EngineApi.Approved : EngineApi.Draft));
+    }
+
+    /// <summary>
+    ///     Основа утверждённого прогона: конфигурация и слепки прошлого удачного прогона и все коллизии части, кроме исправленных.
+    ///     Прошлого прогона нет — пустая основа.
+    /// </summary>
+    private static async Task<IResult> BasisAsync(Guid id, ToadFlowDb db, CancellationToken ct)
+    {
+        var run = await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
+        if (run is null) return NotRunning();
+        var previous = run.PreviousRunId is { } previousId
+            ? await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == previousId && r.State == EngineRunState.Succeeded, ct)
+            : null;
+        if (previous is null) return Results.Ok(new EngineBasis(null, [], []));
+
+        var open = await db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == run.PartId && c.Status != CollisionStatus.Fixed)
+            .Select(c => new EngineOpenPair(c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.FoundNow && c.LastFoundRunId == previous.Id, c.X, c.Y, c.Z,
+                c.DepthMm, c.FingerprintA, c.FingerprintB))
+            .ToListAsync(ct);
+        return Results.Ok(new EngineBasis(previous.ConfigurationJson, previous.Models, open));
     }
 
     private static async Task<IResult> DownloadAsync(Guid id, string file, ToadFlowDb db, ClashStorage storage, CancellationToken ct)
@@ -69,9 +92,8 @@ public static class EngineEndpoints
         return Results.Ok();
     }
 
-    private static async Task<IResult> ResultAsync(Guid id, int part, bool last, HttpRequest request, ToadFlowDb db, DraftHits hits, TimeProvider time,
-        IDomainEvents events,
-        CancellationToken ct)
+    private static async Task<IResult> ResultAsync(Guid id, int part, bool last, HttpRequest request, ToadFlowDb db, DraftHits hits,
+        CollisionReconciler reconciler, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
         var run = await db.Set<EngineRun>().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
         if (run is null) return NotRunning();
@@ -83,7 +105,13 @@ public static class EngineEndpoints
 
         await hits.WriteChunkAsync(run, part, result.Hits, ct);
         run.LeaseUntil = time.GetUtcNow() + EngineRun.Lease;
-        if (last)
+        if (last && run.Kind == EngineRunKind.Approved)
+        {
+            await reconciler.ApplyAsync(run, result.Gone ?? [], result.Matches ?? [], result.Stats, ct);
+            events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
+            events.Publish(new ClashCollisionsChanged(Actor.System, run.PartId, null));
+        }
+        else if (last)
         {
             await hits.CompleteAsync(run, result.Stats, ct);
             events.Publish(new ClashDraftChanged(Actor.System, run.PartId));

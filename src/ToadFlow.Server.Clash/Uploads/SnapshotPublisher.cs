@@ -87,7 +87,9 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
     {
         var active = (await db.Set<EngineRun>().AsNoTracking()
                 .Where(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running
-                            || db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id))
+                            || db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id || p.ApprovedRunId == r.Id)
+                            || db.Set<EngineRun>().Any(next => next.PreviousRunId == r.Id
+                                                              && (next.State == EngineRunState.Queued || next.State == EngineRunState.Running)))
                 .Select(r => r.Models).ToListAsync(ct))
             .SelectMany(m => m).Select(m => m.SnapshotId).ToHashSet();
         var stale = (await db.Set<ClashSnapshot>().Where(s => s.ModelId == modelId)
