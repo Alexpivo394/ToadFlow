@@ -41,6 +41,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<PartModels>();
         services.AddScoped<PartElements>();
         services.AddSingleton<PartElementsCache>();
+        services.AddSingleton<PartPresence>();
         services.AddScoped<DraftHits>();
         services.AddHostedService<EngineLeaseSweeper>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
@@ -80,6 +81,14 @@ public sealed class ClashServerModule : IServerModule
             entity.ToTable("clash_parts");
             entity.Property(p => p.Id).ValueGeneratedNever();
             entity.Property(p => p.DraftJson).HasColumnType("jsonb");
+        });
+
+        model.Entity<ClashDraftVersion>(entity =>
+        {
+            entity.ToTable("clash_draft_versions");
+            entity.HasKey(v => new { v.PartId, v.Version });
+            entity.Property(v => v.ConfigurationJson).HasColumnType("jsonb");
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(v => v.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<ClashPartModel>(entity =>
@@ -132,6 +141,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashDraftResults();
         api.MapClashTemplates();
         api.MapClashViewer();
+        api.MapClashPresence();
     }
 
     /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>

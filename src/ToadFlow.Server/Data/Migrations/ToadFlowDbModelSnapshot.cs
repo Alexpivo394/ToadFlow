@@ -399,6 +399,35 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_engine_runs", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashDraftVersion", b =>
+                {
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration_json");
+
+                    b.Property<DateTimeOffset>("SavedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("saved_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("PartId", "Version")
+                        .HasName("pk_clash_draft_versions");
+
+                    b.ToTable("clash_draft_versions", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPart", b =>
                 {
                     b.Property<Guid>("Id")
@@ -413,6 +442,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("draft_json");
+
+                    b.Property<int>("DraftVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("draft_version");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1529,6 +1562,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_engine_runs_clash_parts_part_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashDraftVersion", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_draft_versions_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPartModel", b =>

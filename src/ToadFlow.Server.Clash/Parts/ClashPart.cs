@@ -16,6 +16,9 @@ public sealed class ClashPart
     /// <summary>Черновик конфигурации в формате <see cref="ConfigurationJson" />.</summary>
     public string DraftJson { get; set; } = EmptyDraft;
 
+    /// <summary>Версия черновика: растёт на каждом сохранении; по ней сливаются правки нескольких пользователей.</summary>
+    public int DraftVersion { get; set; }
+
     /// <summary>Прогон, чьи коллизии — нынешний результат черновика; null — удачных прогонов не было.</summary>
     public Guid? ResultRunId { get; set; }
 
@@ -60,3 +63,15 @@ public sealed record PartModelView(
 public sealed record ClashPartSummary(Guid Id, string Name, string? Object, string? Part, int Models, int Sets, DateTimeOffset UpdatedAt);
 
 public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models);
+
+/// <summary>Сохранённая версия черновика части — база для слияния правок, начатых с неё. Хранятся последние <see cref="Keep" />.</summary>
+public sealed class ClashDraftVersion
+{
+    public const int Keep = 100;
+
+    public Guid PartId { get; set; }
+    public int Version { get; set; }
+    public string ConfigurationJson { get; set; } = "";
+    public Guid UserId { get; set; }
+    public DateTimeOffset SavedAt { get; set; }
+}

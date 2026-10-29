@@ -19,7 +19,8 @@ public class AuthorizationMatrixTests : ServerTest
     /// </summary>
     private static readonly string[] Personal =
         ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/loi/checks", "/api/loi/naming/preview", "/api/loi/routing/preview",
-         "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned"];
+         "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned",
+         "/api/clash/parts/{id:guid}/presence"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()

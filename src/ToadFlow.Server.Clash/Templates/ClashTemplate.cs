@@ -60,7 +60,7 @@ public static class TemplateEndpoints
 
     /// <summary>Заменяет черновик части копией шаблона (<see cref="DraftEndpoints.CopyFor" />).</summary>
     private static async Task<IResult> ApplyAsync(Guid id, Guid partId, ToadFlowDb db, PartModels models, HttpContext http, TimeProvider time,
-        CancellationToken ct)
+        ToadFlow.Server.Events.IDomainEvents events, CancellationToken ct)
     {
         var template = await db.Set<ClashTemplate>().AsNoTracking().SingleOrDefaultAsync(t => t.Id == id, ct);
         var part = await db.Set<ClashPart>().SingleOrDefaultAsync(p => p.Id == partId, ct);
@@ -70,8 +70,9 @@ public static class TemplateEndpoints
         var config = DraftEndpoints.CopyFor(Alexpivo394.Revit.Clash.Rules.ConfigurationJson.Deserialize(template.ConfigurationJson), disciplines,
             refs.Select(m => m.ModelKey).ToList());
 
-        DraftEndpoints.Store(part, config, http, time);
+        await DraftEndpoints.StoreAsync(db, part, config, http, time, ct);
         await db.SaveChangesAsync(ct);
+        events.Publish(new Engine.ClashDraftChanged(ToadFlow.Server.Events.ActorContext.Actor(http.User), partId));
         return Results.Ok(await DraftEndpoints.ViewAsync(part, models, ct));
     }
 

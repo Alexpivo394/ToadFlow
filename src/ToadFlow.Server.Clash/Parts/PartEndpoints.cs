@@ -94,7 +94,7 @@ public static class PartEndpoints
             var config = source is null
                 ? ConfigurationDefaults.ByDisciplines(disciplines)
                 : DraftEndpoints.CopyFor(source, disciplines, refs.Select(m => m.ModelKey).ToList());
-            DraftEndpoints.Store(part, config, http, time);
+            await DraftEndpoints.StoreAsync(db, part, config, http, time, ct);
             await db.SaveChangesAsync(ct);
         }
 

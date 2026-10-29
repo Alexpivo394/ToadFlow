@@ -3,6 +3,7 @@ using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Events;
 
 namespace ToadFlow.Server.Clash.Parts;
 
@@ -96,7 +97,7 @@ public static class DraftEndpoints
         var (disciplines, refs) = await ContextAsync(part.Id, models, ct);
         var config = WithDisciplineGroups(ConfigurationJson.Deserialize(part.DraftJson), disciplines);
         using var document = JsonDocument.Parse(ConfigurationJson.Serialize(config));
-        return new DraftView(document.RootElement.Clone(), 0, disciplines, refs,
+        return new DraftView(document.RootElement.Clone(), part.DraftVersion, disciplines, refs,
             ConfigurationValidator.Problems(config, disciplines, refs.Select(m => m.ModelKey).ToList()));
     }
 
@@ -106,24 +107,76 @@ public static class DraftEndpoints
         return part is null ? Results.NotFound() : Results.Ok(await ViewAsync(part, models, ct));
     }
 
-    private static async Task<IResult> SaveAsync(Guid id, HttpRequest request, ToadFlowDb db, PartModels models, TimeProvider time, CancellationToken ct)
+    /// <summary>
+    ///     Тело — <c>{ baseVersion, configuration, keepMine? }</c>: правки сливаются с тем, что сохранили другие после
+    ///     <c>baseVersion</c> (<see cref="ConfigurationMerge" />); один и тот же элемент, изменённый по-разному, — 409 со списком
+    ///     конфликтов и нынешним черновиком. Прежнее тело — сама конфигурация — сохраняется поверх.
+    /// </summary>
+    private static async Task<IResult> SaveAsync(Guid id, HttpRequest request, ToadFlowDb db, PartModels models, TimeProvider time, IDomainEvents events,
+        CancellationToken ct)
     {
-        var part = await db.Set<ClashPart>().SingleOrDefaultAsync(p => p.Id == id, ct);
+        using var reader = new StreamReader(request.Body);
+        var text = await reader.ReadToEndAsync(ct);
+        if (ReadBody(text) is not { } body) return Results.BadRequest(new { error = "Конфигурация не читается" });
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // Блокировка строки части: два одновременных сохранения сливаются по очереди, а не затирают друг друга.
+        var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {id} FOR UPDATE").SingleOrDefaultAsync(ct);
         if (part is null) return Results.NotFound();
 
-        using var reader = new StreamReader(request.Body);
-        if (TryParse(await reader.ReadToEndAsync(ct)) is not { } config) return Results.BadRequest(new { error = "Конфигурация не читается" });
+        var config = body.Mine;
+        if (body.BaseVersion is { } baseVersion && baseVersion != part.DraftVersion)
+        {
+            var current = ConfigurationJson.Deserialize(part.DraftJson);
+            var baseJson = await db.Set<ClashDraftVersion>().Where(v => v.PartId == id && v.Version == baseVersion)
+                .Select(v => v.ConfigurationJson).SingleOrDefaultAsync(ct);
+            // Базы уже нет: всё, что у пользователя отличается от сохранённого, — конфликт.
+            var @base = baseJson is null ? new ClashConfiguration([], [], [], [], current.IgnoreConnectedMep) : ConfigurationJson.Deserialize(baseJson);
+            var merge = ConfigurationMerge.Merge(@base, current, config, body.KeepMine);
+            if (merge.Conflicts.Count > 0)
+                return Results.Conflict(new { error = "Эти элементы уже изменил другой пользователь", conflicts = merge.Conflicts, current = await ViewAsync(part, models, ct) });
+            config = merge.Merged;
+        }
 
         var problems = await ProblemsAsync(id, config, models, ct);
         if (problems.Count > 0) return Results.BadRequest(new { error = string.Join("; ", problems), problems });
 
-        Store(part, config, request.HttpContext, time);
+        await StoreAsync(db, part, config, request.HttpContext, time, ct);
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        events.Publish(new Engine.ClashDraftChanged(request.HttpContext.User.Actor(), id));
         return Results.Ok(await ViewAsync(part, models, ct));
     }
 
+    private sealed record SaveBody(ClashConfiguration Mine, int? BaseVersion, IReadOnlyCollection<string>? KeepMine);
+
+    private static SaveBody? ReadBody(string text)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("configuration", out var configuration))
+            {
+                if (TryParse(configuration.GetRawText()) is not { } mine) return null;
+                int? baseVersion = root.TryGetProperty("baseVersion", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+                var keep = root.TryGetProperty("keepMine", out var k) && k.ValueKind == JsonValueKind.Array
+                    ? k.EnumerateArray().Select(e => e.GetString()).OfType<string>().ToList()
+                    : null;
+                return new SaveBody(mine, baseVersion, keep);
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return TryParse(text) is { } legacy ? new SaveBody(legacy, null, null) : null;
+    }
+
     /// <summary>Добавляет клетки для всех пар групп черновика (и группы с самой собой): включены, 20 мм. Заданные клетки не меняются.</summary>
-    private static async Task<IResult> FillMatrixAsync(Guid id, HttpContext http, ToadFlowDb db, PartModels models, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> FillMatrixAsync(Guid id, HttpContext http, ToadFlowDb db, PartModels models, TimeProvider time, IDomainEvents events,
+        CancellationToken ct)
     {
         var part = await db.Set<ClashPart>().SingleOrDefaultAsync(p => p.Id == id, ct);
         if (part is null) return Results.NotFound();
@@ -136,8 +189,9 @@ public static class DraftEndpoints
             if (config.CellFor(groups[i].Id, groups[j].Id) is null)
                 matrix.Add(new MatrixCell(groups[i].Id, groups[j].Id, true, DefaultToleranceMm));
 
-        Store(part, config with { Matrix = matrix }, http, time);
+        await StoreAsync(db, part, config with { Matrix = matrix }, http, time, ct);
         await db.SaveChangesAsync(ct);
+        events.Publish(new Engine.ClashDraftChanged(http.User.Actor(), id));
         return Results.Ok(await ViewAsync(part, models, ct));
     }
 
@@ -167,10 +221,26 @@ public static class DraftEndpoints
         };
     }
 
-    public static void Store(ClashPart part, ClashConfiguration config, HttpContext http, TimeProvider time)
+    /// <summary>
+    ///     Новая версия черновика: версия растёт, сама версия запоминается как база для слияния правок (последние
+    ///     <see cref="ClashDraftVersion.Keep" />). Изменения сохраняет вызывающий.
+    /// </summary>
+    public static async Task StoreAsync(ToadFlowDb db, ClashPart part, ClashConfiguration config, HttpContext http, TimeProvider time, CancellationToken ct)
     {
+        var now = time.GetUtcNow();
+        var user = http.User.UserId();
+        // Черновик, сохранённый до появления версий или только что созданный, тоже должен быть базой для слияния.
+        if (!await db.Set<ClashDraftVersion>().AnyAsync(v => v.PartId == part.Id && v.Version == part.DraftVersion, ct))
+            db.Set<ClashDraftVersion>().Add(new ClashDraftVersion
+                { PartId = part.Id, Version = part.DraftVersion, ConfigurationJson = part.DraftJson, UserId = part.UpdatedByUserId, SavedAt = part.UpdatedAt });
+
+        part.DraftVersion++;
         part.DraftJson = ConfigurationJson.Serialize(config);
-        part.UpdatedAt = time.GetUtcNow();
-        part.UpdatedByUserId = http.User.UserId();
+        part.UpdatedAt = now;
+        part.UpdatedByUserId = user;
+        db.Set<ClashDraftVersion>().Add(new ClashDraftVersion
+            { PartId = part.Id, Version = part.DraftVersion, ConfigurationJson = part.DraftJson, UserId = user, SavedAt = now });
+        var oldest = part.DraftVersion - ClashDraftVersion.Keep;
+        await db.Set<ClashDraftVersion>().Where(v => v.PartId == part.Id && v.Version <= oldest).ExecuteDeleteAsync(ct);
     }
 }
