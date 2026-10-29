@@ -115,11 +115,11 @@ describe('Draft tab', () => {
     expect(await screen.findByText(/прогоните черновик заново/)).toBeTruthy();
   });
 
-  it('DraftTab_ApproveDisabledAndRunStarts', async () => {
+  it('DraftTab_ApproveEnabledAndRunStarts', async () => {
     open();
 
-    const approve = (await screen.findByRole('button', { name: 'Утвердить… (этап 4)' })) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
+    const approve = (await screen.findByRole('button', { name: 'Утвердить…' })) as HTMLButtonElement;
+    expect(approve.disabled).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Прогнать' }));
     await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/draft/run' && init?.method === 'POST')).toBe(true));
   });

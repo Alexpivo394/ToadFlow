@@ -35,7 +35,7 @@ const loiDefaults = (profileId: string | null): LoiScheduleSettings => ({
   profileId, modelProfiles: [], disciplines: [], fallbackProfileId: null, viewName: null, worksetKeyword: null, skipLinks: true, problemsOnly: false, historyFile: '', analytics: true,
 });
 
-const clashDefaults = (): ClashScheduleSettings => ({ viewName: 'Navisworks', worksetKeyword: '' });
+const clashDefaults = (): ClashScheduleSettings => ({ viewName: 'Navisworks', worksetKeyword: '', parts: [] });
 
 const isLoiSettings = (settings: ModuleSettings): settings is LoiScheduleSettings => 'profileId' in settings;
 

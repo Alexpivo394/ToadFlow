@@ -1,10 +1,12 @@
-import { Alert, Badge, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
+import { useState } from 'react';
+import { Alert, Badge, Button, Group, Stack, Text } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
-import type { DraftRunSummary, EngineRunState } from '../../api/types';
+import type { ApprovedVersionView, DraftRunSummary, EngineRunState } from '../../api/types';
 import { askConfirm } from '../../components/ui';
 import { formatBytes, formatDateTime, formatDuration } from '../../lib/format';
+import { ApproveDialog } from './approved/ApproveDialog';
 
-const stateLabel: Record<EngineRunState, { label: string; color: string }> = {
+export const stateLabel: Record<EngineRunState, { label: string; color: string }> = {
   Queued: { label: 'в очереди', color: 'gray' },
   Running: { label: 'выполняется', color: 'blue' },
   Succeeded: { label: 'готово', color: 'green' },
@@ -20,6 +22,8 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
   const current = run.data ?? null;
   const active = current?.state === 'Queued' || current?.state === 'Running';
   const stats = current?.stats;
+  const versions = useApi<ApprovedVersionView[]>(['clash-parts', partId, 'versions'], `/api/clash/parts/${partId}/versions`);
+  const [approving, setApproving] = useState(false);
 
   return (
     <Stack gap="md">
@@ -41,11 +45,7 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
         {current?.stage && <Text size="sm">{current.stage}</Text>}
         {current && <Text size="xs" c="dimmed">запущен {formatDateTime(current.createdAt)}</Text>}
         {current?.state === 'Succeeded' && current.hitCount != null && <Text size="xs" c="dimmed">· {current.hitCount.toLocaleString('ru-RU')} коллизий</Text>}
-        {!readOnly && (
-          <Tooltip label="Утверждение проверки и запись коллизий в базу — следующий этап">
-            <Button ml="auto" variant="default" disabled>Утвердить… (этап 4)</Button>
-          </Tooltip>
-        )}
+        {!readOnly && <Button ml="auto" variant="default" onClick={() => setApproving(true)}>Утвердить…</Button>}
       </Group>
       {dirty && !readOnly && <Text size="sm" c="orange">Черновик не сохранён: прогон возьмёт сохранённую версию.</Text>}
       {current?.state === 'Failed' && current.error && <Alert color="red" title="Прогон не удался">{current.error}</Alert>}
@@ -54,6 +54,9 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
           Элементов {stats.elements.toLocaleString('ru-RU')}, треугольников {stats.triangles.toLocaleString('ru-RU')}; загрузка {formatDuration(stats.loadSeconds)},
           поиск {formatDuration(stats.broadSeconds + stats.narrowSeconds)}; память движка до {formatBytes(stats.peakWorkingSetBytes)}
         </Text>
+      )}
+      {approving && (
+        <ApproveDialog partId={partId} nextVersion={(versions.data?.[0]?.version ?? 0) + 1} dirty={dirty} onSave={onSave} onClose={() => setApproving(false)} />
       )}
     </Stack>
   );

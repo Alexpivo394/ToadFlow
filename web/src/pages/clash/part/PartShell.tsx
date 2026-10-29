@@ -5,9 +5,11 @@ import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
-import type { ClashPartView, ClashTemplateView, DraftView, PresenceView } from '../../../api/types';
+import type { ApprovedVersionView, ClashPartView, ClashTemplateView, DraftView, PresenceView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm, Panel } from '../../../components/ui';
+import { formatDateTime } from '../../../lib/format';
+import { VersionsDrawer } from '../approved/VersionsDrawer';
 import { DraftTab } from '../draft/DraftTab';
 import { ExclusionsTab } from '../matrix/ExclusionsTab';
 import { MatrixTab } from '../matrix/MatrixTab';
@@ -73,6 +75,9 @@ export function PartShell() {
   const part = useApi<ClashPartView>(['clash-parts', partId], `/api/clash/parts/${partId}`);
   const templates = useApi<ClashTemplateView[]>(['clash-templates'], '/api/clash/templates');
   const presence = useApi<PresenceView[]>(['clash-presence', partId], `/api/clash/parts/${partId}/presence`);
+  const versions = useApi<ApprovedVersionView[]>(['clash-parts', partId, 'versions'], `/api/clash/parts/${partId}/versions`);
+  const approved = versions.data?.[0] ?? null;
+  const [showVersions, setShowVersions] = useState(false);
   const draft = useDraft(partId);
 
   // Отметка «я здесь»: раз в 15 с и при смене вкладки или набора; уход со страницы — явный выход.
@@ -117,6 +122,14 @@ export function PartShell() {
       <Group justify="space-between" wrap="wrap">
         <Group gap="md">
           <Text fw={700} size="xl">{part.data.name}</Text>
+          {approved
+            ? (
+              <Group gap={6}>
+                <Badge variant="light" color="green">Утверждена v{approved.version} · {formatDateTime(approved.approvedAt)} · {approved.userName}</Badge>
+                <Button size="compact-xs" variant="subtle" onClick={() => setShowVersions(true)}>Версии</Button>
+              </Group>
+            )
+            : <Badge variant="light" color="gray">Не утверждена</Badge>}
           {draft.dirty && <Text size="sm" c="orange">● есть несохранённые изменения</Text>}
           <PresenceBadges present={presence.data ?? []} me={user?.id} />
         </Group>
@@ -143,6 +156,13 @@ export function PartShell() {
                 </Stack>
               </Menu.Dropdown>
             </Menu>
+            {approved && (
+              <Button size="xs" variant="default"
+                onClick={() => askConfirm(`Заменить черновик утверждённой версией ${approved.version}? Правки черновика пропадут.`,
+                  () => act(`/api/clash/parts/${partId}/draft/reset`, `Черновик — снова версия ${approved.version}`), 'blue')}>
+                Сбросить черновик к утверждённой
+              </Button>
+            )}
             <Button size="xs" variant="default" disabled={!draft.dirty} onClick={draft.reset}>Отменить правки</Button>
             <Button size="xs" disabled={!draft.dirty} loading={draft.saving} onClick={draft.save}>Сохранить</Button>
           </Group>
@@ -178,6 +198,7 @@ export function PartShell() {
         </Tabs>
       </Panel>
       {draft.conflicts && <ConflictDialog conflicts={draft.conflicts} onResolve={draft.resolve} onClose={draft.dismiss} />}
+      {showVersions && <VersionsDrawer versions={versions.data ?? []} onClose={() => setShowVersions(false)} />}
     </Stack>
   );
 }

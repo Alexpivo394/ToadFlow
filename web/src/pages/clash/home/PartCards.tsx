@@ -18,6 +18,18 @@ function RunLine({ part }: { part: ClashPartSummary }) {
   return <Text size="xs" c="blue">прогон {run.state === 'Queued' ? 'в очереди' : 'идёт'}</Text>;
 }
 
+/** Утверждённая версия и итог её последнего прогона: открытых после прогона — новые, активные и вернувшиеся. */
+function ApprovedLine({ part }: { part: ClashPartSummary }) {
+  if (part.approvedVersion == null) return <Text size="xs" c="dimmed">не утверждена</Text>;
+  const last = part.lastApproved;
+  return (
+    <Text size="xs" c="green">
+      утверждена v{part.approvedVersion}
+      {last ? ` · открытых ${(last.new + last.active + last.returned).toLocaleString('ru-RU')}, исправлено ${last.fixed.toLocaleString('ru-RU')}` : ' · не прогонялась'}
+    </Text>
+  );
+}
+
 /** Карточки частей проекта и «+ Новая часть». */
 export function PartCards({ project }: { project: ProjectKey }) {
   const { can } = useAuth();
@@ -38,6 +50,7 @@ export function PartCards({ project }: { project: ProjectKey }) {
               </Group>
               <Text size="xs" c="dimmed">{p.models} моделей · {p.sets} наборов</Text>
               <RunLine part={p} />
+              <ApprovedLine part={p} />
             </Card>
           </UnstyledButton>
         ))}

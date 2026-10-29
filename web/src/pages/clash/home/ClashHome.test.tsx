@@ -18,6 +18,8 @@ const responses = {
       id: 'p1', name: 'Корпус 1', object: 'Полковая', part: 'корпус 1', models: 5, sets: 7, updatedAt: '2026-10-28T10:00:00Z',
       groups: ['АР', 'ОВ', 'Проезды'], warnings: ['ЭОМ: нет выгрузки'],
       lastRun: { runId: 'r1', state: 'Succeeded', stage: null, hitCount: 60896, error: null, createdAt: '2026-10-28T10:00:00Z', finishedAt: '2026-10-28T10:01:14Z', stats: null },
+      approvedVersion: 2,
+      lastApproved: { found: 120, new: 5, active: 98, returned: 1, fixed: 7, goneByRules: 0, unchecked: 0, fake: 16, reusedPairs: 0 },
     },
     { id: 'p2', name: 'Корпус 2', object: 'Полковая', part: 'корпус 2', models: 3, sets: 3, updatedAt: '2026-10-27T10:00:00Z', groups: ['АР'], warnings: [], lastRun: null },
   ],
@@ -58,6 +60,8 @@ describe('Clash home', () => {
     expect(screen.getByText('ЭОМ: нет выгрузки')).toBeTruthy();
     expect(screen.getByText(/60 896/)).toBeTruthy();
     expect(screen.getByText('не прогонялся')).toBeTruthy();
+    expect(screen.getByText(/утверждена v2 · открытых 104/)).toBeTruthy();
+    expect(screen.getByText('не утверждена')).toBeTruthy();
     await waitFor(() => expect(calls().some(([url]) => url === `/api/clash/parts?object=${encodeURIComponent('Полковая')}`)).toBe(true));
   });
 

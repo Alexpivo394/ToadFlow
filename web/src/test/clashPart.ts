@@ -35,6 +35,7 @@ export const partResponses = {
   },
   '/api/clash/parts/p1/draft': draft(),
   '/api/clash/parts/p1/presence': [],
+  '/api/clash/parts/p1/versions': [],
   '/api/clash/parts/p1/preview': { matched: 14, total: 21430, byAnyOf: [14], sample: [] },
   '/api/clash/parts/p1/values': [{ value: 'OST_Walls', count: 5902 }, { value: 'OST_Doors', count: 310 }, { value: 'OST_GenericModel', count: 1204 }],
   '/api/clash/parts/p1/unassigned': { count: 0, byCategory: [] },

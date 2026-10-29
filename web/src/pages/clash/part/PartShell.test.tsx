@@ -89,6 +89,37 @@ describe('Part shell', () => {
 
     expect(await screen.findByText('Есть несохранённые изменения. Уйти без сохранения?')).toBeTruthy();
   });
+
+  const approved = [
+    { version: 3, approvedAt: '2026-10-29T10:00:00Z', userName: 'Иванов', comment: 'допуск 50', runId: null },
+    { version: 2, approvedAt: '2026-10-28T10:00:00Z', userName: 'Петров', comment: null, runId: null },
+  ];
+
+  it('PartShell_ShowsApprovedVersion', async () => {
+    await openSets({ ...partResponses, '/api/clash/parts/p1/versions': approved });
+
+    expect(await screen.findByText(/Утверждена v3/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Версии' }));
+    expect(await screen.findByText('допуск 50')).toBeTruthy();
+    expect(screen.getByText('v2')).toBeTruthy();
+  });
+
+  it('PartShell_NotApproved_SaysSo', async () => {
+    await openSets();
+
+    expect(await screen.findByText('Не утверждена')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Сбросить черновик к утверждённой' })).toBeNull();
+  });
+
+  it('PartShell_ResetDraft_Confirms', async () => {
+    await openSets({ ...partResponses, '/api/clash/parts/p1/versions': approved, 'POST /api/clash/parts/p1/draft/reset': draft(5) });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Сбросить черновик к утверждённой' }));
+    expect(await screen.findByText('Заменить черновик утверждённой версией 3? Правки черновика пропадут.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Да' }));
+
+    await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/draft/reset' && init?.method === 'POST')).toBe(true));
+  });
 });
 
 vi.setConfig({ testTimeout: 15_000 });

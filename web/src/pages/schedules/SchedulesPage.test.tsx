@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { defaultExportSettings } from '../../components/ExportSettingsForm';
 import { renderApp } from '../../test/renderApp';
@@ -105,7 +105,7 @@ describe('SchedulesPage for clash extraction', () => {
     selection: { models: [{ name: 'АР_К1.rvt', modelPath: 'RSN://rs22/ЖК/АР_К1.rvt', rvt: true, nwc: false }], folders: [] },
     moduleSettings: { viewName: 'Вид КЛ', worksetKeyword: '#Связи' },
   };
-  const clashResponses = { ...responses, '/api/schedules': [clash], '/api/schedules/s3/changes': [] };
+  const clashResponses = { ...responses, '/api/schedules': [clash], '/api/schedules/s3/changes': [], '/api/clash/parts': [] };
 
   it('ScheduleEditor_ClashExtract_HidesOutputFolderAndSavesViewName', async () => {
     renderApp('/schedules/s3', clashResponses);
@@ -125,8 +125,33 @@ describe('SchedulesPage for clash extraction', () => {
     expect(put).toBeTruthy();
     const body = JSON.parse(String(put![1]!.body));
     expect(body.moduleKind).toBe('clash-extract');
-    expect(body.moduleSettings).toEqual({ viewName: 'Navisworks', worksetKeyword: '#Связи' });
+    expect(body.moduleSettings).toEqual({ viewName: 'Navisworks', worksetKeyword: '#Связи', parts: [] });
     expect(body.outputFolderTemplate).toBe('');
     expect(body.selection.models[0].rvt).toBe(true);
+  });
+
+  it('ScheduleForm_ClashParts_OnlyApproved', async () => {
+    const part = (id: string, name: string, approvedVersion: number | null) => ({
+      id, name, object: 'Север', part: null, models: 2, sets: 3, updatedAt: '2026-10-28T10:00:00Z', groups: [], warnings: [], lastRun: null,
+      approvedVersion, lastApproved: null,
+    });
+    renderApp('/schedules/s3', {
+      ...clashResponses,
+      '/api/clash/parts': [part('p1', 'Корпус 1', 2), part('p2', 'Корпус 2', null)],
+      '/api/schedules': [{ ...clash, moduleSettings: { viewName: 'Вид КЛ', worksetKeyword: '', parts: [] } }],
+    });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Выгрузка для коллизий' }));
+
+    const approvedPart = await screen.findByLabelText(/Корпус 1/);
+    expect(screen.queryByLabelText(/Корпус 2/)).toBeNull();
+    expect(screen.getByText(/Корпус 2 — не утверждена/)).toBeTruthy();
+    fireEvent.click(approvedPart);
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    await screen.findByText('Расписание «Коллизии ЖК «Север»»');
+    await waitFor(() => expect(calls.some(([url, init]) => url === '/api/schedules/s3' && init?.method === 'PUT')).toBe(true));
+    const put = calls.find(([url, init]) => url === '/api/schedules/s3' && init?.method === 'PUT');
+    expect(JSON.parse(String(put![1]!.body)).moduleSettings.parts).toEqual(['p1']);
   });
 });

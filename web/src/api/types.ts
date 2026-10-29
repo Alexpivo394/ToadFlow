@@ -659,6 +659,8 @@ export interface ApiToken {
 export interface ClashScheduleSettings {
   viewName: string;
   worksetKeyword: string;
+  /** Утверждённые части, которые прогоняются после выгрузки. */
+  parts: string[];
 }
 
 export interface ClashSnapshotView {
@@ -734,6 +736,30 @@ export interface ClashPartSummary {
   /** «ЭОМ: нет выгрузки», «ВК: выгрузка от 12.10». */
   warnings: string[];
   lastRun: DraftRunSummary | null;
+  /** Последняя утверждённая версия; null — часть не утверждалась. */
+  approvedVersion: number | null;
+  lastApproved: ApprovedRunSummary | null;
+}
+
+export interface ApprovedVersionView {
+  version: number;
+  approvedAt: string;
+  userName: string;
+  comment: string | null;
+  runId: string | null;
+}
+
+/** Итог сверки утверждённого прогона: new, returned, fixed, goneByRules, unchecked — переходы в прогоне; active, fake — сколько их у части. */
+export interface ApprovedRunSummary {
+  found: number;
+  new: number;
+  active: number;
+  returned: number;
+  fixed: number;
+  goneByRules: number;
+  unchecked: number;
+  fake: number;
+  reusedPairs: number;
 }
 
 /** Проект — объект из разбора имён моделей; object = null — модели и части без объекта. */
