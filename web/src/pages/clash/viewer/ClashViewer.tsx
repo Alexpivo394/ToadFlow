@@ -3,7 +3,8 @@ import { Center, Text } from '@mantine/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ViewerSceneView } from '../../../api/types';
-import { type Box, type Isolation, isVisible, roleColor, type ViewerMesh } from '../../../lib/viewer';
+import { type Box, type Isolation, isVisible, roleColor, type Vec3, type ViewerMesh } from '../../../lib/viewer';
+import { dragFace, elementBox, type Handle, handles } from './sectionGizmo';
 
 export interface ClashViewerProps {
   scene: ViewerSceneView;
@@ -25,6 +26,8 @@ interface Stage {
   world: THREE.Scene;
   group: THREE.Group;
   outline: THREE.Group;
+  /** Секущий куб в сцене: полупрозрачная коробка, контур и ручки граней. */
+  gizmo: THREE.Group;
   render: () => void;
 }
 
@@ -58,13 +61,17 @@ function inside(point: THREE.Vector3, box: Box | null): boolean {
  * Сцена коллизии на three.js. Начало координат — точка коллизии, единицы — мм, ось Z вверх (как в Revit).
  * A и B — контрастные цвета, окружение полупрозрачное, элементы без сетки — каркасы габаритов.
  */
-export default function ClashViewer({ scene, meshes, isolation, sectionBox, selected, onPick }: ClashViewerProps) {
+export default function ClashViewer({ scene, meshes, isolation, sectionBox, selected, onPick, onSectionChange }: ClashViewerProps) {
   const container = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
   const pick = useRef(onPick);
   pick.current = onPick;
   const section = useRef(sectionBox);
   section.current = sectionBox;
+  const changeSection = useRef(onSectionChange);
+  changeSection.current = onSectionChange;
+  const current = useRef(scene);
+  current.current = scene;
   const [failed, setFailed] = useState(false);
 
   // Рендерер, камера и управление живут, пока открыт просмотрщик; сцена коллизии меняется ниже.
@@ -94,12 +101,13 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     world.add(camera);
     const group = new THREE.Group();
     const outline = new THREE.Group();
-    world.add(group, outline);
+    const gizmo = new THREE.Group();
+    world.add(group, outline, gizmo);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     const render = () => renderer.render(world, camera);
     controls.addEventListener('change', render);
-    stage.current = { renderer, camera, controls, world, group, outline, render };
+    stage.current = { renderer, camera, controls, world, group, outline, gizmo, render };
 
     const resize = () => {
       const { clientWidth, clientHeight } = host;
@@ -113,28 +121,69 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     observer.observe(host);
     resize();
 
-    // Щелчок без перетаскивания — выбор элемента; перетаскивание вращает камеру.
-    let down: { x: number; y: number } | null = null;
-    const onDown = (e: PointerEvent) => (down = { x: e.clientX, y: e.clientY });
-    const onUp = (e: PointerEvent) => {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+    const ray = (e: MouseEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       const pointer = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       const raycaster = new THREE.Raycaster();
       raycaster.params.Line = { threshold: camera.position.length() / 200 };
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster
-        .intersectObjects(group.children.filter((c) => c.visible), false)
-        .find((i) => inside(i.point, section.current));
+      return raycaster;
+    };
+    const handleAt = (e: MouseEvent) => ray(e).intersectObjects(gizmo.children.filter((c) => c.userData.handle), false)[0];
+    const elementAt = (e: MouseEvent) =>
+      ray(e).intersectObjects(group.children.filter((c) => c.visible), false).find((i) => inside(i.point, section.current));
+
+    // Ручка куба под мышью тянет свою грань (камера в это время не вращается); щелчок без перетаскивания — выбор элемента.
+    let down: { x: number; y: number } | null = null;
+    let drag: { handle: Handle; start: Vec3; box: Box } | null = null;
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+      const hit = section.current && handleAt(e);
+      if (!hit || !section.current) return;
+      drag = { handle: hit.object.userData.handle as Handle, start: hit.point.toArray() as Vec3, box: section.current };
+      controls.enabled = false;
+      renderer.domElement.setPointerCapture(e.pointerId);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (drag) {
+        const r = ray(e).ray;
+        changeSection.current?.(dragFace(drag.box, drag.handle, r.origin.toArray() as Vec3, r.direction.toArray() as Vec3, drag.start));
+        return;
+      }
+      const hover = section.current ? handleAt(e) : undefined;
+      renderer.domElement.style.cursor = hover ? 'grab' : '';
+      for (const child of gizmo.children)
+        if (child.userData.handle) ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(child === hover?.object ? '#e8590c' : Selected);
+      render();
+    };
+    const onUp = (e: PointerEvent) => {
+      if (drag) {
+        drag = null;
+        controls.enabled = true;
+        renderer.domElement.releasePointerCapture(e.pointerId);
+        return;
+      }
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      const hit = elementAt(e);
       pick.current(hit ? (hit.object.userData.index as number) : null);
     };
+    // Двойной щелчок по элементу — секущий куб по его габариту с запасом.
+    const onDouble = (e: MouseEvent) => {
+      const hit = elementAt(e);
+      const element = hit ? current.current.elements[hit.object.userData.index as number] : undefined;
+      if (element) changeSection.current?.(elementBox(element));
+    };
     renderer.domElement.addEventListener('pointerdown', onDown);
+    renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerup', onUp);
+    renderer.domElement.addEventListener('dblclick', onDouble);
 
     return () => {
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onDown);
+      renderer.domElement.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('pointerup', onUp);
+      renderer.domElement.removeEventListener('dblclick', onDouble);
       controls.dispose();
       dispose(world);
       renderer.dispose();
@@ -233,6 +282,36 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
 
     s.render();
   }, [scene, meshes, isolation, sectionBox, selected]);
+
+  // Секущий куб виден в сцене: полупрозрачная коробка, жёлтый контур и ручки в центрах граней.
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
+    dispose(s.gizmo);
+    s.gizmo.clear();
+    if (sectionBox) {
+      const size = [0, 1, 2].map((i) => sectionBox.max[i] - sectionBox.min[i]) as Vec3;
+      const center = [0, 1, 2].map((i) => (sectionBox.min[i] + sectionBox.max[i]) / 2) as Vec3;
+      const geometry = new THREE.BoxGeometry(...size);
+      const shell = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: Selected, transparent: true, opacity: 0.05, depthWrite: false }));
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: Selected }));
+      shell.position.set(...center);
+      edges.position.set(...center);
+      shell.raycast = () => {};
+      edges.raycast = () => {};
+      s.gizmo.add(shell, edges);
+      const radius = Math.max(20, Math.hypot(...size) / 60);
+      for (const handle of handles(sectionBox)) {
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), new THREE.MeshBasicMaterial({ color: Selected, depthTest: false }));
+        knob.position.set(...handle.position);
+        knob.renderOrder = 3;
+        knob.userData.handle = handle;
+        s.gizmo.add(knob);
+      }
+    }
+
+    s.render();
+  }, [sectionBox]);
 
   if (failed)
     return (

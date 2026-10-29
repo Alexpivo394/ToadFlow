@@ -92,6 +92,9 @@ export function HitScene({ runId, number, title, focus, onRefresh }: {
         <Select size="xs" w={140} allowDeselect={false} value={radius} onChange={(v) => v && setRadius(v)} aria-label="Радиус окружения"
           data={Radii.map((r) => ({ value: r, label: `окружение ${Number(r) / 1000} м` }))} />
         <Checkbox size="xs" label="Секущий куб" checked={sectionOn} onChange={(e) => setSectionOn(e.currentTarget.checked)} />
+        {sectionOn && scene.data && (
+          <Button size="compact-xs" variant="subtle" onClick={() => setSection(defaultSectionBox(scene.data!))}>Сбросить куб</Button>
+        )}
         {scene.data && (
           <Text size="xs" c="dimmed">
             Окружение: {context.length} {plural(context.length, 'элемент', 'элемента', 'элементов')}, {withMesh} с сеткой
@@ -131,7 +134,7 @@ export function HitScene({ runId, number, title, focus, onRefresh }: {
         ) : scene.data ? (
           <Suspense fallback={<Center h="100%"><Loader /></Center>}>
             <ClashViewer scene={scene.data} meshes={meshes.data} isolation={isolation} sectionBox={sectionOn ? section : null}
-              selected={selected} onPick={setSelected} onSectionChange={setSection} />
+              selected={selected} onPick={setSelected} onSectionChange={(box) => { setSection(box); setSectionOn(true); }} />
           </Suspense>
         ) : (
           <Center h="100%"><Loader /></Center>
