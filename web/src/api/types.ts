@@ -729,6 +729,30 @@ export interface ClashPartSummary {
   models: number;
   sets: number;
   updatedAt: string;
+  /** Группы черновика. */
+  groups: string[];
+  /** «ЭОМ: нет выгрузки», «ВК: выгрузка от 12.10». */
+  warnings: string[];
+  lastRun: DraftRunSummary | null;
+}
+
+/** Проект — объект из разбора имён моделей; object = null — модели и части без объекта. */
+export interface ClashProjectView {
+  object: string | null;
+  name: string;
+  parts: number;
+  models: number;
+}
+
+export interface ProjectModelView {
+  id: string;
+  name: string;
+  part: string | null;
+  discipline: string | null;
+  latest: ClashSnapshotView | null;
+  snapshotCount: number;
+  /** Выгрузки нет или она старше недели. */
+  stale: boolean;
 }
 
 export interface ClashPartView {
@@ -750,7 +774,7 @@ export interface ClashTemplateView {
   id: string;
   name: string;
   sets: number;
-  disciplines: string[];
+  groups: string[];
   updatedAt: string;
 }
 

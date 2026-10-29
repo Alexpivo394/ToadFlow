@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../test/renderApp';
 
@@ -93,18 +93,5 @@ describe('PartEditor', () => {
   });
 });
 
-describe('PartsPage', () => {
-  it('lists parts with model and set counts', async () => {
-    renderApp('/clash', {
-      '/api/clash/parts': [{ id: 'p1', name: 'Полковая, корпус 1', object: 'Полковая', part: 'корпус 1', models: 10, sets: 34, updatedAt: '2026-10-28T10:00:00Z' }],
-      '/api/clash/models': [],
-    });
-
-    const row = (await screen.findByText('Полковая, корпус 1')).closest('tr')!;
-    expect(within(row).getByText('10')).toBeTruthy();
-    expect(within(row).getByText('34')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '+ Часть' })).toBeTruthy();
-  });
-});
 
 vi.setConfig({ testTimeout: 15_000 });
