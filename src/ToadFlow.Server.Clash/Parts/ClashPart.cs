@@ -22,6 +22,15 @@ public sealed class ClashPart
     /// <summary>Прогон, чьи коллизии — нынешний результат черновика; null — удачных прогонов не было.</summary>
     public Guid? ResultRunId { get; set; }
 
+    /// <summary>Последняя утверждённая версия (<see cref="ClashPartVersion" />); null — часть не утверждалась.</summary>
+    public int? ApprovedVersion { get; set; }
+
+    /// <summary>Последний удачный прогон утверждённой версии: основа следующего прогона; null — не было.</summary>
+    public Guid? ApprovedRunId { get; set; }
+
+    /// <summary>Номер следующей новой коллизии части: номера выдаются один раз и не меняются.</summary>
+    public int NextCollisionNumber { get; set; } = 1;
+
     public Guid UpdatedByUserId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -63,8 +72,9 @@ public sealed record PartModelView(
 /// <param name="Groups">Группы черновика.</param>
 /// <param name="Warnings">Модели без выгрузки или с устаревшей выгрузкой: «ЭОМ: нет выгрузки».</param>
 /// <param name="LastRun">Последний прогон черновика; null — не прогонялся.</param>
+/// <param name="ApprovedVersion">Последняя утверждённая версия; null — часть не утверждалась.</param>
 public sealed record ClashPartSummary(Guid Id, string Name, string? Object, string? Part, int Models, int Sets, DateTimeOffset UpdatedAt,
-    IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun);
+    IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun, int? ApprovedVersion = null);
 
 public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models);
 

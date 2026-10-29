@@ -434,6 +434,14 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("ApprovedRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_run_id");
+
+                    b.Property<int?>("ApprovedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("approved_version");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -451,6 +459,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("name");
+
+                    b.Property<int>("NextCollisionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("next_collision_number");
 
                     b.Property<string>("Object")
                         .HasColumnType("text")
@@ -499,6 +511,39 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasDatabaseName("ix_clash_part_models_model_id");
 
                     b.ToTable("clash_part_models", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPartVersion", b =>
+                {
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.Property<DateTimeOffset>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration_json");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("PartId", "Version")
+                        .HasName("pk_clash_part_versions");
+
+                    b.ToTable("clash_part_versions", (string)null);
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Templates.ClashTemplate", b =>
@@ -1589,6 +1634,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_part_models_clash_parts_part_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashPartVersion", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_part_versions_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Data.Entities.ApiToken", b =>

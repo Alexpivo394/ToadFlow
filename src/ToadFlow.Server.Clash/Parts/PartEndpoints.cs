@@ -48,7 +48,7 @@ public static class PartEndpoints
                 .Select(m => m.Latest is null ? $"{m.Label}: нет выгрузки" : $"{m.Label}: выгрузка от {m.Latest.ExtractedAt:dd.MM}")
                 .ToList();
             result.Add(new ClashPartSummary(part.Id, part.Name, part.Object, part.Part, partModels.Count, config.Sets.Count, part.UpdatedAt,
-                config.Groups.Select(g => g.Name).ToList(), warnings, runs.TryGetValue(part.Id, out var run) ? Engine.DraftRunSummary.Of(run) : null));
+                config.Groups.Select(g => g.Name).ToList(), warnings, runs.TryGetValue(part.Id, out var run) ? Engine.DraftRunSummary.Of(run) : null, part.ApprovedVersion));
         }
 
         return [.. result];

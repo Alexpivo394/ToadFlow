@@ -33,16 +33,9 @@ public static class DraftRunEndpoints
         var part = await db.Set<ClashPart>().AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
         if (part is null) return Results.NotFound();
 
-        var partModels = await models.OfPartAsync(id, ct);
-        var errors = new List<string>();
-        if (partModels.Count == 0) errors.Add("В части нет моделей");
-        errors.AddRange(partModels.Where(m => m.Discipline is null).Select(m => $"{m.Name}: раздел не определён — задайте его вручную"));
-        errors.AddRange(partModels.Where(m => m.Latest is null).Select(m => $"{m.Name}: модель ещё не выгружалась"));
-        var config = ConfigurationJson.Deserialize(part.DraftJson);
-        errors.AddRange(await DraftEndpoints.ProblemsAsync(id, config, models, ct));
-        if (config.Sets.Count == 0) errors.Add("В черновике нет наборов");
-        if (!config.Matrix.Any(c => c.Enabled)) errors.Add("В матрице нет включённых проверок");
+        var errors = await DraftRunChecks.ProblemsAsync(id, ConfigurationJson.Deserialize(part.DraftJson), models, ct);
         if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors), errors });
+        var partModels = await models.OfPartAsync(id, ct);
 
         // Ещё не начатый прогон этой части уже не нужен: прогон по нынешнему черновику его заменяет.
         await db.Set<EngineRun>().Where(r => r.PartId == id && r.State == EngineRunState.Queued)

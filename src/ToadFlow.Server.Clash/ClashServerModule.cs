@@ -92,6 +92,14 @@ public sealed class ClashServerModule : IServerModule
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(v => v.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<ClashPartVersion>(entity =>
+        {
+            entity.ToTable("clash_part_versions");
+            entity.HasKey(v => new { v.PartId, v.Version });
+            entity.Property(v => v.ConfigurationJson).HasColumnType("jsonb");
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(v => v.PartId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<ClashPartModel>(entity =>
         {
             entity.ToTable("clash_part_models");
@@ -143,6 +151,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashTemplates();
         api.MapClashViewer();
         api.MapClashPresence();
+        api.MapClashApprove();
         api.MapClashProjects();
     }
 
