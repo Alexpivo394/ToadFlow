@@ -18,7 +18,8 @@ public sealed class ClashTemplate
 
 public sealed record ClashTemplateRequest(string Name, Guid PartId);
 
-public sealed record ClashTemplateView(Guid Id, string Name, int Sets, IReadOnlyList<string> Disciplines, DateTimeOffset UpdatedAt);
+/// <param name="Groups">Группы, в которых есть наборы, в порядке шаблона.</param>
+public sealed record ClashTemplateView(Guid Id, string Name, int Sets, IReadOnlyList<string> Groups, DateTimeOffset UpdatedAt);
 
 public static class TemplateEndpoints
 {
@@ -57,10 +58,7 @@ public static class TemplateEndpoints
     private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, CancellationToken ct) =>
         await db.Set<ClashTemplate>().Where(t => t.Id == id).ExecuteDeleteAsync(ct) == 0 ? Results.NotFound() : Results.NoContent();
 
-    /// <summary>
-    ///     Заменяет черновик части копией шаблона: наборы получают новые Id (исключения переводятся на них), клетки матрицы
-    ///     остаются только для разделов части. Наборы чужих разделов остаются — их покажут проблемы черновика.
-    /// </summary>
+    /// <summary>Заменяет черновик части копией шаблона (<see cref="DraftEndpoints.CopyFor" />).</summary>
     private static async Task<IResult> ApplyAsync(Guid id, Guid partId, ToadFlowDb db, PartModels models, HttpContext http, TimeProvider time,
         CancellationToken ct)
     {
@@ -68,27 +66,26 @@ public static class TemplateEndpoints
         var part = await db.Set<ClashPart>().SingleOrDefaultAsync(p => p.Id == partId, ct);
         if (template is null || part is null) return Results.NotFound();
 
-        var source = Alexpivo394.Revit.Clash.Rules.ConfigurationJson.Deserialize(template.ConfigurationJson);
-        var disciplines = new HashSet<string>(await DraftEndpoints.DisciplinesAsync(partId, models, ct), StringComparer.OrdinalIgnoreCase);
-        var ids = source.Sets.ToDictionary(s => s.Id, _ => Guid.NewGuid());
-        var config = source with
-        {
-            Sets = source.Sets.Select(s => s with { Id = ids[s.Id] }).ToList(),
-            Matrix = source.Matrix.Where(c => disciplines.Contains(c.DisciplineA) && disciplines.Contains(c.DisciplineB)).ToList(),
-            Exclusions = source.Exclusions.Where(e => ids.ContainsKey(e.SetA) && ids.ContainsKey(e.SetB))
-                .Select(e => new SetPairExclusion(ids[e.SetA], ids[e.SetB])).ToList()
-        };
+        var (disciplines, refs) = await DraftEndpoints.ContextAsync(partId, models, ct);
+        var config = DraftEndpoints.CopyFor(Alexpivo394.Revit.Clash.Rules.ConfigurationJson.Deserialize(template.ConfigurationJson), disciplines,
+            refs.Select(m => m.ModelKey).ToList());
 
         DraftEndpoints.Store(part, config, http, time);
         await db.SaveChangesAsync(ct);
         return Results.Ok(await DraftEndpoints.ViewAsync(part, models, ct));
     }
 
+    /// <summary>Шаблон для новой части: копия по составу моделей части; null — шаблона нет.</summary>
+    public static async Task<Alexpivo394.Revit.Clash.Rules.ClashConfiguration?> ConfigurationAsync(Guid id, ToadFlowDb db, CancellationToken ct) =>
+        await db.Set<ClashTemplate>().AsNoTracking().Where(t => t.Id == id).Select(t => t.ConfigurationJson).SingleOrDefaultAsync(ct) is { } json
+            ? Alexpivo394.Revit.Clash.Rules.ConfigurationJson.Deserialize(json)
+            : null;
+
     private static ClashTemplateView View(ClashTemplate template)
     {
         var config = Alexpivo394.Revit.Clash.Rules.ConfigurationJson.Deserialize(template.ConfigurationJson);
+        var used = config.Sets.Select(s => s.GroupId).ToHashSet();
         return new ClashTemplateView(template.Id, template.Name, config.Sets.Count,
-            config.Sets.Select(s => s.Discipline).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList(),
-            template.UpdatedAt);
+            config.Groups.Where(g => used.Contains(g.Id)).Select(g => g.Name).ToList(), template.UpdatedAt);
     }
 }

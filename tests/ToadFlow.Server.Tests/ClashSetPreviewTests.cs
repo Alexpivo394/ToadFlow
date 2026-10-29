@@ -14,7 +14,9 @@ namespace ToadFlow.Server.Tests;
 public class ClashSetPreviewTests : ServerTest
 {
     private static SelectionSet Walls(string discipline = "АР") =>
-        new(Guid.NewGuid(), discipline, "Стены", [new ConditionGroup([new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.Equals, "ost_walls")])]);
+        new(Guid.NewGuid(), ConfigurationDefaults.DisciplineGroupId(discipline), "Стены", [new ConditionGroup([new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.Equals, "ost_walls")])]);
+
+    private static readonly ClashConfiguration Groups = new([ConfigurationDefaults.DisciplineGroup("АР"), ConfigurationDefaults.DisciplineGroup("КР")], [], [], []);
 
     private async Task<FakeAgent> AgentAsync()
     {
@@ -41,7 +43,7 @@ public class ClashSetPreviewTests : ServerTest
 
     private static async Task<SetPreviewResult> PreviewAsync(HttpClient client, Guid partId, SelectionSet set)
     {
-        var body = ConfigurationJson.Serialize(new ClashConfiguration([set], [], []));
+        var body = JsonSerializer.Serialize(new { configuration = JsonDocument.Parse(ConfigurationJson.Serialize(Groups with { Sets = [set] })).RootElement, setId = set.Id });
         var response = await client.PostAsync($"/api/clash/parts/{partId}/preview", new StringContent(body, Encoding.UTF8, "application/json"));
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         return await response.ReadJsonAsync<SetPreviewResult>();
@@ -114,10 +116,52 @@ public class ClashSetPreviewTests : ServerTest
     {
         var admin = await AdminAsync();
         var part = await (await admin.PostJsonAsync("/api/clash/parts", new { name = "Часть" })).ReadJsonAsync<ClashPartView>();
-        var body = ConfigurationJson.Serialize(new ClashConfiguration([Walls(), Walls()], [], []));
+        var body = ConfigurationJson.Serialize(Groups with { Sets = [Walls(), Walls()] });
 
         var response = await admin.PostAsync($"/api/clash/parts/{part.Id}/preview", new StringContent(body, Encoding.UTF8, "application/json"));
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    private static StringContent GroupBody(object extra) => new(JsonSerializer.Serialize(extra), Encoding.UTF8, "application/json");
+
+    private static JsonElement GroupsJson(ClashConfiguration config) => JsonDocument.Parse(ConfigurationJson.Serialize(config)).RootElement;
+
+    [Test]
+    public async Task Values_ReturnsCategoryCounts()
+    {
+        await using var agent = await AgentAsync();
+        await PublishAsync(agent, "POL_K1_AR.rvt", padding: 3);
+        var admin = await AdminAsync();
+        var partId = await PartAsync(admin, "POL_K1_AR.rvt");
+        var viewer = await ClientAsync(UserRole.Viewer);
+
+        var response = await viewer.PostAsync($"/api/clash/parts/{partId}/values", GroupBody(new
+        {
+            configuration = GroupsJson(Groups), groupId = ConfigurationDefaults.DisciplineGroupId("АР"), property = new { kind = "category" }
+        }));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var values = await response.ReadJsonAsync<ValueCount[]>();
+        values.ShouldBe([new ValueCount("OST_GenericModel", 3), new ValueCount("OST_PipeCurves", 1), new ValueCount("OST_Walls", 1)]);
+    }
+
+    [Test]
+    public async Task Unassigned_ReturnsByCategory()
+    {
+        await using var agent = await AgentAsync();
+        await PublishAsync(agent, "POL_K1_AR.rvt", padding: 2);
+        var admin = await AdminAsync();
+        var partId = await PartAsync(admin, "POL_K1_AR.rvt");
+
+        var response = await admin.PostAsync($"/api/clash/parts/{partId}/unassigned", GroupBody(new
+        {
+            configuration = GroupsJson(Groups with { Sets = [Walls()] }), groupId = ConfigurationDefaults.DisciplineGroupId("АР")
+        }));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var result = await response.ReadJsonAsync<UnassignedResult>();
+        result.Count.ShouldBe(3);
+        result.ByCategory.ShouldBe([new ValueCount("OST_GenericModel", 2), new ValueCount("OST_PipeCurves", 1)]);
     }
 }

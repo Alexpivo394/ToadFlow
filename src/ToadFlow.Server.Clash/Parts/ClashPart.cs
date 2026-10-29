@@ -24,7 +24,7 @@ public sealed class ClashPart
     public DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>Пустая конфигурация: наборов нет, соединённые MEP не проверяются.</summary>
-    public static readonly string EmptyDraft = ConfigurationJson.Serialize(new ClashConfiguration([], [], [], IgnoreConnectedMep: true));
+    public static readonly string EmptyDraft = ConfigurationJson.Serialize(new ClashConfiguration([], [], [], [], IgnoreConnectedMep: true));
 }
 
 /// <summary>Модель в части. Раздел — из разбора имени модели, если не задан вручную.</summary>
@@ -38,6 +38,12 @@ public sealed class ClashPartModel
 }
 
 public sealed record ClashPartRequest(string Name, string? Object = null, string? Part = null);
+
+/// <summary>С чего начать черновик новой части.</summary>
+/// <param name="Kind"><c>disciplines</c> — группа и набор «Всё» на раздел, полная матрица 20 мм; <c>template</c>; <c>part</c> — копия другой части; <c>empty</c>.</param>
+public sealed record PartStart(string Kind, Guid? TemplateId = null, Guid? PartId = null);
+
+public sealed record ClashPartCreateRequest(string Name, string? Object = null, string? Part = null, PartModelRequest[]? Models = null, PartStart? Start = null);
 
 public sealed record PartModelRequest(Guid ModelId, string? DisciplineOverride);
 

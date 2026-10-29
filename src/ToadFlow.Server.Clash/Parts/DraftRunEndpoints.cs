@@ -39,7 +39,7 @@ public static class DraftRunEndpoints
         errors.AddRange(partModels.Where(m => m.Discipline is null).Select(m => $"{m.Name}: раздел не определён — задайте его вручную"));
         errors.AddRange(partModels.Where(m => m.Latest is null).Select(m => $"{m.Name}: модель ещё не выгружалась"));
         var config = ConfigurationJson.Deserialize(part.DraftJson);
-        errors.AddRange(ConfigurationValidator.Problems(config, await DraftEndpoints.DisciplinesAsync(id, models, ct)));
+        errors.AddRange(await DraftEndpoints.ProblemsAsync(id, config, models, ct));
         if (config.Sets.Count == 0) errors.Add("В черновике нет наборов");
         if (!config.Matrix.Any(c => c.Enabled)) errors.Add("В матрице нет включённых проверок");
         if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors), errors });

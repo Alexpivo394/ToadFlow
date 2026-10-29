@@ -21,8 +21,8 @@ public class ClashDraftResultTests : ServerTest
         var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt", "POL_K1_OV.rvt");
         var draft = await admin.GetJsonAsync<DraftView>($"/api/clash/parts/{partId}/draft");
         var config = ConfigurationJson.Deserialize(draft.Configuration.GetRawText());
-        var setAr = config.Sets.Single(s => s.Discipline == "АР").Id;
-        var setOv = config.Sets.Single(s => s.Discipline == "ОВ").Id;
+        var setAr = config.Sets.Single(s => s.GroupId == ConfigurationDefaults.DisciplineGroupId("АР")).Id;
+        var setOv = config.Sets.Single(s => s.GroupId == ConfigurationDefaults.DisciplineGroupId("ОВ")).Id;
         var models = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models;
         var ar = models.Single(m => m.Discipline == "АР").ModelId.ToString("N");
         var ov = models.Single(m => m.Discipline == "ОВ").ModelId.ToString("N");

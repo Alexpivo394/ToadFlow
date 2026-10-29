@@ -146,12 +146,12 @@ public class RealSnapshotsCheck : ServerTest
         (await admin.PutJsonAsync($"/api/clash/parts/{part.Id}/models", members)).EnsureSuccessStatusCode();
         var disciplines = (await admin.GetJsonAsync<DraftView>($"/api/clash/parts/{part.Id}/draft")).Disciplines;
         var any = new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.IsNotEmpty, null);
-        var config = new ClashConfiguration(disciplines.Select(d => new SelectionSet(Guid.NewGuid(), d, "Все", [new ConditionGroup([any])])).ToList(), [], []);
+        var config = ConfigurationDefaults.FromDisciplines(disciplines.Select(d => new DisciplineSet(Guid.NewGuid(), d, "Все", [new ConditionGroup([any])])).ToList(), [], []);
         (await admin.PutAsync($"/api/clash/parts/{part.Id}/draft", Json(config))).EnsureSuccessStatusCode();
         (await admin.PostAsync($"/api/clash/parts/{part.Id}/draft/matrix/fill", null)).EnsureSuccessStatusCode();
 
         var preview = Stopwatch.StartNew();
-        var single = new ClashConfiguration([config.Sets.Single(s => s.Discipline == "ВК")], [], []);
+        var single = config with { Sets = [config.Sets.Single(s => s.GroupId == ConfigurationDefaults.DisciplineGroupId("ВК"))] };
         var counted = await (await admin.PostAsync($"/api/clash/parts/{part.Id}/preview", Json(single))).ReadJsonAsync<JsonElement>();
         report.AppendLine($"Предпросмотр набора ВК «Все»: {counted.GetProperty("matched")} из {counted.GetProperty("total")}, {preview.Elapsed.TotalSeconds:0.0} с");
         return (admin, part.Id);

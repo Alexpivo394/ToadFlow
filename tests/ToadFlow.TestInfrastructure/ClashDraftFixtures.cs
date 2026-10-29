@@ -38,7 +38,7 @@ public static class ClashDraftFixtures
 
         var disciplines = (await admin.GetJsonAsync<DraftView>($"/api/clash/parts/{part.Id}/draft")).Disciplines;
         var any = new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.IsNotEmpty, null);
-        var config = new ClashConfiguration(disciplines.Select(d => new SelectionSet(Guid.NewGuid(), d, "Все", [new ConditionGroup([any])])).ToList(), [], []);
+        var config = ConfigurationDefaults.FromDisciplines(disciplines.Select(d => new DisciplineSet(Guid.NewGuid(), d, "Все", [new ConditionGroup([any])])).ToList(), [], []);
         (await admin.PutAsync($"/api/clash/parts/{part.Id}/draft", new StringContent(ConfigurationJson.Serialize(config), Encoding.UTF8, "application/json")))
             .EnsureSuccessStatusCode();
         (await admin.PostAsync($"/api/clash/parts/{part.Id}/draft/matrix/fill", null)).EnsureSuccessStatusCode();

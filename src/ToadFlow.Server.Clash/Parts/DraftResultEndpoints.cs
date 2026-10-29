@@ -70,7 +70,9 @@ public static class DraftResultEndpoints
         var pairs = byPair.Select(p =>
         {
             var disciplines = p.Key.Split(" × ");
-            var cell = disciplines.Length == 2 ? config.CellFor(disciplines[0], disciplines[1]) : null;
+            var cell = disciplines.Length == 2
+                ? config.CellFor(ConfigurationDefaults.DisciplineGroupId(disciplines[0]), ConfigurationDefaults.DisciplineGroupId(disciplines[1]))
+                : null;
             return new PairCount(p.Key, p.Count, cell?.Enabled ?? false, cell?.ToleranceMm ?? 0);
         }).OrderByDescending(p => p.Count).ToList();
         var sets = bySets.Select(s => new SetPairCount(s.A, names.GetValueOrDefault(s.A, "—"), s.B, names.GetValueOrDefault(s.B, "—"), s.Count))

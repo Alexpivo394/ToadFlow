@@ -48,16 +48,56 @@ public static class PartEndpoints
         .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
         .ToArray();
 
-    private static async Task<IResult> CreateAsync(ClashPartRequest request, ToadFlowDb db, HttpContext http, TimeProvider time, PartModels models,
+    /// <summary>Часть сразу с моделями и стартовым черновиком: по разделам, из шаблона или копией другой части.</summary>
+    private static async Task<IResult> CreateAsync(ClashPartCreateRequest request, ToadFlowDb db, HttpContext http, TimeProvider time, PartModels models,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { error = "Укажите название части" });
+        var members = (request.Models ?? []).DistinctBy(m => m.ModelId).ToList();
+        var ids = members.Select(m => m.ModelId).ToList();
+        if (await db.Set<ClashModel>().CountAsync(m => ids.Contains(m.Id), ct) != ids.Count)
+            return Results.BadRequest(new { error = "Среди моделей есть неизвестная — обновите страницу" });
+
+        ClashConfiguration? source = null;
+        switch (request.Start?.Kind)
+        {
+            case null or "" or "empty" or "disciplines":
+                break;
+            case "template" when request.Start.TemplateId is { } templateId:
+                source = await Templates.TemplateEndpoints.ConfigurationAsync(templateId, db, ct);
+                if (source is null) return Results.BadRequest(new { error = "Шаблон не найден" });
+                break;
+            case "part" when request.Start.PartId is { } partId:
+                var json = await db.Set<ClashPart>().AsNoTracking().Where(p => p.Id == partId).Select(p => p.DraftJson).SingleOrDefaultAsync(ct);
+                if (json is null) return Results.BadRequest(new { error = "Часть-образец не найдена" });
+                source = ConfigurationJson.Deserialize(json);
+                break;
+            default:
+                return Results.BadRequest(new { error = "Не понятно, с чего начать черновик" });
+        }
 
         var now = time.GetUtcNow();
         var part = new ClashPart { Id = Guid.CreateVersion7(), CreatedAt = now };
-        Apply(part, request, http, now);
+        Apply(part, new ClashPartRequest(request.Name, request.Object, request.Part), http, now);
         db.Set<ClashPart>().Add(part);
+        db.Set<ClashPartModel>().AddRange(members.Select(m => new ClashPartModel
+        {
+            PartId = part.Id,
+            ModelId = m.ModelId,
+            DisciplineOverride = string.IsNullOrWhiteSpace(m.DisciplineOverride) ? null : m.DisciplineOverride.Trim()
+        }));
         await db.SaveChangesAsync(ct);
+
+        if (request.Start is { Kind: "disciplines" or "template" or "part" })
+        {
+            var (disciplines, refs) = await DraftEndpoints.ContextAsync(part.Id, models, ct);
+            var config = source is null
+                ? ConfigurationDefaults.ByDisciplines(disciplines)
+                : DraftEndpoints.CopyFor(source, disciplines, refs.Select(m => m.ModelKey).ToList());
+            DraftEndpoints.Store(part, config, http, time);
+            await db.SaveChangesAsync(ct);
+        }
+
         return Results.Created($"/api/clash/parts/{part.Id}", await ViewAsync(part, models, ct));
     }
 
