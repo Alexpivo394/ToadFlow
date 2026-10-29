@@ -60,7 +60,11 @@ public sealed record PartModelView(
     string? Discipline,
     ClashSnapshotView? Latest);
 
-public sealed record ClashPartSummary(Guid Id, string Name, string? Object, string? Part, int Models, int Sets, DateTimeOffset UpdatedAt);
+/// <param name="Groups">Группы черновика.</param>
+/// <param name="Warnings">Модели без выгрузки или с устаревшей выгрузкой: «ЭОМ: нет выгрузки».</param>
+/// <param name="LastRun">Последний прогон черновика; null — не прогонялся.</param>
+public sealed record ClashPartSummary(Guid Id, string Name, string? Object, string? Part, int Models, int Sets, DateTimeOffset UpdatedAt,
+    IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun);
 
 public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models);
 

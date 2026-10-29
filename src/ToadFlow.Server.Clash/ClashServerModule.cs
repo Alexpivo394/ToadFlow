@@ -5,6 +5,7 @@ using ToadFlow.Contracts.Clash;
 using Microsoft.AspNetCore.Authentication;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
+using ToadFlow.Server.Clash.Projects;
 using ToadFlow.Server.Clash.Templates;
 using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Clash.Viewer;
@@ -142,6 +143,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashTemplates();
         api.MapClashViewer();
         api.MapClashPresence();
+        api.MapClashProjects();
     }
 
     /// <summary>Выгрузка закончилась и слепок опубликован — в «События системы».</summary>

@@ -109,7 +109,15 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
     public async Task DiscardAsync(ClashUpload upload, CancellationToken ct)
     {
         var folder = storage.UploadFolder(upload.Id);
-        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        try
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Ту же брошенную загрузку одновременно убрал фоновый уборщик.
+        }
+
         await db.Set<ClashUpload>().Where(u => u.Id == upload.Id).ExecuteDeleteAsync(ct);
     }
 

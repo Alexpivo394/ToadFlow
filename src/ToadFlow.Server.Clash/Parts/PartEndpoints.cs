@@ -25,13 +25,33 @@ public static class PartEndpoints
         write.MapPut("/{id:guid}/models", SetModelsAsync);
     }
 
-    private static async Task<ClashPartSummary[]> ListAsync(ToadFlowDb db, CancellationToken ct)
+    /// <param name="object">Проект: части с этим объектом; пустая строка — части без объекта; не задан — все.</param>
+    private static async Task<ClashPartSummary[]> ListAsync(string? @object, ToadFlowDb db, PartModels models, TimeProvider time, CancellationToken ct)
     {
-        var parts = await db.Set<ClashPart>().AsNoTracking().OrderBy(p => p.Name).ToListAsync(ct);
-        var counts = await db.Set<ClashPartModel>().AsNoTracking().GroupBy(m => m.PartId).Select(g => new { g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.Key, g => g.Count, ct);
-        return parts.Select(p => new ClashPartSummary(p.Id, p.Name, p.Object, p.Part, counts.GetValueOrDefault(p.Id),
-            ConfigurationJson.Deserialize(p.DraftJson).Sets.Count, p.UpdatedAt)).ToArray();
+        var query = db.Set<ClashPart>().AsNoTracking();
+        if (@object is not null)
+            query = string.IsNullOrWhiteSpace(@object) ? query.Where(p => p.Object == null) : query.Where(p => p.Object!.ToLower() == @object.Trim().ToLower());
+        var parts = await query.OrderBy(p => p.Name).ToListAsync(ct);
+        var ids = parts.Select(p => p.Id).ToList();
+        var runs = (await db.Set<Engine.EngineRun>().AsNoTracking().Where(r => ids.Contains(r.PartId)).ToListAsync(ct))
+            .GroupBy(r => r.PartId).ToDictionary(g => g.Key, g => g.MaxBy(r => r.CreatedAt)!);
+
+        var now = time.GetUtcNow();
+        var result = new List<ClashPartSummary>(parts.Count);
+        foreach (var part in parts)
+        {
+            var partModels = await models.OfPartAsync(part.Id, ct);
+            var config = ConfigurationJson.Deserialize(part.DraftJson);
+            var warnings = partModels
+                .Select(m => (Label: m.Discipline ?? m.Name, m.Latest))
+                .Where(m => Projects.ProjectEndpoints.IsStale(m.Latest, now))
+                .Select(m => m.Latest is null ? $"{m.Label}: нет выгрузки" : $"{m.Label}: выгрузка от {m.Latest.ExtractedAt:dd.MM}")
+                .ToList();
+            result.Add(new ClashPartSummary(part.Id, part.Name, part.Object, part.Part, partModels.Count, config.Sets.Count, part.UpdatedAt,
+                config.Groups.Select(g => g.Name).ToList(), warnings, runs.TryGetValue(part.Id, out var run) ? Engine.DraftRunSummary.Of(run) : null));
+        }
+
+        return [.. result];
     }
 
     private static async Task<IResult> GetAsync(Guid id, PartModels models, ToadFlowDb db, CancellationToken ct)
