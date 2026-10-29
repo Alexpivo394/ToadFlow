@@ -153,7 +153,7 @@ public static class HitEnricher
             result.Add(new EngineHit(
                 hit.A.ModelKey, a.UniqueId, a.ElementId, disciplineA, membership.SetsOf(hit.A.ModelKey, a.UniqueId), a.Category, a.Family, a.Type, a.Level,
                 hit.B.ModelKey, b.UniqueId, b.ElementId, disciplineB, membership.SetsOf(hit.B.ModelKey, b.UniqueId), b.Category, b.Family, b.Type, b.Level,
-                hit.PointX, hit.PointY, hit.PointZ, hit.DepthMm));
+                hit.PointX, hit.PointY, hit.PointZ, hit.DepthMm, hit.Checks.Select(c => c.Key).ToList()));
         }
 
         return result;

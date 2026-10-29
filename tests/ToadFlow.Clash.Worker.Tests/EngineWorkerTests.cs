@@ -60,11 +60,13 @@ public class EngineWorkerTests : ServerTest
         run.Stats.PeakWorkingSetBytes.ShouldBeGreaterThan(0);
         var summary = await admin.GetJsonAsync<DraftSummary>($"/api/clash/parts/{partId}/draft/summary");
         summary.Total.ShouldBe(2);
-        summary.ByDisciplines.ShouldHaveSingleItem().DisciplinePair.ShouldBe("АР × ОВ");
-        summary.BySets.ShouldHaveSingleItem().SetAName.ShouldBe("Все");
+        summary.Checks.Where(c => c.Count > 0).ShouldHaveSingleItem().Count.ShouldBe(2);
+        summary.Checks.Single(c => c.Count > 0).GroupAName.ShouldBe("АР");
+        (await admin.GetJsonAsync<SetPairCount[]>($"/api/clash/parts/{partId}/draft/checks/{summary.Checks.Single(c => c.Count > 0).Key}/setpairs"))
+            .ShouldHaveSingleItem().SetAName.ShouldBe("Все");
         var hits = (await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits")).Items;
         hits.Select(h => (h.CategoryA, h.CategoryB)).Order().ShouldBe([("OST_PipeCurves", "OST_PipeCurves"), ("OST_Walls", "OST_Walls")]);
-        hits.ShouldAllBe(h => h.DepthMm > 20 && h.LevelA == "Этаж 1" && h.ModelNameA != h.ModelNameB);
+        hits.ShouldAllBe(h => h.DepthMm > 20 && h.LevelA == "Этаж 1" && h.ModelNameA != h.ModelNameB && h.Checks.Count == 1);
         (await worker.RunOnceAsync(CancellationToken.None)).ShouldBeNull(); // очередь пуста
     }
 

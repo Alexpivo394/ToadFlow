@@ -18,7 +18,8 @@ public sealed record EngineProgress(Guid RunId, string Stage, string Text);
 ///     Точка — центр зоны пересечения, абсолютные мм в общей системе координат моделей.
 /// </summary>
 /// <param name="ModelA">Id модели в форме <c>N</c>.</param>
-/// <param name="SetsA">Наборы элемента A его раздела, в которые он попал.</param>
+/// <param name="SetsA">Наборы элемента A, в которые он попал.</param>
+/// <param name="Checks">Проверки (клетки матрицы) коллизии: ключи <c>{группа A:N}|{группа B:N}</c>, меньший Id первым.</param>
 public sealed record EngineHit(
     string ModelA,
     string UniqueIdA,
@@ -41,7 +42,8 @@ public sealed record EngineHit(
     double X,
     double Y,
     double Z,
-    float DepthMm);
+    float DepthMm,
+    IReadOnlyList<string> Checks);
 
 /// <param name="LoadSeconds">Скачивание и чтение слепков.</param>
 /// <param name="PeakWorkingSetBytes">Пик памяти процесса работника за прогон.</param>

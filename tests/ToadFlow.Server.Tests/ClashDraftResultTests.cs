@@ -41,13 +41,22 @@ public class ClashDraftResultTests : ServerTest
         return (admin, partId, setAr, setOv, ar, ov);
     }
 
+    private static Guid G(string discipline) => ConfigurationDefaults.DisciplineGroupId(discipline);
+
+    /// <summary>Ключ проверки, как у движка: Id групп в форме N, меньший первым.</summary>
+    private static string Check(string a, string b)
+    {
+        var (x, y) = (G(a).ToString("N"), G(b).ToString("N"));
+        return string.CompareOrdinal(x, y) <= 0 ? $"{x}|{y}" : $"{y}|{x}";
+    }
+
     private static EngineHit Between(int i, string ma, string mb, string da, string db, Guid sa, Guid sb, float depth, string level = "Этаж 1") =>
-        Hit(i, ma, mb, da, db, depth) with { SetsA = [sa], SetsB = [sb], LevelA = level, LevelB = level };
+        Hit(i, ma, mb, da, db, depth) with { SetsA = [sa], SetsB = [sb], LevelA = level, LevelB = level, Checks = [Check(da, db)] };
 
     [Test]
-    public async Task Summary_ByDisciplinesAndSets()
+    public async Task Summary_ChecksInMatrixOrderWithZeros()
     {
-        var (admin, partId, setAr, setOv, _, _) = await RunAsync((ar, ov, sa, so) =>
+        var (admin, partId, _, _, _, _) = await RunAsync((ar, ov, sa, so) =>
         [
             Between(1, ar, ov, "АР", "ОВ", sa, so, 30),
             Between(2, ar, ov, "АР", "ОВ", sa, so, 40),
@@ -57,13 +66,73 @@ public class ClashDraftResultTests : ServerTest
         var summary = await admin.GetJsonAsync<DraftSummary>($"/api/clash/parts/{partId}/draft/summary");
 
         summary.Total.ShouldBe(3);
-        var pairs = summary.ByDisciplines.ToDictionary(p => p.DisciplinePair);
-        pairs["АР × ОВ"].Count.ShouldBe(2);
-        pairs["АР × ОВ"].ToleranceMm.ShouldBe(20);
-        pairs["ОВ × ОВ"].Count.ShouldBe(1);
-        var sets = summary.BySets.Single(s => s.Count == 2);
-        (sets.SetA, sets.SetB).ShouldBe((setAr, setOv));
-        sets.SetAName.ShouldBe("Все");
+        summary.Legacy.ShouldBeFalse();
+        summary.Checks.Select(c => (c.GroupAName, c.GroupBName, c.Count)).ShouldBe([("АР", "АР", 0), ("АР", "ОВ", 2), ("ОВ", "ОВ", 1)]);
+        summary.Checks[1].Key.ShouldBe(Check("АР", "ОВ"));
+        summary.Checks[1].ToleranceMm.ShouldBe(20);
+    }
+
+    [Test]
+    public async Task SetPairs_WithinCheck()
+    {
+        var (admin, partId, setAr, setOv, _, _) = await RunAsync((ar, ov, sa, so) =>
+        [
+            Between(1, ar, ov, "АР", "ОВ", sa, so, 30),
+            Between(2, ar, ov, "АР", "ОВ", sa, so, 40),
+            Between(3, ov, ov, "ОВ", "ОВ", so, so, 50)
+        ]);
+
+        var pairs = await admin.GetJsonAsync<SetPairCount[]>($"/api/clash/parts/{partId}/draft/checks/{Check("АР", "ОВ")}/setpairs");
+
+        var pair = pairs.ShouldHaveSingleItem();
+        (pair.SetA, pair.SetB, pair.Count).ShouldBe((setAr, setOv, 2));
+        pair.SetAName.ShouldBe("Все");
+    }
+
+    [Test]
+    public async Task Facets_LevelsModelsCategories()
+    {
+        var (admin, partId, _, _, _, _) = await RunAsync((ar, ov, sa, so) =>
+        [
+            Between(1, ar, ov, "АР", "ОВ", sa, so, 30, "Этаж 1"),
+            Between(2, ar, ov, "АР", "ОВ", sa, so, 40, "Этаж 2"),
+            Between(3, ar, ov, "АР", "ОВ", sa, so, 50, "Этаж 2"),
+            Between(4, ov, ov, "ОВ", "ОВ", so, so, 50, "Этаж 3")
+        ]);
+
+        var facets = await admin.GetJsonAsync<DraftFacets>($"/api/clash/parts/{partId}/draft/facets?check={Check("АР", "ОВ")}");
+
+        facets.Levels.ShouldBe([new ValueCount("Этаж 2", 2), new ValueCount("Этаж 1", 1)]);
+        facets.Models.Select(m => m.Value).ShouldBe(["POL_K1_AR.rvt", "POL_K1_OV.rvt"], ignoreOrder: true);
+        facets.Categories.Select(c => c.Value).ShouldBe(["OST_DuctCurves", "OST_Walls"], ignoreOrder: true);
+    }
+
+    [Test]
+    public async Task Hits_FilterByCheck_SortBySetPair()
+    {
+        var (admin, partId, _, _, _, _) = await RunAsync((ar, ov, sa, so) =>
+        [
+            Between(1, ar, ov, "АР", "ОВ", sa, so, 30),
+            Between(2, ar, ov, "АР", "ОВ", sa, so, 90),
+            Between(3, ov, ov, "ОВ", "ОВ", so, so, 50)
+        ]);
+
+        var page = await admin.GetJsonAsync<HitPage>($"/api/clash/parts/{partId}/draft/hits?check={Check("АР", "ОВ")}&sort=setpair");
+
+        page.Total.ShouldBe(2);
+        page.Items.Select(h => h.Number).ShouldBe([2, 1]);
+        page.Items.ShouldAllBe(h => h.Checks.Contains(Check("АР", "ОВ")) && h.SetPairKey != "");
+    }
+
+    [Test]
+    public async Task Summary_LegacyRows_FlaggedLegacy()
+    {
+        var (admin, partId, _, _, _, _) = await RunAsync((ar, ov, sa, so) => [Between(1, ar, ov, "АР", "ОВ", sa, so, 30) with { Checks = [] }]);
+
+        var summary = await admin.GetJsonAsync<DraftSummary>($"/api/clash/parts/{partId}/draft/summary");
+
+        summary.Legacy.ShouldBeTrue();
+        summary.Total.ShouldBe(1);
     }
 
     [Test]

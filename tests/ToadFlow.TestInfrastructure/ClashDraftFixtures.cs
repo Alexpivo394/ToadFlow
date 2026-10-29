@@ -66,7 +66,7 @@ public static class ClashDraftFixtures
 
     public static EngineHit Hit(int i, string modelA = "a", string modelB = "b", string disciplineA = "АР", string disciplineB = "ОВ", float depth = 30) =>
         new(modelA, $"ua-{i}", i, disciplineA, [], "OST_Walls", "Стена", "200", "Этаж 1",
-            modelB, $"ub-{i}", 100_000 + i, disciplineB, [], "OST_DuctCurves", "Воздуховод", "500x300", "Этаж 1", i, 0, 0, depth);
+            modelB, $"ub-{i}", 100_000 + i, disciplineB, [], "OST_DuctCurves", "Воздуховод", "500x300", "Этаж 1", i, 0, 0, depth, []);
 
     public static readonly EngineRunStats Stats = new(10, 100, 5, 0.1, 0.1, 0.2, 1 << 20, 1 << 22);
 }

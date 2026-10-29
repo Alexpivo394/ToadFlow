@@ -116,6 +116,7 @@ public sealed class ClashServerModule : IServerModule
             entity.HasKey(h => new { h.RunId, h.Number });
             entity.HasIndex(h => new { h.PartId, h.DisciplinePair });
             entity.HasIndex(h => h.PartId);
+            entity.HasIndex(h => h.Checks).HasMethod("gin");
         });
     }
 

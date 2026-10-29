@@ -186,7 +186,7 @@ public class RealSnapshotsCheck : ServerTest
                           $"элементов {stats.Elements:N0}, треугольников {stats.Triangles:N0}, пар-кандидатов {stats.CandidatePairs:N0}, " +
                           $"память работника до {stats.PeakWorkingSetBytes / 1e9:0.0} ГБ");
         report.AppendLine($"Коллизий: {summary.Total:N0}; страница 100 списка — {pageSeconds:0.00} с");
-        foreach (var pair in summary.ByDisciplines.OrderByDescending(p => p.Count)) report.AppendLine($"  {pair.DisciplinePair}: {pair.Count:N0}");
+        foreach (var check in summary.Checks.Where(c => c.Count > 0).OrderByDescending(c => c.Count)) report.AppendLine($"  {check.GroupAName} × {check.GroupBName}: {check.Count:N0}");
         report.AppendLine("Самые глубокие:");
         foreach (var hit in deepest.Items)
             report.AppendLine($"  {hit.DepthMm:0} мм: {hit.ModelNameA} {hit.CategoryA} {hit.ElementIdA} × {hit.ModelNameB} {hit.CategoryB} {hit.ElementIdB}");

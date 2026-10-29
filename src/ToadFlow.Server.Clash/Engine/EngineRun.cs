@@ -48,6 +48,9 @@ public sealed class ClashDraftHit
     /// <summary>Разделы сторон по алфавиту через « × » — для сводки и фильтра.</summary>
     public string DisciplinePair { get; set; } = "";
 
+    /// <summary>Ключи проверок (клеток матрицы) коллизии; пусто — строка прогона до появления групп.</summary>
+    public string[] Checks { get; set; } = [];
+
     public string ModelA { get; set; } = "";
     public string UniqueIdA { get; set; } = "";
     public long ElementIdA { get; set; }

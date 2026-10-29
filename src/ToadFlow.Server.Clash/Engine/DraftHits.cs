@@ -16,7 +16,7 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
 {
     private const string Columns =
         "run_id, number, part_id, discipline_pair, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
-        "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, x, y, z, depth_mm";
+        "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, x, y, z, depth_mm, checks";
 
     /// <summary>Пишет часть результата: номера коллизий — <c>part * ResultChunkHits + i + 1</c>.</summary>
     public async Task WriteChunkAsync(EngineRun run, int part, IReadOnlyList<EngineHit> hits, CancellationToken ct)
@@ -48,6 +48,7 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
                     await importer.WriteAsync(hit.Y, NpgsqlDbType.Double, ct);
                     await importer.WriteAsync(hit.Z, NpgsqlDbType.Double, ct);
                     await importer.WriteAsync(hit.DepthMm, NpgsqlDbType.Real, ct);
+                    await importer.WriteAsync((hit.Checks ?? []).ToArray(), NpgsqlDbType.Array | NpgsqlDbType.Text, ct);
                 }
 
                 await importer.CompleteAsync(ct);

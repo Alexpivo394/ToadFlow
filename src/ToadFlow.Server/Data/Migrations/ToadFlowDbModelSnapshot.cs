@@ -198,6 +198,11 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("category_b");
 
+                    b.PrimitiveCollection<string[]>("Checks")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("checks");
+
                     b.Property<float>("DepthMm")
                         .HasColumnType("real")
                         .HasColumnName("depth_mm");
@@ -297,6 +302,11 @@ namespace ToadFlow.Server.Data.Migrations
 
                     b.HasKey("RunId", "Number")
                         .HasName("pk_clash_draft_hits");
+
+                    b.HasIndex("Checks")
+                        .HasDatabaseName("ix_clash_draft_hits_checks");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Checks"), "gin");
 
                     b.HasIndex("PartId")
                         .HasDatabaseName("ix_clash_draft_hits_part_id");
