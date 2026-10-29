@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using Microsoft.AspNetCore.Authentication;
+using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Projects;
@@ -135,6 +136,32 @@ public sealed class ClashServerModule : IServerModule
             entity.HasIndex(h => new { h.PartId, h.DisciplinePair });
             entity.HasIndex(h => h.PartId);
             entity.HasIndex(h => h.Checks).HasMethod("gin");
+        });
+
+        model.Entity<ClashCollision>(entity =>
+        {
+            entity.ToTable("clash_collisions");
+            entity.Property(c => c.Id).ValueGeneratedNever();
+            entity.HasIndex(c => new { c.PartId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB }).IsUnique();
+            entity.HasIndex(c => new { c.PartId, c.Number }).IsUnique();
+            entity.HasIndex(c => new { c.PartId, c.Status });
+            entity.HasIndex(c => c.Checks).HasMethod("gin");
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(c => c.PartId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ClashCollisionSample>(entity =>
+        {
+            entity.ToTable("clash_collision_samples");
+            entity.HasKey(s => new { s.CollisionId, s.RunId });
+            entity.HasOne<ClashCollision>().WithMany().HasForeignKey(s => s.CollisionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ClashCollisionEvent>(entity =>
+        {
+            entity.ToTable("clash_collision_events");
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasIndex(e => new { e.CollisionId, e.At });
+            entity.HasOne<ClashCollision>().WithMany().HasForeignKey(e => e.CollisionId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 
