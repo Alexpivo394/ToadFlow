@@ -55,7 +55,7 @@ function meshes(indices: number[]): ArrayBuffer {
 
 const base = {
   '/api/clash/parts/p1': { id: 'p1', name: 'Часть', object: null, part: null, updatedAt: '2026-10-28T10:00:00Z', models: [] },
-  '/api/clash/parts/p1/draft': { configuration: { sets: [], matrix: [], exclusions: [], ignoreConnectedMep: true }, disciplines: ['АР', 'ОВ'], problems: [] },
+  '/api/clash/parts/p1/draft': { configuration: { groups: [], sets: [], matrix: [], exclusions: [], ignoreConnectedMep: true }, version: 1, disciplines: ['АР', 'ОВ'], models: [], problems: [] },
   '/api/clash/catalog': { categories: [], parameters: [], families: [], types: [], levels: [], worksets: [] },
   '/api/clash/templates': [],
   '/api/clash/models': [],

@@ -1,0 +1,79 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { partResponses } from '../../../test/clashPart';
+import { renderApp } from '../../../test/renderApp';
+
+type FetchMock = { mock: { calls: [string, RequestInit?][] } };
+const calls = () => (fetch as unknown as FetchMock).mock.calls;
+
+async function savedBody() {
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+  await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/draft' && init?.method === 'PUT')).toBe(true));
+  const [, init] = calls().find(([url, i]) => url === '/api/clash/parts/p1/draft' && i?.method === 'PUT')!;
+  return JSON.parse(String(init!.body)).configuration;
+}
+
+describe('Sets tab', () => {
+  it('SetsTab_CustomGroupWithSource', async () => {
+    renderApp('/clash/parts/p1?tab=sets', partResponses);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Своя группа' }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText('Имя группы'), { target: { value: 'Проезды' } });
+    fireEvent.click(within(dialog).getByLabelText('Элементы из моделей разделов'));
+    fireEvent.click(await screen.findByRole('option', { name: 'АР' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+
+    expect(await screen.findByText('Наборы «Проезды»')).toBeTruthy();
+    const config = await savedBody();
+    expect(config.groups.at(-1)).toMatchObject({ name: 'Проезды', source: { disciplines: ['АР'], modelKeys: [] } });
+  });
+
+  it('SetsTab_OneOfWithPickedValues', async () => {
+    renderApp('/clash/parts/p1?tab=sets', partResponses);
+    await screen.findByLabelText('Имя набора');
+
+    fireEvent.click(screen.getAllByLabelText('Оператор')[0]);
+    fireEvent.click(await screen.findByRole('option', { name: 'одно из' }));
+    fireEvent.click((await screen.findAllByLabelText('Значения'))[0]);
+    fireEvent.click(await screen.findByRole('option', { name: /Стены · 5\s902/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /Двери · 310/ }));
+
+    const config = await savedBody();
+    expect(config.sets[0].anyOf[0].all[0]).toMatchObject({ operator: 'oneOf', values: ['OST_Walls', 'OST_Doors'] });
+  });
+
+  it('SetsTab_UnassignedWarning', async () => {
+    renderApp('/clash/parts/p1?tab=sets', {
+      ...partResponses,
+      '/api/clash/parts/p1/unassigned': { count: 312, byCategory: [{ value: 'OST_Furniture', count: 300 }, { value: 'OST_Something', count: 12 }] },
+    });
+
+    expect(await screen.findByText(/312 элементов источника не попали/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Показать по категориям' }));
+    expect(screen.getByText('Мебель — 300')).toBeTruthy();
+    expect(screen.getByText('OST_Something — 12')).toBeTruthy();
+  });
+
+  it('SetsTab_CountsPerOrGroup', async () => {
+    renderApp('/clash/parts/p1?tab=sets', partResponses);
+
+    expect(await screen.findByText('попало 14')).toBeTruthy();
+    expect(screen.getByText(/В набор попало/)).toBeTruthy();
+    await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/preview' && JSON.parse(String(init?.body)).setId === 's-walls'))
+      .toBe(true));
+  });
+
+  it('SetsTab_ReadOnlyForViewer', async () => {
+    renderApp('/clash/parts/p1?tab=sets', {
+      ...partResponses,
+      '/api/auth/me': { id: 'u2', login: 'viewer', displayName: 'Наблюдатель', role: 'Viewer', isDisabled: false, lastLoginAt: null },
+    });
+
+    expect(((await screen.findByLabelText('Имя набора')) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '+ Набор' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull();
+  });
+});
+
+vi.setConfig({ testTimeout: 15_000 });

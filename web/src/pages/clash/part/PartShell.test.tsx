@@ -1,0 +1,94 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
+import { describe, expect, it, vi } from 'vitest';
+import { configuration, draft, ducts, partResponses, walls } from '../../../test/clashPart';
+import { Failure, renderApp } from '../../../test/renderApp';
+
+type FetchMock = { mock: { calls: [string, RequestInit?][] } };
+const calls = () => (fetch as unknown as FetchMock).mock.calls;
+const puts = () => calls().filter(([url, init]) => url === '/api/clash/parts/p1/draft' && init?.method === 'PUT');
+
+async function openSets(responses: Record<string, unknown> = partResponses) {
+  renderApp('/clash/parts/p1?tab=sets', responses);
+  return (await screen.findByLabelText('Имя набора')) as HTMLInputElement;
+}
+
+/** Ответ GET черновика меняется, как после чужого сохранения, и страница его перечитывает. */
+function serverSaves(next: unknown) {
+  const fetchMock = vi.mocked(fetch);
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (input, init) =>
+    String(input) === '/api/clash/parts/p1/draft' && (init?.method ?? 'GET') === 'GET'
+      ? new Response(JSON.stringify(next), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      : original(input, init));
+  focusManager.setFocused(false);
+  focusManager.setFocused(true);
+}
+
+describe('Part shell', () => {
+  it('PartEditor_IncomingSave_KeepsLocalEdits', async () => {
+    const name = await openSets();
+    fireEvent.change(name, { target: { value: 'Стены наружные' } });
+    expect(await screen.findByText('● есть несохранённые изменения')).toBeTruthy();
+
+    serverSaves(draft(2, { ...configuration, sets: [walls, { ...ducts, name: 'Воздуховоды круглые' }] }));
+    fireEvent.click(screen.getByText('ОВ'));
+
+    expect(await screen.findByText('Воздуховоды круглые')).toBeTruthy();
+    fireEvent.click(screen.getByText('АР'));
+    expect(((await screen.findByLabelText('Имя набора')) as HTMLInputElement).value).toBe('Стены наружные');
+    expect(screen.getByText('● есть несохранённые изменения')).toBeTruthy();
+  });
+
+  it('PartShell_SaveSendsBaseVersion', async () => {
+    const name = await openSets({ ...partResponses, 'PUT /api/clash/parts/p1/draft': draft(2) });
+    fireEvent.change(name, { target: { value: 'Стены наружные' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const body = JSON.parse(String(puts()[0][1]!.body));
+    expect(body.baseVersion).toBe(1);
+    expect(body.configuration.sets[0].name).toBe('Стены наружные');
+  });
+
+  it('PartShell_ConflictDialog_KeepMineResends', async () => {
+    const current = draft(3, { ...configuration, sets: [{ ...walls, name: 'Стены А' }, ducts] });
+    const name = await openSets({
+      ...partResponses,
+      'PUT /api/clash/parts/p1/draft': new Failure(409, 'Эти элементы уже изменил другой пользователь', {
+        conflicts: [{ key: 'set:swalls', label: 'набор «Стены А» (АР)', kind: 'set' }], current,
+      }),
+    });
+    fireEvent.change(name, { target: { value: 'Стены Б' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('набор «Стены А» (АР)')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    const resent = JSON.parse(String(puts()[1][1]!.body));
+    expect(resent.baseVersion).toBe(3);
+    expect(resent.configuration.sets[0].name).toBe('Стены Б');
+  });
+
+  it('PartShell_PresenceBadges', async () => {
+    await openSets({ ...partResponses, '/api/clash/parts/p1/presence': [{ userId: 'u9', displayName: 'Иван', tab: 'sets', setId: 's-walls' }] });
+
+    expect(await screen.findByText('Иван — наборы')).toBeTruthy();
+    expect(await screen.findByText('Иван сейчас правит этот набор')).toBeTruthy();
+    await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/presence' && init?.method === 'POST')).toBe(true));
+  });
+
+  it('PartShell_DirtyGuardOnLeave', async () => {
+    const name = await openSets();
+    fireEvent.change(name, { target: { value: 'Стены наружные' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Коллизии' }));
+
+    expect(await screen.findByText('Есть несохранённые изменения. Уйти без сохранения?')).toBeTruthy();
+  });
+});
+
+vi.setConfig({ testTimeout: 15_000 });

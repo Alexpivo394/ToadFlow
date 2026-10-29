@@ -764,10 +764,44 @@ export interface ClashPartView {
   models: PartModelView[];
 }
 
+export interface PartModelRef {
+  /** Id модели в форме N — так модель указана в источнике группы. */
+  modelKey: string;
+  name: string;
+  discipline: string | null;
+}
+
 export interface DraftView {
   configuration: import('../lib/clashConfig').ClashConfig;
+  /** Версия черновика: растёт на каждом сохранении. */
+  version: number;
   disciplines: string[];
+  models: PartModelRef[];
   problems: string[];
+}
+
+/** Элемент, который изменили двое по-разному. */
+export interface MergeConflict {
+  key: string;
+  label: string;
+  kind: 'group' | 'set' | 'cell' | 'exclusion' | 'flag';
+}
+
+export interface PresenceView {
+  userId: string;
+  displayName: string;
+  tab: string;
+  setId: string | null;
+}
+
+export interface ValueCount {
+  value: string;
+  count: number;
+}
+
+export interface UnassignedResult {
+  count: number;
+  byCategory: ValueCount[];
 }
 
 export interface ClashTemplateView {
@@ -781,6 +815,8 @@ export interface ClashTemplateView {
 export interface SetPreviewResult {
   matched: number;
   total: number;
+  /** Сколько отобрала каждая группа «или». */
+  byAnyOf: number[];
   sample: { modelKey: string; uniqueId: string; elementId: number; category: string; family: string | null; type: string | null }[];
 }
 

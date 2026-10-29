@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../test/renderApp';
 
 const part = { id: 'p1', name: 'Полковая, корпус 1', object: null, part: null, updatedAt: '2026-10-28T10:00:00Z', models: [] };
-const draft = { configuration: { sets: [], matrix: [], exclusions: [], ignoreConnectedMep: true }, disciplines: ['АР', 'ОВ'], problems: [] };
+const draft = { configuration: { groups: [], sets: [], matrix: [], exclusions: [], ignoreConnectedMep: true }, version: 1, disciplines: ['АР', 'ОВ'], models: [], problems: [] };
 const hit = (n: number) => ({
   number: n, depthMm: 40 + n, x: 0, y: 0, z: 0,
   modelA: 'a', modelNameA: 'POL_K1_AR.rvt', uniqueIdA: `ua${n}`, elementIdA: 1000 + n, disciplineA: 'АР', setNamesA: ['Стены'], categoryA: 'OST_Walls',

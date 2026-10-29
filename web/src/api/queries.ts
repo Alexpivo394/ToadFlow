@@ -36,3 +36,16 @@ export function useApiMutation<TBody = void, TResult = unknown>(
     onError: (error: Error) => notifications.show({ color: 'red', title: 'Не получилось', message: error.message }),
   });
 }
+
+/**
+ * Запрос-вычисление методом POST (тело — несохранённое состояние редактора): кешируется по ключу, как GET.
+ * null вместо тела — запрос не нужен.
+ */
+export function useApiPost<T>(key: unknown[], path: string, body: unknown | null) {
+  return useQuery({
+    queryKey: key,
+    queryFn: async () => (await apiFetch<T>(path, { method: 'POST', json: body })) as T,
+    enabled: body !== null,
+    placeholderData: (previous) => previous,
+  });
+}

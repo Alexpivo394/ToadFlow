@@ -1,6 +1,7 @@
 import { Alert, Badge, Button, Group, Stack, Text } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { DraftRunSummary, EngineRunState } from '../../api/types';
+import { askConfirm } from '../../components/ui';
 import { formatBytes, formatDateTime, formatDuration } from '../../lib/format';
 import { DraftResults } from './DraftResults';
 
@@ -13,7 +14,7 @@ const stateLabel: Record<EngineRunState, { label: string; color: string }> = {
 };
 
 /** Прогон черновика: «Прогнать», состояние и ход, итоги по времени и памяти, результаты последнего удачного прогона. */
-export function DraftRunPanel({ partId, readOnly, dirty }: { partId: string; readOnly: boolean; dirty: boolean }) {
+export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: string; readOnly: boolean; dirty: boolean; onSave?: () => Promise<void> }) {
   const run = useApi<DraftRunSummary | null>(['clash-parts', partId, 'run'], `/api/clash/parts/${partId}/draft/run`);
   const start = useApiMutation<void>('POST', () => `/api/clash/parts/${partId}/draft/run`, { invalidate: ['clash-parts'] });
   const cancel = useApiMutation<void>('POST', () => `/api/clash/parts/${partId}/draft/run/cancel`, { invalidate: ['clash-parts'] });
@@ -25,7 +26,10 @@ export function DraftRunPanel({ partId, readOnly, dirty }: { partId: string; rea
     <Stack gap="md">
       <Group gap="sm">
         {!readOnly && (
-          <Button onClick={() => start.mutate()} loading={start.isPending}>
+          <Button loading={start.isPending}
+            onClick={() => (dirty && onSave
+              ? askConfirm('Черновик не сохранён. Сохранить и прогнать?', async () => { await onSave(); start.mutate(); }, 'blue')
+              : start.mutate())}>
             Прогнать
           </Button>
         )}

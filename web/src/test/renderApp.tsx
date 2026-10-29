@@ -33,11 +33,14 @@ export class Failure {
   constructor(
     public readonly status: number,
     public readonly error: string,
+    /** Остальные поля тела ошибки — например, конфликты сохранения. */
+    public readonly extra: object = {},
   ) {}
 }
 
 /**
- * Ответы сервера по пути (без query); `null` — ответ 204; `ArrayBuffer` — двоичный ответ; `Failure` — ошибка;
+ * Ответы сервера по пути (без query) или по «МЕТОД путь» — он важнее; `null` — ответ 204; `ArrayBuffer` — двоичный ответ;
+ * `Failure` — ошибка;
  * /api/auth/me — вошедший администратор.
  */
 export function renderApp(path: string, responses: Record<string, unknown>) {
@@ -47,13 +50,14 @@ export function renderApp(path: string, responses: Record<string, unknown>) {
   };
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: string) => {
+    vi.fn(async (input: string, init?: RequestInit) => {
       const key = input.split('?')[0];
-      const body = all[key];
+      const method = `${init?.method ?? 'GET'} ${key}`;
+      const body = method in all ? all[method] : all[key];
       if (body === null) return new Response(null, { status: 204 });
       if (body instanceof ArrayBuffer) return new Response(body, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
       if (body instanceof Failure)
-        return new Response(JSON.stringify({ error: body.error }), { status: body.status, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: body.error, ...body.extra }), { status: body.status, headers: { 'Content-Type': 'application/json' } });
       return new Response(body === undefined ? JSON.stringify({ error: 'нет в тесте: ' + key }) : JSON.stringify(body), {
         status: body === undefined ? 404 : 200,
         headers: { 'Content-Type': 'application/json' },
