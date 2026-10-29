@@ -193,6 +193,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashViewer();
         api.MapClashPresence();
         api.MapClashApprove();
+        api.MapClashCollisions();
         api.MapClashProjects();
     }
 

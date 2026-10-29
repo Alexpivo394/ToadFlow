@@ -1,5 +1,6 @@
 using Alexpivo394.Revit.Clash.Geometry;
 using Microsoft.EntityFrameworkCore;
+using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
@@ -71,9 +72,27 @@ public static class ViewerEndpoints
     }
 
     private static async Task<IResult> SceneAsync(Guid runId, int number, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
+        CancellationToken ct) =>
+        Scene(await LoadAsync(runId, number, radius, db, storage, cache, ct), runId, number);
+
+    private static async Task<IResult> MeshesAsync(Guid runId, int number, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
+        HttpResponse response, CancellationToken ct) =>
+        await MeshesOf(await LoadAsync(runId, number, radius, db, storage, cache, ct), response, ct);
+
+    /// <summary>Сцена коллизии утверждённой проверки — по прогону, который нашёл её последним.</summary>
+    public static async Task<IResult> CollisionSceneAsync(Guid id, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
         CancellationToken ct)
     {
-        var loaded = await LoadAsync(runId, number, radius, db, storage, cache, ct);
+        var (loaded, collision) = await LoadCollisionAsync(id, radius, db, storage, cache, ct);
+        return collision is null ? loaded.Error! : Scene(loaded, collision.LastFoundRunId, collision.Number);
+    }
+
+    public static async Task<IResult> CollisionMeshesAsync(Guid id, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
+        HttpResponse response, CancellationToken ct) =>
+        await MeshesOf((await LoadCollisionAsync(id, radius, db, storage, cache, ct)).Loaded, response, ct);
+
+    private static IResult Scene(Loaded loaded, Guid runId, int number)
+    {
         if (loaded.Error is { } error) return error;
         var (models, hit, selection, r) = (loaded.Models!, loaded.Hit!, loaded.Selection!, loaded.Radius);
 
@@ -93,10 +112,8 @@ public static class ViewerEndpoints
     }
 
     /// <summary>Сетки пишутся в ответ по одной: сцена в несколько сотен тысяч треугольников не собирается в памяти целиком.</summary>
-    private static async Task<IResult> MeshesAsync(Guid runId, int number, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
-        HttpResponse response, CancellationToken ct)
+    private static async Task<IResult> MeshesOf(Loaded loaded, HttpResponse response, CancellationToken ct)
     {
-        var loaded = await LoadAsync(runId, number, radius, db, storage, cache, ct);
         if (loaded.Error is { } error) return error;
         var (models, hit, selection) = (loaded.Models!, loaded.Hit!, loaded.Selection!);
 
@@ -143,23 +160,44 @@ public static class ViewerEndpoints
             info.Type, info.Level, info.Workset, parameters));
     }
 
+    /// <summary>Пара элементов и точка коллизии, вокруг которой собирается сцена.</summary>
+    private sealed record Target(string ModelA, string UniqueIdA, string ModelB, string UniqueIdB, double X, double Y, double Z, float DepthMm);
+
     private sealed record Loaded(
         IResult? Error,
         IReadOnlyList<ViewerModel>? Models = null,
         IReadOnlyList<string>? Folders = null,
-        ClashDraftHit? Hit = null,
+        Target? Hit = null,
         ViewerSelection? Selection = null,
         double Radius = 0);
 
     private static async Task<Loaded> LoadAsync(Guid runId, int number, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
         CancellationToken ct)
     {
-        var r = radius ?? ViewerScene.DefaultRadiusMm;
-        if (r is < ViewerScene.MinRadiusMm or > ViewerScene.MaxRadiusMm)
-            return new Loaded(Results.BadRequest(new { error = $"Радиус — от {ViewerScene.MinRadiusMm} до {ViewerScene.MaxRadiusMm} мм" }));
         if (await VisibleRunAsync(runId, db, ct) is not { } run) return new Loaded(Results.NotFound(new { error = Stale }));
         var hit = await db.Set<ClashDraftHit>().AsNoTracking().SingleOrDefaultAsync(h => h.RunId == runId && h.Number == number, ct);
         if (hit is null) return new Loaded(Results.NotFound(new { error = Stale }));
+        return LoadTarget(run, new Target(hit.ModelA, hit.UniqueIdA, hit.ModelB, hit.UniqueIdB, hit.X, hit.Y, hit.Z, hit.DepthMm), radius, storage, cache);
+    }
+
+    private static async Task<(Loaded Loaded, ClashCollision? Collision)> LoadCollisionAsync(Guid id, double? radius, ToadFlowDb db, ClashStorage storage,
+        PartElementsCache cache, CancellationToken ct)
+    {
+        var collision = await db.Set<ClashCollision>().AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct);
+        if (collision is null) return (new Loaded(Results.NotFound(new { error = "коллизия не найдена" })), null);
+        var run = await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == collision.LastFoundRunId, ct);
+        if (run is null) return (new Loaded(Gone()), null);
+        var loaded = LoadTarget(run,
+            new Target(collision.ModelA, collision.UniqueIdA, collision.ModelB, collision.UniqueIdB, collision.X, collision.Y, collision.Z, collision.DepthMm),
+            radius, storage, cache);
+        return (loaded, loaded.Error is null ? collision : null);
+    }
+
+    private static Loaded LoadTarget(EngineRun run, Target hit, double? radius, ClashStorage storage, PartElementsCache cache)
+    {
+        var r = radius ?? ViewerScene.DefaultRadiusMm;
+        if (r is < ViewerScene.MinRadiusMm or > ViewerScene.MaxRadiusMm)
+            return new Loaded(Results.BadRequest(new { error = $"Радиус — от {ViewerScene.MinRadiusMm} до {ViewerScene.MaxRadiusMm} мм" }));
 
         var models = new List<ViewerModel>(run.Models.Count);
         var folders = new List<string>(run.Models.Count);
@@ -183,11 +221,13 @@ public static class ViewerEndpoints
         }
     }
 
+    /// <summary>Прогон, чьи коллизии видны: результат черновика части или прогон, последним нашедший коллизию утверждённой проверки.</summary>
     private static Task<EngineRun?> VisibleRunAsync(Guid runId, ToadFlowDb db, CancellationToken ct) =>
         db.Set<EngineRun>().AsNoTracking()
-            .Where(r => r.Id == runId && db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id))
+            .Where(r => r.Id == runId && (db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id || p.ApprovedRunId == r.Id)
+                                          || db.Set<ClashCollision>().Any(c => c.LastFoundRunId == r.Id)))
             .SingleOrDefaultAsync(ct);
 
     private static IResult Gone() =>
-        Results.Json(new { error = "выгрузка модели удалена, прогоните черновик заново" }, statusCode: StatusCodes.Status410Gone);
+        Results.Json(new { error = "выгрузка модели удалена: сцену этого прогона уже не показать" }, statusCode: StatusCodes.Status410Gone);
 }
