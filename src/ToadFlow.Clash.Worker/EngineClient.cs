@@ -78,12 +78,25 @@ public sealed class EngineClient(HttpClient http)
         await source.CopyToAsync(target, ct);
     }
 
+    /// <summary>Основа утверждённого прогона: прошлый прогон и открытые коллизии.</summary>
+    /// <returns>null — прогон больше не идёт.</returns>
+    public async Task<EngineBasis?> BasisAsync(Guid runId, CancellationToken ct)
+    {
+        using var response = await http.GetAsync($"api/engine/runs/{runId}/basis", ct);
+        if (response.StatusCode == HttpStatusCode.Conflict) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<EngineBasis>(Json, ct);
+    }
+
+    /// <param name="gone">Только в последней части утверждённого прогона: открытые пары, которых нет среди найденных.</param>
+    /// <param name="matches">Только в последней части утверждённого прогона: предложения сопоставить пересозданные элементы.</param>
     /// <returns>false — прогон больше не идёт.</returns>
-    public async Task<bool> PostResultAsync(Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats, CancellationToken ct)
+    public async Task<bool> PostResultAsync(Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats, CancellationToken ct,
+        IReadOnlyList<EngineGonePair>? gone = null, IReadOnlyList<EngineIdentityMatch>? matches = null)
     {
         using var packed = new MemoryStream();
         await using (var zip = new GZipStream(packed, CompressionLevel.Fastest, leaveOpen: true))
-            await JsonSerializer.SerializeAsync(zip, new EngineRunResult(runId, hits, stats), Json, ct);
+            await JsonSerializer.SerializeAsync(zip, new EngineRunResult(runId, hits, stats, gone, matches), Json, ct);
         using var content = new ByteArrayContent(packed.ToArray());
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         content.Headers.ContentEncoding.Add("gzip");
