@@ -40,7 +40,7 @@ export class Failure {
 
 /**
  * Ответы сервера по пути (без query) или по «МЕТОД путь» — он важнее; `null` — ответ 204; `ArrayBuffer` — двоичный ответ;
- * `Failure` — ошибка;
+ * `Failure` — ошибка; функция — ответ по адресу запроса с параметрами;
  * /api/auth/me — вошедший администратор.
  */
 export function renderApp(path: string, responses: Record<string, unknown>) {
@@ -53,7 +53,8 @@ export function renderApp(path: string, responses: Record<string, unknown>) {
     vi.fn(async (input: string, init?: RequestInit) => {
       const key = input.split('?')[0];
       const method = `${init?.method ?? 'GET'} ${key}`;
-      const body = method in all ? all[method] : all[key];
+      const found = method in all ? all[method] : all[key];
+      const body = typeof found === 'function' ? (found as (url: string, init?: RequestInit) => unknown)(input, init) : found;
       if (body === null) return new Response(null, { status: 204 });
       if (body instanceof ArrayBuffer) return new Response(body, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
       if (body instanceof Failure)

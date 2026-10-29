@@ -844,10 +844,37 @@ export interface DraftRunSummary {
   stats: EngineRunStats | null;
 }
 
+/** Проверка — включённая клетка матрицы прогона; ключ — Id групп в форме N через «|». */
+export interface CheckCount {
+  key: string;
+  groupA: string;
+  groupAName: string;
+  groupB: string;
+  groupBName: string;
+  count: number;
+  toleranceMm: number;
+}
+
+export interface SetPairCount {
+  setA: string;
+  setAName: string;
+  setB: string;
+  setBName: string;
+  count: number;
+}
+
 export interface DraftSummary {
   total: number;
-  byDisciplines: { disciplinePair: string; count: number; enabled: boolean; toleranceMm: number }[];
-  bySets: { setA: string; setAName: string; setB: string; setBName: string; count: number }[];
+  /** Проверки в порядке матрицы, с нулями. */
+  checks: CheckCount[];
+  /** Результат прогона до групп — нужно прогнать заново. */
+  legacy: boolean;
+}
+
+export interface DraftFacets {
+  levels: ValueCount[];
+  models: ValueCount[];
+  categories: ValueCount[];
 }
 
 export interface DraftHitView {
@@ -877,6 +904,9 @@ export interface DraftHitView {
   familyB: string | null;
   typeB: string | null;
   levelB: string | null;
+  checks: string[];
+  /** Пара наборов в проверке запроса: «{набор:N}|{набор:N}». */
+  setPairKey: string;
 }
 
 export interface HitPage {

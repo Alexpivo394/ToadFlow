@@ -14,6 +14,8 @@ export interface ClashViewerProps {
   sectionBox: Box | null;
   selected: number | null;
   onPick: (index: number | null) => void;
+  /** Секущий куб изменён в сцене (перетаскиванием грани). */
+  onSectionChange?: (box: Box) => void;
 }
 
 interface Stage {

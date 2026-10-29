@@ -8,7 +8,7 @@ import { useApi } from '../../../api/queries';
 import type { ClashPartView, ClashTemplateView, DraftView, PresenceView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm, Panel } from '../../../components/ui';
-import { DraftRunPanel } from '../DraftRunPanel';
+import { DraftTab } from '../draft/DraftTab';
 import { ExclusionsTab } from '../matrix/ExclusionsTab';
 import { MatrixTab } from '../matrix/MatrixTab';
 import { SetsTab } from '../sets/SetsTab';
@@ -173,7 +173,7 @@ export function PartShell() {
           </Tabs.Panel>
           <Tabs.Panel value="exclusions"><ExclusionsTab config={config} readOnly={readOnly} onChange={draft.edit} /></Tabs.Panel>
           <Tabs.Panel value="draft">
-            <DraftRunPanel partId={partId} readOnly={readOnly} dirty={draft.dirty} onSave={draft.save} />
+            <DraftTab partId={partId} readOnly={readOnly} dirty={draft.dirty} onSave={draft.save} />
           </Tabs.Panel>
         </Tabs>
       </Panel>

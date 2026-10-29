@@ -1,9 +1,8 @@
-import { Alert, Badge, Button, Group, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { DraftRunSummary, EngineRunState } from '../../api/types';
 import { askConfirm } from '../../components/ui';
 import { formatBytes, formatDateTime, formatDuration } from '../../lib/format';
-import { DraftResults } from './DraftResults';
 
 const stateLabel: Record<EngineRunState, { label: string; color: string }> = {
   Queued: { label: 'в очереди', color: 'gray' },
@@ -41,6 +40,12 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
         {current && <Badge color={stateLabel[current.state].color} variant="light">{stateLabel[current.state].label}</Badge>}
         {current?.stage && <Text size="sm">{current.stage}</Text>}
         {current && <Text size="xs" c="dimmed">запущен {formatDateTime(current.createdAt)}</Text>}
+        {current?.state === 'Succeeded' && current.hitCount != null && <Text size="xs" c="dimmed">· {current.hitCount.toLocaleString('ru-RU')} коллизий</Text>}
+        {!readOnly && (
+          <Tooltip label="Утверждение проверки и запись коллизий в базу — следующий этап">
+            <Button ml="auto" variant="default" disabled>Утвердить… (этап 4)</Button>
+          </Tooltip>
+        )}
       </Group>
       {dirty && !readOnly && <Text size="sm" c="orange">Черновик не сохранён: прогон возьмёт сохранённую версию.</Text>}
       {current?.state === 'Failed' && current.error && <Alert color="red" title="Прогон не удался">{current.error}</Alert>}
@@ -50,7 +55,6 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
           поиск {formatDuration(stats.broadSeconds + stats.narrowSeconds)}; память движка до {formatBytes(stats.peakWorkingSetBytes)}
         </Text>
       )}
-      <DraftResults partId={partId} />
     </Stack>
   );
 }
