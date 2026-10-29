@@ -105,12 +105,12 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
       ) : (
         <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 290px)" mih={520}
           style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8, overflow: 'hidden' }}>
-          <Box w={250} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
+          <Box w={{ base: 200, xl: 250 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
             <Text size="xs" fw={700} c="dimmed" tt="uppercase" px="sm" pt="sm">Проверки</Text>
             <ChecksList checks={checks} selected={check} onSelect={onCheck} />
           </Box>
 
-          <Stack gap={0} w={430} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
+          <Stack gap={0} w={{ base: 370, xl: 430 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
             <Group gap={6} p="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
               <Select size="xs" w={120} clearable placeholder="все" label="Уровень" value={filters.level} onChange={(v) => filter({ level: v })}
                 data={(facets.data?.levels ?? []).map((v) => ({ value: v.value, label: `${v.value} · ${n(v.count)}` }))} />

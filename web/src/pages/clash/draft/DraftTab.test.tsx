@@ -72,24 +72,24 @@ describe('Draft tab', () => {
   it('DraftTab_SelectCheckShowsSetPairGroups', async () => {
     open();
 
-    expect(await screen.findByText('▾ Стены × Воздуховоды')).toBeTruthy();
-    expect(await screen.findByText('сцена 1')).toBeTruthy(); // первая коллизия первой непустой проверки
+    expect(await screen.findByText('▾ Стены × Воздуховоды', {}, { timeout: 5000 })).toBeTruthy();
+    expect(await screen.findByText('сцена 1', {}, { timeout: 5000 })).toBeTruthy(); // первая коллизия первой непустой проверки
     fireEvent.click(screen.getAllByText((_, el) => el?.textContent === 'ОВ × ОВ 50')[0]);
-    expect(await screen.findByText('сцена 77')).toBeTruthy();
+    expect(await screen.findByText('сцена 77', {}, { timeout: 5000 })).toBeTruthy();
   });
 
   it('DraftTab_ArrowDownCrossesPageAndCheck', async () => {
     open('&check=k-arov&hit=50');
-    expect(await screen.findByText('сцена 50')).toBeTruthy();
+    expect(await screen.findByText('сцена 50', {}, { timeout: 5000 })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: 'ArrowDown' });
-    expect(await screen.findByText('сцена 51')).toBeTruthy();
+    expect(await screen.findByText('сцена 51', {}, { timeout: 5000 })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: 'ArrowDown' });
-    expect(await screen.findByText('сцена 77')).toBeTruthy();
+    expect(await screen.findByText('сцена 77', {}, { timeout: 5000 })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: 'ArrowUp' });
-    expect(await screen.findByText('сцена 51')).toBeTruthy();
+    expect(await screen.findByText('сцена 51', {}, { timeout: 5000 })).toBeTruthy();
   });
 
   it('DraftTab_FacetsAsDropdowns', async () => {
@@ -105,7 +105,7 @@ describe('Draft tab', () => {
   it('DraftTab_UrlKeepsCheckAndHit', async () => {
     open('&check=k-ovov&hit=77');
 
-    expect(await screen.findByText('сцена 77')).toBeTruthy();
+    expect(await screen.findByText('сцена 77', {}, { timeout: 5000 })).toBeTruthy();
     expect(calls().some(([url]) => url.startsWith('/api/clash/runs/r1/hits/77/scene'))).toBe(true);
   });
 

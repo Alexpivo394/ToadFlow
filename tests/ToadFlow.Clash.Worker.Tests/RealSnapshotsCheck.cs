@@ -113,10 +113,42 @@ public class RealSnapshotsCheck : ServerTest
             if (response.Content.Headers.ContentType is { } contentType) context.Response.ContentType = contentType.ToString();
             await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
         });
+        // Второй пользователь — проверить совместную работу двумя браузерами (вход coord2 / пароль тестов).
+        await DbAsync(async db =>
+        {
+            var user = ToadFlow.Server.Data.Entities.User.Create("coord2", "Координатор 2", UserRole.Operator, "", DateTimeOffset.UtcNow);
+            user.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<ToadFlow.Server.Data.Entities.User>().HashPassword(user, UserPassword);
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        });
+
         await app.StartAsync();
         Console.WriteLine($"Сервер с реальной частью: http://localhost:5000 до {DateTime.Now + duration:HH:mm}");
-        await Task.Delay(duration);
+        // Пока сервер открыт, работник берёт прогоны из очереди — «Прогнать» из веба считается.
+        using var hold = new CancellationTokenSource(duration);
+        var worker = Worker();
+        while (!hold.IsCancellationRequested)
+        {
+            try
+            {
+                if (await worker.RunOnceAsync(hold.Token) is null) await Task.Delay(2000, hold.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
         await app.StopAsync();
+    }
+
+    private EngineWorker Worker()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), "toadflow-engine-cache-real");
+        var http = new HttpClient(Server.Server.CreateHandler()) { BaseAddress = new Uri("http://localhost/"), Timeout = TimeSpan.FromMinutes(10) };
+        http.DefaultRequestHeaders.Add(EngineApi.KeyHeader, ServerFactory.EngineKey);
+        var client = new EngineClient(http);
+        var options = new WorkerOptions { CacheRoot = cache, Threads = 8 };
+        return new EngineWorker(client, new SnapshotCache(client, options), options, NullLogger<EngineWorker>.Instance);
     }
 
     private async Task<(HttpClient Admin, Guid PartId)> PreparePartAsync(StringBuilder report)

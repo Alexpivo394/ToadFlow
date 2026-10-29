@@ -141,7 +141,7 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
               )}
             </Group>
           )}
-          <Unassigned partId={partId} config={config} groupId={group.id} />
+          {isDisciplineGroup(group) && <Unassigned partId={partId} config={config} groupId={group.id} />}
         </Stack>
       )}
 

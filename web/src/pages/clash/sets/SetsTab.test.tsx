@@ -55,6 +55,25 @@ describe('Sets tab', () => {
     expect(screen.getByText('OST_Something — 12')).toBeTruthy();
   });
 
+  it('SetsTab_UnassignedHiddenForCustomGroup', async () => {
+    renderApp('/clash/parts/p1?tab=sets', {
+      ...partResponses,
+      '/api/clash/parts/p1/unassigned': { count: 31375, byCategory: [{ value: 'OST_Walls', count: 31375 }] },
+    });
+    expect(await screen.findByText(/элементов источника не попали/)).toBeTruthy();
+
+    // Своя группа берёт из источника лишь часть — «не попали» для неё не ошибка.
+    fireEvent.click(screen.getByRole('button', { name: '+ Своя группа' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Имя группы'), { target: { value: 'Проезды' } });
+    fireEvent.click(within(dialog).getByLabelText('Элементы из моделей разделов'));
+    fireEvent.click(await screen.findByRole('option', { name: 'АР' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('Наборы «Проезды»');
+
+    expect(screen.queryByText(/элементов источника не попали/)).toBeNull();
+  });
+
   it('SetsTab_CountsPerOrGroup', async () => {
     renderApp('/clash/parts/p1?tab=sets', partResponses);
 
