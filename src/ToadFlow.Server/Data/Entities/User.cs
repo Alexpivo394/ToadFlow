@@ -13,6 +13,17 @@ public sealed class User
     public UserRole Role { get; set; }
     public string PasswordHash { get; set; } = "";
     public bool IsDisabled { get; set; }
+
+    /// <summary>Заявка на регистрацию ждёт координатора: войти нельзя.</summary>
+    public bool IsPending { get; set; }
+
+    public string? Position { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+
+    /// <summary>Разделы, которые человек ведёт, — как в списке <c>Disciplines.ListAsync</c>; по ним считаются «Мои коллизии».</summary>
+    public string[] Disciplines { get; set; } = [];
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 

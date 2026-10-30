@@ -58,6 +58,8 @@ public static class ServerSetup
         members.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
         members.MapAuth();
         members.MapApiTokens();
+        members.MapRegistration();
+        members.MapProfile();
         members.MapModuleMemberEndpoints(app.Services);
 
         var api = members.MapGroup("").RequireAuthorization(Policies.Viewer);

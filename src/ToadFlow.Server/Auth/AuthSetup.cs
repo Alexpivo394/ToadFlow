@@ -47,7 +47,7 @@ public static class AuthSetup
         builder.Services.AddAuthorization(Policies.Add);
     }
 
-    /// <summary>Отключённого пользователя не пускаем и со старым токеном; флаг кешируется на 30 секунд.</summary>
+    /// <summary>Отключённого и ждущего подтверждения не пускаем и со старым токеном; флаг кешируется на 30 секунд.</summary>
     private static async Task<bool> IsDisabledAsync(TokenValidatedContext context)
     {
         var userId = context.Principal!.UserId();
@@ -56,7 +56,7 @@ public static class AuthSetup
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
             var db = context.HttpContext.RequestServices.GetRequiredService<ToadFlowDb>();
-            return await db.Users.Where(u => u.Id == userId).Select(u => (bool?)u.IsDisabled).SingleOrDefaultAsync() ?? true;
+            return await db.Users.Where(u => u.Id == userId).Select(u => (bool?)(u.IsDisabled || u.IsPending)).SingleOrDefaultAsync() ?? true;
         });
     }
 

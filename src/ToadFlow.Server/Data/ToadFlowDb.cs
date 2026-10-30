@@ -32,7 +32,11 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
 
     protected override void OnModelCreating(ModelBuilder model)
     {
-        model.Entity<User>(user => user.HasIndex(u => u.Login).IsUnique());
+        model.Entity<User>(user =>
+        {
+            user.HasIndex(u => u.Login).IsUnique();
+            user.Property(u => u.Disciplines).HasDefaultValueSql("'{}'::text[]");
+        });
 
         model.Entity<ApiToken>(token =>
         {

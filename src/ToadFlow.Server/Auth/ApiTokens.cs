@@ -36,7 +36,7 @@ public sealed class ApiTokenAuthHandler(IOptionsMonitor<AuthenticationSchemeOpti
             .Join(db.Users, t => t.UserId, u => u.Id, (t, u) => new { Token = t, User = u })
             .SingleOrDefaultAsync();
         if (found is null) return AuthenticateResult.Fail("Неверный токен");
-        if (found.User.IsDisabled) return AuthenticateResult.Fail("Пользователь отключён");
+        if (found.User.IsDisabled || found.User.IsPending) return AuthenticateResult.Fail("Пользователь отключён или ждёт подтверждения");
 
         var now = time.GetUtcNow();
         if (found.Token.LastUsedAt is not { } used || now - used > TouchEvery)

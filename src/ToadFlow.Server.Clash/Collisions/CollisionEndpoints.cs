@@ -59,6 +59,7 @@ public sealed record CollisionPage(int Total, IReadOnlyList<CollisionRow> Items)
 
 /// <summary>Запись ленты для показа: событие коллизии или образец глубины.</summary>
 /// <param name="Kind">Имя <see cref="CollisionEventKind" /> или <see cref="CollisionFeed.DepthKind" />.</param>
+/// <param name="UserId">Автор записи — для карточки коллеги (<c>/api/users/{id}/card</c>); null — система.</param>
 public sealed record FeedEntry(
     DateTimeOffset At,
     string Kind,
@@ -67,7 +68,8 @@ public sealed record FeedEntry(
     CollisionStatus? FromStatus,
     CollisionStatus? ToStatus,
     int? Version,
-    float? DepthMm);
+    float? DepthMm,
+    Guid? UserId = null);
 
 public sealed record CollisionCard(CollisionRow Collision, IReadOnlyList<FeedEntry> Feed);
 
@@ -251,7 +253,7 @@ public static class CollisionEndpoints
         var samples = await db.Set<ClashCollisionSample>().AsNoTracking().Where(s => s.CollisionId == id).ToListAsync(ct);
         var feed = events
             .Select(e => new FeedEntry(e.At, e.Kind.ToString(), e.UserId is { } u ? users.GetValueOrDefault(u, "") : null, e.Text, e.FromStatus, e.ToStatus,
-                e.Version, null))
+                e.Version, null, e.UserId))
             .Concat(samples.Select(s => new FeedEntry(s.At, CollisionFeed.DepthKind, null, $"Глубина {s.DepthMm:0} мм", null, null, s.Version, s.DepthMm)))
             .OrderByDescending(e => e.At).ThenBy(e => e.Kind == CollisionFeed.DepthKind ? 1 : 0)
             .ToList();

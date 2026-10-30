@@ -14,6 +14,7 @@ using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
 using ToadFlow.Server.Modules;
+using ToadFlow.Server.Naming;
 
 namespace ToadFlow.Server.Clash;
 
@@ -42,6 +43,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddHostedService<ClashUploadCleaner>();
         services.AddScoped<PartModels>();
         services.AddScoped<PartElements>();
+        services.AddScoped<IDisciplineSource, PartDisciplines>();
         services.AddSingleton<PartElementsCache>();
         services.AddSingleton<PartPresence>();
         services.AddScoped<DraftHits>();

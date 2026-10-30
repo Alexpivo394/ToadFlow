@@ -8,15 +8,32 @@ namespace ToadFlow.Server.Auth;
 
 public sealed record LoginRequest(string Login, string Password);
 
-public sealed record UserView(Guid Id, string Login, string DisplayName, UserRole Role, bool IsDisabled, DateTimeOffset? LastLoginAt)
+/// <param name="IsPending">Заявка на регистрацию ждёт подтверждения.</param>
+/// <param name="Disciplines">Разделы, которые человек ведёт; по ним — «Мои коллизии».</param>
+public sealed record UserView(
+    Guid Id,
+    string Login,
+    string DisplayName,
+    UserRole Role,
+    bool IsDisabled,
+    DateTimeOffset? LastLoginAt,
+    bool IsPending,
+    string? Position,
+    string? Email,
+    string? Phone,
+    string[] Disciplines,
+    DateTimeOffset CreatedAt)
 {
-    public static UserView From(User user) => new(user.Id, user.Login, user.DisplayName, user.Role, user.IsDisabled, user.LastLoginAt);
+    public static UserView From(User user) => new(user.Id, user.Login, user.DisplayName, user.Role, user.IsDisabled, user.LastLoginAt, user.IsPending,
+        user.Position, user.Email, user.Phone, user.Disciplines, user.CreatedAt);
 }
 
 public sealed record LoginResponse(string Token, UserView User);
 
 public static class AuthEndpoints
 {
+    public const string PendingError = "Заявка ждёт подтверждения координатора";
+
     public static void MapAuth(this RouteGroupBuilder api)
     {
         api.MapPost("/auth/login", LoginAsync).AllowAnonymous();
@@ -33,6 +50,8 @@ public static class AuthEndpoints
         var hasher = new PasswordHasher<User>();
         var check = hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
         if (check == PasswordVerificationResult.Failed) return Results.Unauthorized();
+        // Только после верного пароля: иначе по ответу можно узнать, чья заявка ждёт.
+        if (user.IsPending) return Results.Json(new { error = PendingError }, statusCode: StatusCodes.Status403Forbidden);
         if (check == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = hasher.HashPassword(user, request.Password);
 
         user.LastLoginAt = time.GetUtcNow();

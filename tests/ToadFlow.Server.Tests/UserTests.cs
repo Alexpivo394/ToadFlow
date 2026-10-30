@@ -94,5 +94,27 @@ public class UserTests : ServerTest
             (await DbAsync(db => db.SystemEvents.ToListAsync())).Any(e => e.Text.Contains("Иван Петров") && e.ActorName == "Администратор"));
     }
 
+    /// <summary>Координатор видит пользователей и задаёт разделы; роль, отключение, пароль и удаление — только администратор.</summary>
+    [Test]
+    public async Task Users_OperatorSetsDisciplines_AdminOnlyChangesRole()
+    {
+        var coordinator = await ClientAsync(UserRole.Operator);
+        var designer = await ClientAsync(UserRole.Designer);
+        var target = await designer.GetJsonAsync<UserView>("/api/auth/me");
+
+        (await coordinator.GetAsync("/api/users")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await coordinator.PutJsonAsync($"/api/users/{target.Id}/disciplines", new[] { "ОВ", "ВК" })).EnsureSuccessStatusCode();
+        (await coordinator.PutJsonAsync($"/api/users/{target.Id}/disciplines", new[] { "Сантехника" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await DbAsync(db => db.Users.SingleAsync(u => u.Id == target.Id))).Disciplines.ShouldBe(["ОВ", "ВК"]);
+
+        (await coordinator.PutJsonAsync($"/api/users/{target.Id}", new { displayName = "П", role = UserRole.Operator, isDisabled = false }))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await coordinator.PostJsonAsync($"/api/users/{target.Id}/password", new { password = "new-pass-456" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await coordinator.DeleteAsync($"/api/users/{target.Id}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await coordinator.PostJsonAsync("/api/users", new { login = "x1", displayName = "X", role = UserRole.Viewer, password = "secret-123" }))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await designer.PutJsonAsync($"/api/users/{target.Id}/disciplines", new[] { "АР" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
     private sealed record UserView(Guid Id, string Login, string DisplayName, UserRole Role);
 }
