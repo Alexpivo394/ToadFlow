@@ -1,14 +1,38 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Radio, ScrollArea, Stack, Text, Textarea } from '@mantine/core';
+import { Alert, Anchor, Button, Group, Popover, Radio, ScrollArea, Stack, Text, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
-import type { CollisionAssignee, CollisionCard as Card, CollisionStatus, FeedEntry } from '../../../api/types';
+import type { CollisionAssignee, CollisionCard as Card, CollisionStatus, FeedEntry, UserCard } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
 import { assigneeLabel, statusLabel, StatusBadge } from './StatusBadge';
+
+/** Имя автора записи ленты: по нажатию — должность и контакты, чтобы связаться. */
+function Author({ userId, name }: { userId: string; name: string }) {
+  const [opened, setOpened] = useState(false);
+  const card = useApi<UserCard>(['user-card', userId], opened ? `/api/users/${userId}/card` : null);
+  return (
+    <Popover opened={opened} onChange={setOpened} position="bottom-start" withArrow shadow="md">
+      <Popover.Target>
+        <Anchor component="button" size="xs" onClick={() => setOpened((o) => !o)}>{name}</Anchor>
+      </Popover.Target>
+      <Popover.Dropdown>
+        {card.data ? (
+          <Stack gap={2}>
+            <Text size="sm" fw={600}>{card.data.displayName}</Text>
+            {card.data.position && <Text size="xs">{card.data.position}</Text>}
+            {card.data.disciplines.length > 0 && <Text size="xs" c="dimmed">Разделы: {card.data.disciplines.join(', ')}</Text>}
+            {card.data.email && <Anchor size="xs" href={`mailto:${card.data.email}`}>{card.data.email}</Anchor>}
+            {card.data.phone && <Anchor size="xs" href={`tel:${card.data.phone}`}>{card.data.phone}</Anchor>}
+          </Stack>
+        ) : <Text size="xs" c="dimmed">…</Text>}
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
 
 function FeedLine({ entry }: { entry: FeedEntry }) {
   const status = entry.kind === 'Status' && entry.fromStatus && entry.toStatus
@@ -16,7 +40,9 @@ function FeedLine({ entry }: { entry: FeedEntry }) {
     : null;
   return (
     <Stack gap={0}>
-      <Text size="xs" c="dimmed">{formatDateTime(entry.at)} · {entry.userName ?? 'система'}</Text>
+      <Text size="xs" c="dimmed">
+        {formatDateTime(entry.at)} · {entry.userId && entry.userName ? <Author userId={entry.userId} name={entry.userName} /> : (entry.userName ?? 'система')}
+      </Text>
       {status && <Text size="sm" fw={500}>{status}</Text>}
       {entry.text && <Text size="sm" c={entry.kind === 'Depth' ? 'dimmed' : undefined}>{entry.text}</Text>}
     </Stack>

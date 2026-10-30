@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { Center, Loader } from '@mantine/core';
 import { useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
+import { RegisterPage } from './auth/RegisterPage';
 import { AppShell } from './layout/AppShell';
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { CheckPage } from './pages/clash/checks/CheckPage';
@@ -13,6 +14,7 @@ import { OverviewPage } from './pages/clash/setup/OverviewPage';
 import { SummaryPage } from './pages/clash/summary/SummaryPage';
 import { ClashRedirect, HomeRedirect, OldPartRedirect, SetupOnly, StaffOnly } from './pages/HomeRedirect';
 import { HistoryPage } from './pages/history/HistoryPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 import { SchedulesPage } from './pages/schedules/SchedulesPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 
@@ -30,6 +32,7 @@ export function App() {
   if (!user) {
     return (
       <Routes>
+        <Route path="register" element={<RegisterPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );
@@ -39,6 +42,7 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomeRedirect />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="schedules/:id?" element={<StaffOnly><SchedulesPage /></StaffOnly>} />
         <Route path="history/*" element={<StaffOnly><HistoryPage /></StaffOnly>} />
         <Route path="analytics/*" element={<StaffOnly><AnalyticsPage /></StaffOnly>} />

@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Alert, Button, Center, Paper, PasswordInput, Stack, TextInput, Title } from '@mantine/core';
+import { Link as RouterLink } from 'react-router';
+import { Alert, Anchor, Button, Center, Paper, PasswordInput, Stack, Text, TextInput, Title } from '@mantine/core';
+import { ApiError } from '../api/client';
 import { Brand } from '../components/ui';
 import { t } from '../i18n/ru';
 import { useAuth } from './AuthContext';
@@ -17,8 +19,9 @@ export function LoginPage() {
     setError(null);
     try {
       await login(loginName, password);
-    } catch {
-      setError(t.auth.failed);
+    } catch (e) {
+      // 403 — заявка ждёт подтверждения: сервер говорит, почему; остальное — неверный логин или пароль.
+      setError(e instanceof ApiError && e.status === 403 ? e.message : t.auth.failed);
     } finally {
       setBusy(false);
     }
@@ -36,6 +39,9 @@ export function LoginPage() {
             <Button type="submit" loading={busy}>
               {t.auth.submit}
             </Button>
+            <Text size="sm" ta="center">
+              Нет учётной записи? <Anchor component={RouterLink} to="/register">Регистрация</Anchor>
+            </Text>
           </Stack>
         </form>
       </Paper>

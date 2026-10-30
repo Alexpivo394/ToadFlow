@@ -38,7 +38,7 @@ const responses = {
   '/api/clash/parts/p1/approved/collisions': { total: 3, items: [row(1), row(2), row(3, { status: 'Active', suggestedPredecessorId: 'c9', suggestedPredecessorNumber: 9 })] },
   '/api/clash/collisions/c1': card(row(1), [
     { at: '2026-10-29T10:02:00Z', kind: 'Depth', userName: null, text: 'Глубина 41 мм', fromStatus: null, toStatus: null, version: 2, depthMm: 41 },
-    { at: '2026-10-29T10:01:00Z', kind: 'Status', userName: 'Иванов', text: 'Гильза есть', fromStatus: 'Active', toStatus: 'Fake', version: null, depthMm: null },
+    { at: '2026-10-29T10:01:00Z', kind: 'Status', userName: 'Иванов', userId: 'u5', text: 'Гильза есть', fromStatus: 'Active', toStatus: 'Fake', version: null, depthMm: null },
     { at: '2026-10-29T10:00:00Z', kind: 'Found', userName: null, text: 'Найдена версией 2, глубина 41 мм', fromStatus: null, toStatus: null, version: 2, depthMm: null },
   ]),
   '/api/clash/collisions/c3': card(row(3, { status: 'Active', suggestedPredecessorId: 'c9', suggestedPredecessorNumber: 9 })),
@@ -47,6 +47,7 @@ const responses = {
   '/api/clash/collisions/c1/meshes': new ArrayBuffer(4),
   '/api/clash/collisions/c3/meshes': new ArrayBuffer(4),
   'POST /api/clash/collisions/c1/status': null,
+  '/api/users/u5/card': { id: 'u5', displayName: 'Иванов', position: 'Инженер КР', email: 'ivanov@example.com', phone: '+7 901 000-00-00', disciplines: ['КР'] },
   'POST /api/clash/collisions/c3/merge': null,
 };
 
@@ -107,6 +108,16 @@ describe('Approved tab', () => {
     expect(screen.queryByRole('button', { name: 'Объединить' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Фиктивная…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Прогнать утверждённую' })).toBeNull();
+  });
+
+  it('Feed_UserNameOpensContactCard', async () => {
+    open({}, '/clash/checks/p1?collision=c1');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Иванов' }));
+
+    expect(await screen.findByText('Инженер КР')).toBeTruthy();
+    expect(screen.getByText('ivanov@example.com')).toBeTruthy();
+    expect(screen.getByText('+7 901 000-00-00')).toBeTruthy();
   });
 
   it('ApprovedTab_NotApproved_Explains', async () => {

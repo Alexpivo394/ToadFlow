@@ -7,6 +7,8 @@ interface AuthState {
   loading: boolean;
   login: (login: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Перечитать себя после правки профиля. */
+  refresh: () => Promise<void>;
   /** Роль не ниже: Наблюдатель < Координатор (Operator) < Администратор. Проектировщик — как Наблюдатель. */
   can: (role: UserRole) => boolean;
   /** Правит коллизии: проектировщик, координатор, администратор. */
@@ -45,18 +47,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(response.user);
   }, []);
 
+  const refresh = useCallback(async () => setUser(await apiFetch<UserView>('/api/auth/me')), []);
+
   const value = useMemo<AuthState>(
     () => ({
       user,
       loading,
       login,
       logout,
+      refresh,
       can: (role) => user !== null && rank[user.role] >= rank[role],
       canWork: user !== null && user.role !== 'Viewer',
       isStaff: user !== null && user.role !== 'Designer',
       disciplines: user?.disciplines ?? [],
     }),
-    [user, loading, login, logout],
+    [user, loading, login, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

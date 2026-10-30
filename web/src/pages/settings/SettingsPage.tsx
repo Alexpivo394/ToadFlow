@@ -24,7 +24,7 @@ export function SettingsPage() {
     analytics: <AnalyticsSettings />,
     clash: <ClashSettings />,
     tokens: <TokensSettings />,
-    users: can('Admin') ? <UsersSettings /> : null,
+    users: can('Operator') ? <UsersSettings /> : null,
     general: <GeneralSettingsForm />,
   }[section ?? ''];
 

@@ -1120,3 +1120,13 @@ export interface MySummary {
   newSinceVisit: number;
   previousSeenAt: string | null;
 }
+
+/** Контакты коллеги — карточка по имени в ленте коллизии. */
+export interface UserCard {
+  id: string;
+  displayName: string;
+  position: string | null;
+  email: string | null;
+  phone: string | null;
+  disciplines: string[];
+}

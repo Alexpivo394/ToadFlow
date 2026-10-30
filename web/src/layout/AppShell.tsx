@@ -1,5 +1,5 @@
 import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
-import { ActionIcon, AppShell as Shell, Box, Burger, Group, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
+import { ActionIcon, Anchor, AppShell as Shell, Box, Burger, Group, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAdjustments, IconBox, IconCalendarTime, IconChartBar, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
@@ -14,7 +14,7 @@ const settingsLinks = [
   { to: '/settings/loi', label: t.nav.loi },
   { to: '/settings/analytics', label: t.nav.analytics },
   { to: '/settings/clash', label: t.nav.clashSettings },
-  { to: '/settings/users', label: t.nav.users, admin: true },
+  { to: '/settings/users', label: t.nav.users, operator: true },
   { to: '/settings/general', label: t.nav.general },
   { to: '/settings/tokens', label: t.nav.tokens },
 ];
@@ -71,7 +71,7 @@ export function AppShell() {
           {isStaff && (
             <NavLink label={t.nav.settings} leftSection={<IconSettings size={18} />} defaultOpened={inSettings} active={inSettings} childrenOffset={28}>
               {settingsLinks
-                .filter((link) => !link.admin || can('Admin'))
+                .filter((link) => !link.operator || can('Operator'))
                 .map((link) => (
                   <NavLink key={link.to} component={RouterLink} to={link.to} label={link.label} onClick={close} />
                 ))}
@@ -81,9 +81,9 @@ export function AppShell() {
           <Box mt="auto" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
             <Group justify="space-between" wrap="nowrap" px="sm">
               <Box style={{ minWidth: 0 }}>
-                <Text fw={600} size="sm" truncate>
+                <Anchor component={RouterLink} to="/profile" fw={600} size="sm" c="inherit" display="block" truncate onClick={close}>
                   {user?.displayName}
-                </Text>
+                </Anchor>
                 <Text size="xs" c="dimmed">
                   {user ? t.role[user.role] : ''}
                 </Text>
