@@ -1067,6 +1067,8 @@ export interface FeedEntry {
   toStatus: CollisionStatus | null;
   version: number | null;
   depthMm: number | null;
+  /** Автор записи — для карточки коллеги; null — система. */
+  userId?: string | null;
 }
 
 export interface CollisionCard {
@@ -1091,4 +1093,30 @@ export interface CheckView {
   lastRun: ApprovedRunSummary | null;
   open: number;
   models: CheckModelView[];
+}
+
+/** Строка «Моих коллизий»: коллизия, её проверка и проект, кто правит. */
+export interface MyCollisionRow {
+  collision: CollisionRow;
+  partId: string;
+  partName: string;
+  object: string | null;
+  part: string | null;
+  /** «Кто правит» — моя сторона или обе; false — взяла другая сторона. */
+  mineToFix: boolean;
+  takenBy: string | null;
+  takenAt: string | null;
+}
+
+export interface MyCollisionPage {
+  total: number;
+  items: MyCollisionRow[];
+}
+
+export interface MySummary {
+  disciplines: string[];
+  toFix: number;
+  takenByOther: number;
+  newSinceVisit: number;
+  previousSeenAt: string | null;
 }

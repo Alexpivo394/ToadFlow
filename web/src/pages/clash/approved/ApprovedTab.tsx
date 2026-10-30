@@ -50,7 +50,7 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
   );
 }
 
-function Side({ row, side }: { row: CollisionRow; side: 'A' | 'B' }) {
+export function Side({ row, side }: { row: CollisionRow; side: 'A' | 'B' }) {
   const a = side === 'A';
   const family = (a ? row.familyA : row.familyB) ?? (a ? row.typeA : row.typeB) ?? '—';
   return (
