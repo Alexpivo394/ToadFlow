@@ -193,8 +193,14 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashViewer();
         api.MapClashPresence();
         api.MapClashApprove();
-        api.MapClashCollisions();
         api.MapClashProjects();
+    }
+
+    /// <summary>Проектировщику — только коллизии утверждённых проверок и версии; настройка проверок остаётся в <see cref="MapEndpoints" />.</summary>
+    public void MapMemberEndpoints(RouteGroupBuilder members)
+    {
+        members.MapClashCollisions();
+        members.MapClashVersions();
     }
 
     /// <summary>

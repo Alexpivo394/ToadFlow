@@ -268,4 +268,59 @@ public class ClashCollisionApiTests : ServerTest
         await transaction.CommitAsync();
         (await change).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
+
+    [Test]
+    public async Task Designer_SetsFakeAndFixedPending()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1)), Fp(Hit(2))], approve: true);
+        var rows = await ListAsync(admin, partId);
+        var designer = await ClientAsync(UserRole.Designer);
+
+        (await designer.PostJsonAsync($"/api/clash/collisions/{rows[0].Id}/status", new { status = "Fake", note = "Гильза есть" })).EnsureSuccessStatusCode();
+        (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/status", new { status = "FixedPending" })).EnsureSuccessStatusCode();
+        (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/assignee", new { assignee = "SideA" })).EnsureSuccessStatusCode();
+        (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/notes", new { text = "Перенёс" })).EnsureSuccessStatusCode();
+
+        (await designer.GetJsonAsync<CollisionCard>($"/api/clash/collisions/{rows[0].Id}")).Collision.Status.ShouldBe(CollisionStatus.Fake);
+        (await designer.GetJsonAsync<CollisionCard>($"/api/clash/collisions/{rows[1].Id}")).Collision.Status.ShouldBe(CollisionStatus.FixedPending);
+        (await designer.GetAsync($"/api/clash/parts/{partId}/approved/collisions")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await designer.GetAsync($"/api/clash/parts/{partId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden); // настройка части — не его
+    }
+
+    /// <summary>«Фиктивную», поставленную другим, снимает только координатор; свою проектировщик снимает сам.</summary>
+    [Test]
+    public async Task Designer_UnsetOthersFake_403_OwnOk()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1)), Fp(Hit(2))], approve: true);
+        var rows = await ListAsync(admin, partId);
+        var (designer, other) = (await ClientAsync(UserRole.Designer), await ClientAsync(UserRole.Designer));
+        (await other.PostJsonAsync($"/api/clash/collisions/{rows[0].Id}/status", new { status = "Fake", note = "Не моё" })).EnsureSuccessStatusCode();
+        (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/status", new { status = "Fake", note = "Гильза есть" })).EnsureSuccessStatusCode();
+
+        var others = await designer.PostJsonAsync($"/api/clash/collisions/{rows[0].Id}/status", new { status = "Active" });
+
+        others.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await others.Content.ReadAsStringAsync()).ShouldContain("Снять фиктивную, поставленную другим, может координатор");
+        (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/status", new { status = "Active" })).EnsureSuccessStatusCode();
+        (await admin.PostJsonAsync($"/api/clash/collisions/{rows[0].Id}/status", new { status = "Active" })).EnsureSuccessStatusCode();
+    }
+
+    [Test]
+    public async Task Designer_Merge_403()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1))], approve: true);
+        await RunAsync(admin, engine, partId, [Fp(Hit(1)) with { UniqueIdA = "ua-1-new" }], [new EngineGonePair("a", "ua-1", "b", "ub-1", "Absent", "InGeometry", null)]);
+        var all = await ListAsync(admin, partId, "?status=all");
+        var (old, recreated) = (all.Single(c => c.UniqueIdA == "ua-1"), all.Single(c => c.UniqueIdA == "ua-1-new"));
+        var designer = await ClientAsync(UserRole.Designer);
+
+        (await designer.PostJsonAsync($"/api/clash/collisions/{recreated.Id}/merge", new { predecessorId = old.Id })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await designer.PostAsync($"/api/clash/parts/{partId}/approved/run", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
 }

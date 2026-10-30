@@ -4,7 +4,10 @@ public enum UserRole
 {
     Viewer,
     Operator,
-    Admin
+    Admin,
+
+    /// <summary>Проектировщик: видит и правит только коллизии. Хранится числом, поэтому стоит в конце, а не по старшинству.</summary>
+    Designer
 }
 
 public enum AgentState

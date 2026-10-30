@@ -53,10 +53,14 @@ public static class ServerSetup
         app.UseAuthentication();
         app.UseAuthorization();
 
-        var api = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
-        api.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
-        api.MapAuth();
-        api.MapApiTokens();
+        // Участники — любая роль, в том числе проектировщик; всё остальное ядра и модулей — от наблюдателя и старше.
+        var members = app.MapGroup("/api").RequireAuthorization(Policies.Member);
+        members.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+        members.MapAuth();
+        members.MapApiTokens();
+        members.MapModuleMemberEndpoints(app.Services);
+
+        var api = members.MapGroup("").RequireAuthorization(Policies.Viewer);
         api.MapUsers();
         api.MapEvents();
         api.MapSettings();
@@ -73,7 +77,8 @@ public static class ServerSetup
         agentApi.MapModuleAgentEndpoints(app.Services);
         app.MapModuleExternalEndpoints(app.Services);
 
-        app.MapHub<UiHub>("/hubs/ui");
+        // Хаб рассылает события всех модулей: проектировщику их видеть не положено.
+        app.MapHub<UiHub>("/hubs/ui").RequireAuthorization(Policies.Viewer);
         app.MapHub<AgentHub>("/hubs/agent");
     }
 }

@@ -23,6 +23,14 @@ public interface IServerModule
     /// <param name="api">Группа <c>/api</c>; по умолчанию требует роль Наблюдатель.</param>
     void MapEndpoints(RouteGroupBuilder api);
 
+    /// <param name="members">
+    ///     Группа <c>/api</c> для любой роли, включая проектировщика (политика <c>Member</c>). Сюда — только то, что
+    ///     проектировщику положено видеть; правку закрывать своей политикой.
+    /// </param>
+    void MapMemberEndpoints(RouteGroupBuilder members)
+    {
+    }
+
     /// <param name="agentApi">Группа <c>/api/agent</c>: вызовы агентов по их ключу (политика <c>Agent</c>), без пользовательских ролей.</param>
     void MapAgentEndpoints(RouteGroupBuilder agentApi)
     {

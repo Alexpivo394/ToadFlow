@@ -96,15 +96,17 @@ public static class CollisionFeed
 
 /// <summary>
 ///     Коллизии утверждённой проверки: прогон, сводка, список, карточка с лентой, статусы, «кто правит», примечания,
-///     объединение с прежней коллизией и 3D. Читает Наблюдатель, меняет Оператор.
+///     объединение с прежней коллизией и 3D. Читает любая роль; статусы, «кто правит» и примечания меняет проектировщик
+///     и старше, объединение и прогоны — координатор.
 /// </summary>
 public static class CollisionEndpoints
 {
     private static readonly CollisionStatus[] Open = [CollisionStatus.New, CollisionStatus.Active, CollisionStatus.Returned, CollisionStatus.FixedPending];
 
-    public static void MapClashCollisions(this RouteGroupBuilder api)
+    /// <param name="members">Группа участников: маршруты открыты и проектировщику.</param>
+    public static void MapClashCollisions(this RouteGroupBuilder members)
     {
-        var approved = api.MapGroup("/clash/parts/{id:guid}/approved");
+        var approved = members.MapGroup("/clash/parts/{id:guid}/approved");
         approved.MapGet("/run", RunAsync);
         approved.MapGet("/summary", SummaryAsync);
         approved.MapGet("/collisions", ListAsync);
@@ -112,15 +114,15 @@ public static class CollisionEndpoints
         approvedWrite.MapPost("/run", StartAsync);
         approvedWrite.MapPost("/run/cancel", CancelAsync);
 
-        var collision = api.MapGroup("/clash/collisions/{id:guid}");
+        var collision = members.MapGroup("/clash/collisions/{id:guid}");
         collision.MapGet("", CardAsync);
         collision.MapGet("/scene", ViewerEndpoints.CollisionSceneAsync);
         collision.MapGet("/meshes", ViewerEndpoints.CollisionMeshesAsync);
-        var write = collision.MapGroup("").RequireAuthorization(Policies.Operator);
+        var write = collision.MapGroup("").RequireAuthorization(Policies.Designer);
         write.MapPost("/status", StatusAsync);
         write.MapPost("/assignee", AssigneeAsync);
         write.MapPost("/notes", NoteAsync);
-        write.MapPost("/merge", MergeAsync);
+        collision.MapPost("/merge", MergeAsync).RequireAuthorization(Policies.Operator);
     }
 
     private static async Task<IResult> RunAsync(Guid id, ToadFlowDb db, CancellationToken ct)
@@ -258,7 +260,12 @@ public static class CollisionEndpoints
 
     private static Task<IResult> StatusAsync(Guid id, CollisionStatusRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct) =>
-        ChangeAsync(id, db, http, time, events, ct, (collision, now, user) =>
+        ChangeAsync(id, db, http, time, events, ct, async collision =>
+            collision.Status == CollisionStatus.Fake && request.Status != CollisionStatus.Fake && !http.User.IsStaff()
+            && await FakeSetByAsync(db, collision.Id, ct) != http.User.UserId()
+                ? "Снять фиктивную, поставленную другим, может координатор"
+                : null,
+            (collision, now, user) =>
         {
             var next = CollisionTransitions.Manual(collision.Status, request.Status, collision.FoundNow, request.Note);
             var entry = Event(collision.Id, now, user, CollisionEventKind.Status, request.Note?.Trim() ?? "");
@@ -351,8 +358,19 @@ public static class CollisionEndpoints
         return Results.Ok();
     }
 
+    /// <summary>Кто поставил «фиктивную» — по последней записи ленты; null — система.</summary>
+    private static Task<Guid?> FakeSetByAsync(ToadFlowDb db, Guid collisionId, CancellationToken ct) =>
+        db.Set<ClashCollisionEvent>().AsNoTracking()
+            .Where(e => e.CollisionId == collisionId && e.Kind == CollisionEventKind.Status && e.ToStatus == CollisionStatus.Fake)
+            .OrderByDescending(e => e.At).Select(e => e.UserId).FirstOrDefaultAsync(ct);
+
+    private static Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct,
+        Func<ClashCollision, DateTimeOffset, Guid, ClashCollisionEvent> change) =>
+        ChangeAsync(id, db, http, time, events, ct, _ => Task.FromResult<string?>(null), change);
+
+    /// <param name="forbidden">Почему этому пользователю правка запрещена (403); null — можно.</param>
     private static async Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct,
-        Func<ClashCollision, DateTimeOffset, Guid, ClashCollisionEvent> change)
+        Func<ClashCollision, Task<string?>> forbidden, Func<ClashCollision, DateTimeOffset, Guid, ClashCollisionEvent> change)
     {
         // Под блокировкой части, как сверка: правка видит статус после сверки и не затирается ею.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -360,6 +378,7 @@ public static class CollisionEndpoints
         await LockPartAsync(db, partId, ct);
         var collision = await db.Set<ClashCollision>().SingleOrDefaultAsync(c => c.Id == id, ct);
         if (collision is null) return Results.NotFound();
+        if (await forbidden(collision) is { } reason) return Results.Json(new { error = reason }, statusCode: StatusCodes.Status403Forbidden);
         var now = time.GetUtcNow();
         try
         {

@@ -10,17 +10,22 @@ namespace ToadFlow.Server.Clash.Parts;
 
 /// <summary>
 ///     Утверждение черновика части: новая версия конфигурации, по которой работают расписания. «Сбросить черновик» берёт
-///     последнюю утверждённую версию обратно в черновик. Утверждает и сбрасывает Оператор, версии читает Наблюдатель.
+///     последнюю утверждённую версию обратно в черновик. Утверждает и сбрасывает Оператор, версии читает любая роль:
+///     история версий видна и на странице проверки.
 /// </summary>
 public static class ApproveEndpoints
 {
-    public static void MapClashApprove(this RouteGroupBuilder api)
+    /// <param name="members">Группа участников: маршруты открыты и проектировщику.</param>
+    public static void MapClashVersions(this RouteGroupBuilder members)
     {
-        var part = api.MapGroup("/clash/parts/{id:guid}");
+        var part = members.MapGroup("/clash/parts/{id:guid}");
         part.MapGet("/versions", VersionsAsync);
         part.MapGet("/versions/{version:int}", VersionAsync);
+    }
 
-        var write = part.MapGroup("").RequireAuthorization(Policies.Operator);
+    public static void MapClashApprove(this RouteGroupBuilder api)
+    {
+        var write = api.MapGroup("/clash/parts/{id:guid}").RequireAuthorization(Policies.Operator);
         write.MapPost("/approve", ApproveAsync);
         write.MapPost("/draft/reset", ResetAsync);
     }
