@@ -5,6 +5,7 @@ using ToadFlow.Contracts.Clash;
 using Microsoft.AspNetCore.Authentication;
 using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
+using ToadFlow.Server.Clash.Overview;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Projects;
 using ToadFlow.Server.Clash.Templates;
@@ -203,6 +204,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashPresence();
         api.MapClashApprove();
         api.MapClashProjects();
+        api.MapClashOverview();
     }
 
     /// <summary>Проектировщику — только коллизии утверждённых проверок и версии; настройка проверок остаётся в <see cref="MapEndpoints" />.</summary>
@@ -211,6 +213,7 @@ public sealed class ClashServerModule : IServerModule
         members.MapClashCollisions();
         members.MapClashVersions();
         members.MapClashMy();
+        members.MapClashChecks();
     }
 
     /// <summary>

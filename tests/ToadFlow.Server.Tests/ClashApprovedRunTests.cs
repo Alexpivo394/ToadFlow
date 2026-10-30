@@ -307,7 +307,7 @@ public class ClashApprovedRunTests : ServerTest
     {
         var (admin, agent, partId, engine) = await SetupAsync();
         await using var _ = agent;
-        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        (await admin.PutJsonAsync("/api/clash/settings", new { storage = new { keepSnapshots = 1 } })).EnsureSuccessStatusCode();
         var runId = await ApproveAndRunAsync(admin, partId);
         await FinishAsync(engine, runId, [Fp(Hit(1))]);
         var kept = (await RunAsync(runId)).Models.Select(m => m.SnapshotId).ToList();

@@ -88,12 +88,12 @@ public class ClashModelsTests : ServerTest
         var newest = await PublishAsync(agent, "АР.rvt", 1);
         var admin = await AdminAsync();
 
-        (await admin.PutJsonAsync("/api/clash/settings", new ClashStorageSettings(1))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await admin.PutJsonAsync("/api/clash/settings", new { storage = new ClashStorageSettings(1) })).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var snapshots = await DbAsync(db => db.Set<ClashSnapshot>().AsNoTracking().ToListAsync());
         snapshots.ShouldHaveSingleItem().Id.ShouldBe(newest.Result.SnapshotId);
         Directory.GetDirectories(Path.Combine(Server.ClashStorageRoot, newest.Model.Id.ToString("N"))).ShouldHaveSingleItem();
-        (await admin.GetJsonAsync<ClashStorageSettings>("/api/clash/settings")).KeepSnapshots.ShouldBe(1);
+        (await admin.GetJsonAsync<ClashSettingsView>("/api/clash/settings")).Storage.KeepSnapshots.ShouldBe(1);
     }
 
     [Test]
@@ -103,9 +103,9 @@ public class ClashModelsTests : ServerTest
         var @operator = await ClientAsync(UserRole.Operator);
         var admin = await AdminAsync();
 
-        (await viewer.GetJsonAsync<ClashStorageSettings>("/api/clash/settings")).KeepSnapshots.ShouldBe(3);
-        (await @operator.PutJsonAsync("/api/clash/settings", new ClashStorageSettings(5))).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-        var invalid = await admin.PutJsonAsync("/api/clash/settings", new ClashStorageSettings(0));
+        (await viewer.GetJsonAsync<ClashSettingsView>("/api/clash/settings")).Storage.KeepSnapshots.ShouldBe(3);
+        (await @operator.PutJsonAsync("/api/clash/settings", new { storage = new ClashStorageSettings(5) })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var invalid = await admin.PutJsonAsync("/api/clash/settings", new { storage = new ClashStorageSettings(0) });
         invalid.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await invalid.Content.ReadAsStringAsync()).ShouldContain("от 1 до 20");
     }

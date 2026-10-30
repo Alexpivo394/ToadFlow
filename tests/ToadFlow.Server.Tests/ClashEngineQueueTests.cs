@@ -279,7 +279,7 @@ public class ClashEngineQueueTests : ServerTest
     {
         var (admin, agent) = await SetupAsync();
         await using var _ = agent;
-        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        (await admin.PutJsonAsync("/api/clash/settings", new { storage = new { keepSnapshots = 1 } })).EnsureSuccessStatusCode();
         var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
         var run = await StartAsync(admin, partId);
         var queuedSnapshot = (await RunAsync(run.RunId)).Models.Single().SnapshotId;
@@ -317,7 +317,7 @@ public class ClashEngineQueueTests : ServerTest
     {
         var (admin, agent) = await SetupAsync();
         await using var _ = agent;
-        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        (await admin.PutJsonAsync("/api/clash/settings", new { storage = new { keepSnapshots = 1 } })).EnsureSuccessStatusCode();
         var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
         var shown = await FinishedRunAsync(admin, partId);
 
@@ -334,7 +334,7 @@ public class ClashEngineQueueTests : ServerTest
     {
         var (admin, agent) = await SetupAsync();
         await using var _ = agent;
-        (await admin.PutJsonAsync("/api/clash/settings", new { keepSnapshots = 1 })).EnsureSuccessStatusCode();
+        (await admin.PutJsonAsync("/api/clash/settings", new { storage = new { keepSnapshots = 1 } })).EnsureSuccessStatusCode();
         var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
         var first = await FinishedRunAsync(admin, partId);
         await PublishAgainAsync(agent);

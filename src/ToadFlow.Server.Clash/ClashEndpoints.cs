@@ -33,9 +33,13 @@ public static class ClashEndpoints
         clash.MapGet("/models", ModelsAsync);
         clash.MapGet("/models/{id:guid}/snapshots", SnapshotsAsync);
         clash.MapGet("/catalog", CatalogAsync);
-        clash.MapGet("/settings", (ClashSettingsStore store, CancellationToken ct) => store.StorageAsync(ct));
+        clash.MapGet("/settings", SettingsAsync);
         clash.MapPut("/settings", SaveSettingsAsync).RequireAuthorization(Policies.Admin);
     }
+
+    /// <param name="Storage">Хранение выгрузок; null — не менять.</param>
+    /// <param name="Overview">Пороги обзора координатора; null — не менять.</param>
+    public sealed record ClashSettingsRequest(ClashStorageSettings? Storage, ClashOverviewSettings? Overview);
 
     private static async Task<ClashModelView[]> ModelsAsync(ToadFlowDb db, CancellationToken ct)
     {
@@ -70,16 +74,32 @@ public static class ClashEndpoints
         return ModelCatalog.Merge(catalogs);
     }
 
-    private static async Task<IResult> SaveSettingsAsync(ClashStorageSettings settings, ClashSettingsStore store, ToadFlowDb db, SnapshotPublisher publisher,
+    private static async Task<ClashSettingsView> SettingsAsync(ClashSettingsStore store, CancellationToken ct) =>
+        new(await store.StorageAsync(ct), await store.OverviewAsync(ct));
+
+    /// <summary>Не заданная часть настроек остаётся прежней.</summary>
+    private static async Task<IResult> SaveSettingsAsync(ClashSettingsRequest request, ClashSettingsStore store, ToadFlowDb db, SnapshotPublisher publisher,
         HttpContext http, IDomainEvents events, CancellationToken ct)
     {
-        if (settings.Validate() is { Count: > 0 } errors) return Results.BadRequest(new { error = string.Join("; ", errors) });
+        var errors = (request.Storage?.Validate() ?? []).Concat(request.Overview?.Validate() ?? []).ToList();
+        if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors) });
 
-        await store.SaveStorageAsync(settings, ct);
-        foreach (var model in await db.Set<ClashModel>().AsNoTracking().Select(m => m.Id).ToListAsync(ct))
-            await publisher.PruneAsync(model, settings.KeepSnapshots, ct);
-        events.Publish(new SettingsChanged(http.User.Actor(), $"Коллизии: хранить последних выгрузок каждой модели — {settings.KeepSnapshots}"));
-        return Results.Ok(settings);
+        if (request.Storage is { } storage)
+        {
+            await store.SaveStorageAsync(storage, ct);
+            foreach (var model in await db.Set<ClashModel>().AsNoTracking().Select(m => m.Id).ToListAsync(ct))
+                await publisher.PruneAsync(model, storage.KeepSnapshots, ct);
+            events.Publish(new SettingsChanged(http.User.Actor(), $"Коллизии: хранить последних выгрузок каждой модели — {storage.KeepSnapshots}"));
+        }
+
+        if (request.Overview is { } overview)
+        {
+            await store.SaveOverviewAsync(overview, ct);
+            events.Publish(new SettingsChanged(http.User.Actor(),
+                $"Коллизии: пороги обзора — выгрузка {overview.StaleDays} дн., прогон {overview.NoRunDays} дн., всплеск {overview.SpikeShare:P0} и {overview.SpikeMin}, висят {overview.StuckDays} дн."));
+        }
+
+        return Results.Ok(await SettingsAsync(store, ct));
     }
 
     private static IQueryable<SnapshotRow> Views(IQueryable<ClashSnapshot> snapshots) => snapshots.Select(s => new SnapshotRow(s.ModelId,

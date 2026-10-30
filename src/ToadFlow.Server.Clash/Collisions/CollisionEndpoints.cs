@@ -104,7 +104,7 @@ public static class CollisionFeed
 /// </summary>
 public static class CollisionEndpoints
 {
-    private static readonly CollisionStatus[] Open = [CollisionStatus.New, CollisionStatus.Active, CollisionStatus.Returned, CollisionStatus.FixedPending];
+    internal static readonly CollisionStatus[] Open = [CollisionStatus.New, CollisionStatus.Active, CollisionStatus.Returned, CollisionStatus.FixedPending];
 
     /// <param name="members">Группа участников: маршруты открыты и проектировщику.</param>
     public static void MapClashCollisions(this RouteGroupBuilder members)
@@ -198,10 +198,12 @@ public static class CollisionEndpoints
     /// <param name="status">Статусы через запятую; <c>all</c> — все; не задано — открытые.</param>
     /// <param name="q">Номер коллизии, UniqueId или ElementId элемента.</param>
     /// <param name="sort"><c>depth</c> — глубже сначала; иначе по номеру.</param>
+    /// <param name="stuckDays">Только висящие: открытые, без записей в ленте столько дней (из обзора координатора).</param>
     private static async Task<IResult> ListAsync(Guid id, string? check, string? status, CollisionAssignee? assignee, string? level, string? model, string? q,
-        string? sort, int? page, int? pageSize, ToadFlowDb db, CancellationToken ct)
+        string? sort, int? page, int? pageSize, int? stuckDays, ToadFlowDb db, TimeProvider time, CancellationToken ct)
     {
         var query = db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == id);
+        if (stuckDays is { } days and > 0) query = Overview.OverviewEndpoints.Stuck(db, query, time.GetUtcNow() - TimeSpan.FromDays(days));
         if (string.IsNullOrWhiteSpace(status)) query = query.Where(c => Open.Contains(c.Status));
         else if (!status.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
