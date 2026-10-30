@@ -606,6 +606,26 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_collision_samples", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashUserState", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset?>("PreviousSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("previous_seen_at");
+
+                    b.Property<DateTimeOffset>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_clash_user_states");
+
+                    b.ToTable("clash_user_states", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Engine.ClashDraftHit", b =>
                 {
                     b.Property<Guid>("RunId")
@@ -2115,6 +2135,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_collision_samples_clash_collisions_collision_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashUserState", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_user_states_users_user_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Engine.EngineRun", b =>

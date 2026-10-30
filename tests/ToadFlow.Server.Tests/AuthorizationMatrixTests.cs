@@ -16,13 +16,13 @@ public class AuthorizationMatrixTests : ServerTest
     private static readonly string[] Open = ["/api/auth/login", "/api/auth/register", "/api/agents/register"];
 
     /// <summary>
-    ///     Доступно и наблюдателю: свой профиль, свои токены доступа, своя ручная проверка из ParamChecker и предпросмотры разбора имён и
+    ///     Доступно и наблюдателю: свой профиль, своя отметка захода в «Мои коллизии», свои токены доступа, своя ручная проверка из ParamChecker и предпросмотры разбора имён и
     ///     профилей моделей — они ничего не сохраняют, POST только из-за тела запроса.
     /// </summary>
     private static readonly string[] Personal =
         ["/api/auth/tokens", "/api/auth/tokens/{id:guid}", "/api/profile", "/api/profile/password", "/api/loi/checks", "/api/loi/naming/preview", "/api/loi/routing/preview",
          "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned",
-         "/api/clash/parts/{id:guid}/presence"];
+         "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()

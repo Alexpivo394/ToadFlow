@@ -75,7 +75,8 @@ public sealed record CollisionCard(CollisionRow Collision, IReadOnlyList<FeedEnt
 
 public sealed record CollisionStatusRequest(CollisionStatus Status, string? Note);
 
-public sealed record CollisionAssigneeRequest(CollisionAssignee Assignee);
+/// <param name="Note">«Передать» с примечанием: оно идёт в ленту отдельной записью.</param>
+public sealed record CollisionAssigneeRequest(CollisionAssignee Assignee, string? Note = null);
 
 public sealed record CollisionNoteRequest(string? Text);
 
@@ -124,6 +125,7 @@ public static class CollisionEndpoints
         write.MapPost("/status", StatusAsync);
         write.MapPost("/assignee", AssigneeAsync);
         write.MapPost("/notes", NoteAsync);
+        write.MapPost("/take", TakeAsync);
         collision.MapPost("/merge", MergeAsync).RequireAuthorization(Policies.Operator);
     }
 
@@ -282,11 +284,31 @@ public static class CollisionEndpoints
         ChangeAsync(id, db, http, time, events, ct, (collision, now, user) =>
         {
             if (collision.Assignee == request.Assignee) throw new CollisionTransitionException("«Кто правит» уже такой");
+            var note = request.Note?.Trim() ?? "";
+            if (note.Length > CollisionFeed.MaxNoteLength) throw new CollisionTransitionException($"Примечание — до {CollisionFeed.MaxNoteLength} символов");
             var entry = Event(collision.Id, now, user, CollisionEventKind.Assignee,
                 $"Кто правит: {CollisionFeed.AssigneeText(collision.Assignee)} → {CollisionFeed.AssigneeText(request.Assignee)}");
             collision.Assignee = request.Assignee;
+            // На микросекунду позже — лента по времени показывает примечание после смены (точность времени в базе — микросекунды).
+            if (note.Length > 0) db.Set<ClashCollisionEvent>().Add(Event(collision.Id, now.AddMicroseconds(1), user, CollisionEventKind.Note, note));
             return entry;
         });
+
+    /// <summary>«Беру»: «кто правит» — моя сторона, а если оба элемента из моих разделов — обе стороны.</summary>
+    private static async Task<IResult> TakeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct)
+    {
+        var me = await db.Set<User>().AsNoTracking().Where(u => u.Id == http.User.UserId()).Select(u => new { u.DisplayName, u.Disciplines }).SingleAsync(ct);
+        return await ChangeAsync(id, db, http, time, events, ct, (collision, now, user) =>
+        {
+            var side = MyCollisions.Side(collision, me.Disciplines)
+                       ?? throw new CollisionTransitionException("Взять можно только коллизию своего раздела: ни один её элемент не из ваших разделов");
+            var text = collision.Assignee == side
+                ? $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(side)}"
+                : $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(collision.Assignee)} → {CollisionFeed.AssigneeText(side)}";
+            collision.Assignee = side;
+            return Event(collision.Id, now, user, CollisionEventKind.Assignee, text);
+        });
+    }
 
     private static Task<IResult> NoteAsync(Guid id, CollisionNoteRequest request, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events,
         CancellationToken ct) =>
@@ -414,12 +436,12 @@ public static class CollisionEndpoints
             .Join(db.Set<ClashModel>().AsNoTracking(), pm => pm.ModelId, m => m.Id, (_, m) => new { m.Id, m.Name }).ToListAsync(ct))
         .ToDictionary(m => m.Id.ToString("N"), m => m.Name);
 
-    private static async Task<Dictionary<Guid, int>> NumbersAsync(ToadFlowDb db, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+    internal static async Task<Dictionary<Guid, int>> NumbersAsync(ToadFlowDb db, IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
         ids.Count == 0
             ? []
             : await db.Set<ClashCollision>().AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Number, ct);
 
-    private static CollisionRow Row(ClashCollision c, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<Guid, int> suggested) => new(
+    internal static CollisionRow Row(ClashCollision c, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<Guid, int> suggested) => new(
         c.Id, c.Number, c.Status, c.Assignee, c.FoundNow, c.DepthMm, c.X, c.Y, c.Z,
         c.ModelA, names.GetValueOrDefault(c.ModelA, c.ModelA), c.UniqueIdA, c.ElementIdA, c.DisciplineA, c.CategoryA, c.FamilyA, c.TypeA, c.LevelA,
         c.ModelB, names.GetValueOrDefault(c.ModelB, c.ModelB), c.UniqueIdB, c.ElementIdB, c.DisciplineB, c.CategoryB, c.FamilyB, c.TypeB, c.LevelB,
