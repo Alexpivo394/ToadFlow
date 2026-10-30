@@ -158,7 +158,8 @@ public class ClashAnalyticsTests : ServerTest
         view.Lagging.Select(l => (l.Key, l.Open)).ShouldBe([("АР", 3), ("ОВ", 2), ("ВК", 1)]);
         view.Lagging.Single(l => l.Key == "ОВ").Growth.ShouldBe(2); // в начале периода коллизий не было
         view.Lagging.ShouldAllBe(l => l.Stuck == 0);
-        (await AnalyticsAsync(designer, "?groupBy=part")).Lagging.ShouldHaveSingleItem().Open.ShouldBe(3);
+        var byPart = (await AnalyticsAsync(designer, "?groupBy=part")).Lagging.ShouldHaveSingleItem();
+        (byPart.Open, byPart.PartId).ShouldBe((3, partId)); // строка ведёт на страницу проверки
     }
 
     [Test]

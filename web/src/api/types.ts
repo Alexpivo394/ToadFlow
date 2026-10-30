@@ -1130,3 +1130,60 @@ export interface UserCard {
   phone: string | null;
   disciplines: string[];
 }
+
+/** Пороги обзора координатора. */
+export interface ClashOverviewSettings {
+  staleDays: number;
+  noRunDays: number;
+  /** Доля от 0 до 1. */
+  spikeShare: number;
+  spikeMin: number;
+  stuckDays: number;
+}
+
+export interface ClashSettingsView {
+  storage: ClashStorageSettings;
+  overview: ClashOverviewSettings;
+}
+
+export interface OverviewPart {
+  partId: string;
+  name: string;
+  object: string | null;
+  count: number;
+  reason: string;
+}
+
+export interface OverviewModel {
+  partId: string;
+  partName: string;
+  modelId: string;
+  modelName: string;
+  reason: string;
+}
+
+/** Обзор координатора: где проблема по всем утверждённым проверкам. */
+export interface ClashOverview {
+  notUploaded: OverviewModel[];
+  runFailed: OverviewPart[];
+  noRecentRun: OverviewPart[];
+  unchecked: OverviewPart[];
+  spike: OverviewPart[];
+  stuck: OverviewPart[];
+  pendingUsers: number;
+}
+
+export interface ClashAnalyticsView {
+  from: string;
+  to: string;
+  current: {
+    open: number;
+    fake: number;
+    fakeShare: number;
+    byAssignee: { assignee: CollisionAssignee; count: number }[];
+    ageBuckets: { label: string; count: number }[];
+  };
+  period: { new: number; fixed: number; returned: number };
+  series: { date: string; open: number }[];
+  lagging: { key: string; open: number; growth: number; stuck: number; partId: string | null }[];
+}

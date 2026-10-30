@@ -75,6 +75,8 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
   const checks = useMemo(() => summary.data?.checks ?? [], [summary.data]);
   const check = params.get('check');
   const collisionId = params.get('collision');
+  // Из обзора координатора: только висящие коллизии.
+  const stuckDays = params.get('stuckDays');
 
   const update = useCallback((patch: Record<string, string | null>) =>
     setParams((p) => {
@@ -85,6 +87,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
 
   const search = new URLSearchParams({ status: statuses.length ? statuses.join(',') : 'all', page: String(page), pageSize: String(PageSize) });
   if (check) search.set('check', check);
+  if (stuckDays) search.set('stuckDays', stuckDays);
   if (query.trim()) search.set('q', query.trim());
   const list = useApi<CollisionPage>(['clash-collisions', partId, 'list', search.toString()], `/api/clash/parts/${partId}/approved/collisions?${search}`);
   const items = useMemo(() => list.data?.items ?? [], [list.data]);
@@ -113,6 +116,12 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
   return (
     <Stack gap="sm">
       <ApprovedRunLine partId={partId} canRun={canRun} />
+      {stuckDays && (
+        <Group gap="xs">
+          <Badge color="orange" variant="light">Только висящие: без движения дольше {stuckDays} дн.</Badge>
+          <Button size="compact-xs" variant="subtle" onClick={() => { setPage(1); update({ stuckDays: null }); }}>показать все</Button>
+        </Group>
+      )}
       <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 290px)" mih={560}
         style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8, overflow: 'hidden' }}>
         <Box w={{ base: 200, xl: 250 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>

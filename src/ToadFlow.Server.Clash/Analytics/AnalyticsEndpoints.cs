@@ -25,7 +25,8 @@ public sealed record AnalyticsPoint(DateOnly Date, int Open);
 /// <param name="Key">Раздел, проект или проверка — смотря по разбивке.</param>
 /// <param name="Growth">Открытых сейчас минус открытых в начале периода.</param>
 /// <param name="Stuck">Открытые без движения дольше порога «висят» из настроек.</param>
-public sealed record AnalyticsLagging(string Key, int Open, int Growth, int Stuck);
+/// <param name="PartId">Проверка — при разбивке по проверкам: строка ведёт на её страницу.</param>
+public sealed record AnalyticsLagging(string Key, int Open, int Growth, int Stuck, Guid? PartId = null);
 
 /// <summary>Сводка коллизий утверждённых проверок за период по часовому поясу из «Общих».</summary>
 public sealed record ClashAnalyticsView(
@@ -101,8 +102,8 @@ public static class AnalyticsEndpoints
         var names = parts.ToDictionary(p => p.Id, p => (Part: p.Name, Project: ProjectOf(p.Object)));
         IReadOnlyList<AnalyticsLagging> lagging = groupBy switch
         {
-            "object" => await LaggingByPartAsync(open, stuck, OpenAt(totals, start), id => names[id].Project, ct),
-            "part" => await LaggingByPartAsync(open, stuck, OpenAt(totals, start), id => names[id].Part, ct),
+            "object" => await LaggingByPartAsync(open, stuck, OpenAt(totals, start), id => (names[id].Project, null), ct),
+            "part" => await LaggingByPartAsync(open, stuck, OpenAt(totals, start), id => (names[id].Part, id), ct),
             _ => await LaggingByDisciplineAsync(open, stuck, rows, start, key, ct)
         };
 
@@ -152,15 +153,15 @@ public static class AnalyticsEndpoints
     }
 
     private static async Task<IReadOnlyList<AnalyticsLagging>> LaggingByPartAsync(IQueryable<ClashCollision> open, IQueryable<ClashCollision> stuck,
-        Dictionary<(Guid PartId, string Discipline), int> atStart, Func<Guid, string> keyOf, CancellationToken ct)
+        Dictionary<(Guid PartId, string Discipline), int> atStart, Func<Guid, (string Key, Guid? PartId)> keyOf, CancellationToken ct)
     {
         var openByPart = await open.GroupBy(c => c.PartId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var stuckByPart = await stuck.GroupBy(c => c.PartId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var startByPart = atStart.GroupBy(s => s.Key.PartId).ToDictionary(g => g.Key, g => g.Sum(s => s.Value));
         return openByPart.Keys.Concat(startByPart.Keys).Concat(stuckByPart.Keys).Distinct()
             .GroupBy(keyOf)
-            .Select(g => new AnalyticsLagging(g.Key, g.Sum(openByPart.GetValueOrDefault), g.Sum(id => openByPart.GetValueOrDefault(id) - startByPart.GetValueOrDefault(id)),
-                g.Sum(stuckByPart.GetValueOrDefault)))
+            .Select(g => new AnalyticsLagging(g.Key.Key, g.Sum(openByPart.GetValueOrDefault), g.Sum(id => openByPart.GetValueOrDefault(id) - startByPart.GetValueOrDefault(id)),
+                g.Sum(stuckByPart.GetValueOrDefault), g.Key.PartId))
             .OrderByDescending(l => l.Open).ThenBy(l => l.Key, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }

@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { defaultExportSettings } from '../../components/ExportSettingsForm';
 import { renderApp } from '../../test/renderApp';
@@ -53,7 +53,7 @@ describe('SettingsPage', () => {
 
 describe('SettingsPage clash', () => {
   it('ClashSettings_RejectsOutOfRange', async () => {
-    renderApp('/settings/clash', { '/api/clash/settings': { keepSnapshots: 3 } });
+    renderApp('/settings/clash', { '/api/clash/settings': clashSettings });
 
     const keep = await screen.findByLabelText('Сколько выгрузок хранить у каждой модели');
     expect((keep as HTMLInputElement).value).toBe('3');
@@ -62,4 +62,23 @@ describe('SettingsPage clash', () => {
     expect(await screen.findByText('От 1 до 20')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Сохранить' }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('ClashSettings_SavesOverviewThresholds', async () => {
+    renderApp('/settings/clash', { '/api/clash/settings': clashSettings, 'PUT /api/clash/settings': clashSettings });
+
+    fireEvent.change(await screen.findByLabelText('Висят — дней без движения'), { target: { value: '14' } });
+    fireEvent.change(screen.getByLabelText('Всплеск — доля новых от активных, %'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(JSON.parse(String(puts()[0][1]!.body))).toEqual({
+      storage: { keepSnapshots: 3 },
+      overview: { staleDays: 7, noRunDays: 7, spikeShare: 0.2, spikeMin: 50, stuckDays: 14 },
+    });
+  });
 });
+
+const clashSettings = { storage: { keepSnapshots: 3 }, overview: { staleDays: 7, noRunDays: 7, spikeShare: 0.1, spikeMin: 50, stuckDays: 30 } };
+
+type FetchMock = { mock: { calls: [string, RequestInit?][] } };
+const puts = () => (fetch as unknown as FetchMock).mock.calls.filter(([url, init]) => url === '/api/clash/settings' && init?.method === 'PUT');
