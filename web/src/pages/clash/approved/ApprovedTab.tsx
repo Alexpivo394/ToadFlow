@@ -17,7 +17,7 @@ const PageSize = 50;
 const allStatuses = Object.keys(statusLabel) as CollisionStatus[];
 
 /** Строка прогона утверждённой версии: версия, состояние, итог сверки, «Прогнать утверждённую». */
-function ApprovedRunLine({ partId, readOnly }: { partId: string; readOnly: boolean }) {
+function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }) {
   const run = useApi<ApprovedRunView | null>(['clash-collisions', partId, 'run'], `/api/clash/parts/${partId}/approved/run`);
   const start = useApiMutation<void>('POST', () => `/api/clash/parts/${partId}/approved/run`, { invalidate: ['clash-collisions', 'clash-parts'] });
   const cancel = useApiMutation<void>('POST', () => `/api/clash/parts/${partId}/approved/run/cancel`, { invalidate: ['clash-collisions', 'clash-parts'] });
@@ -29,8 +29,8 @@ function ApprovedRunLine({ partId, readOnly }: { partId: string; readOnly: boole
   return (
     <Stack gap={4}>
       <Group gap="sm">
-        {!readOnly && <Button loading={start.isPending} onClick={() => start.mutate()}>Прогнать утверждённую</Button>}
-        {!readOnly && active && <Button variant="default" onClick={() => cancel.mutate()} loading={cancel.isPending}>Отменить</Button>}
+        {canRun && <Button loading={start.isPending} onClick={() => start.mutate()}>Прогнать утверждённую</Button>}
+        {canRun && active && <Button variant="default" onClick={() => cancel.mutate()} loading={cancel.isPending}>Отменить</Button>}
         {current && <Text size="sm" fw={500}>v{current.version}</Text>}
         {current && <Badge color={stateLabel[current.run.state].color} variant="light">{stateLabel[current.run.state].label}</Badge>}
         {current?.run.stage && <Text size="sm">{current.run.stage}</Text>}
@@ -62,9 +62,10 @@ function Side({ row, side }: { row: CollisionRow; side: 'A' | 'B' }) {
 
 /**
  * Утверждённая проверка: строка прогона и три колонки — проверки, коллизии с фильтром по статусам (по умолчанию открытые),
- * 3D и карточка выбранной коллизии. ↑/↓ листают коллизии страницы.
+ * 3D и карточка выбранной коллизии. ↑/↓ листают коллизии страницы. canEdit — статусы, «кто правит», примечания (проектировщик
+ * и старше); canRun — прогоны и объединение (координатор).
  */
-export function ApprovedTab({ partId, readOnly }: { partId: string; readOnly: boolean }) {
+export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEdit: boolean; canRun: boolean }) {
   const [params, setParams] = useSearchParams();
   const [statuses, setStatuses] = useState<string[]>(openStatuses);
   const [query, setQuery] = useState('');
@@ -111,7 +112,7 @@ export function ApprovedTab({ partId, readOnly }: { partId: string; readOnly: bo
 
   return (
     <Stack gap="sm">
-      <ApprovedRunLine partId={partId} readOnly={readOnly} />
+      <ApprovedRunLine partId={partId} canRun={canRun} />
       <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 290px)" mih={560}
         style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8, overflow: 'hidden' }}>
         <Box w={{ base: 200, xl: 250 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
@@ -175,7 +176,7 @@ export function ApprovedTab({ partId, readOnly }: { partId: string; readOnly: bo
                   title={current ? `№ ${current.number} · глубина ${Math.round(current.depthMm)} мм` : undefined} />
               </Box>
               <Box pt="xs" style={{ flex: 2, minHeight: 0 }}>
-                <CollisionCard collisionId={collisionId} readOnly={readOnly} />
+                <CollisionCard collisionId={collisionId} canEdit={canEdit} canMerge={canRun} />
               </Box>
             </>
           ) : (

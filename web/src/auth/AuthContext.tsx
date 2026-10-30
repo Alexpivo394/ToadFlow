@@ -7,12 +7,19 @@ interface AuthState {
   loading: boolean;
   login: (login: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Роль не ниже: Наблюдатель < Координатор (Operator) < Администратор. Проектировщик — как Наблюдатель. */
   can: (role: UserRole) => boolean;
+  /** Правит коллизии: проектировщик, координатор, администратор. */
+  canWork: boolean;
+  /** Видит ToadFlow целиком — все, кроме проектировщика. */
+  isStaff: boolean;
+  /** Разделы профиля; есть — есть «Мои коллизии». */
+  disciplines: string[];
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const rank: Record<UserRole, number> = { Viewer: 0, Operator: 1, Admin: 2 };
+const rank: Record<UserRole, number> = { Viewer: 0, Designer: 0, Operator: 1, Admin: 2 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserView | null>(null);
@@ -39,7 +46,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, login, logout, can: (role) => user !== null && rank[user.role] >= rank[role] }),
+    () => ({
+      user,
+      loading,
+      login,
+      logout,
+      can: (role) => user !== null && rank[user.role] >= rank[role],
+      canWork: user !== null && user.role !== 'Viewer',
+      isStaff: user !== null && user.role !== 'Designer',
+      disciplines: user?.disciplines ?? [],
+    }),
     [user, loading, login, logout],
   );
 

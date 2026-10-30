@@ -41,7 +41,7 @@ export function PartCards({ project }: { project: ProjectKey }) {
     <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
       <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
         {(parts.data ?? []).map((p) => (
-          <UnstyledButton key={p.id} onClick={() => navigate(`/clash/parts/${p.id}`)}>
+          <UnstyledButton key={p.id} onClick={() => navigate(`/clash/setup/parts/${p.id}`)}>
             <Card withBorder radius="md" padding="md" h="100%">
               <Text fw={600} size="lg">{p.name}</Text>
               <Group gap={4} my="xs">

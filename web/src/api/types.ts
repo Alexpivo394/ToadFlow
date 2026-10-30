@@ -1,6 +1,6 @@
 // Повторяет DTO сервера (camelCase, перечисления строками). Меняется вместе с сервером.
 
-export type UserRole = 'Viewer' | 'Operator' | 'Admin';
+export type UserRole = 'Viewer' | 'Operator' | 'Admin' | 'Designer';
 export type AgentState = 'Online' | 'Offline' | 'Draining' | 'Disabled';
 export type InstanceState = 'Starting' | 'Idle' | 'Busy' | 'Unresponsive' | 'Restarting';
 export type JobStatus = 'Queued' | 'Running' | 'Succeeded' | 'Warning' | 'Failed' | 'Cancelled';
@@ -17,6 +17,14 @@ export interface UserView {
   role: UserRole;
   isDisabled: boolean;
   lastLoginAt: string | null;
+  /** Заявка на регистрацию ждёт подтверждения. */
+  isPending?: boolean;
+  position?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  /** Разделы, которые человек ведёт; по ним — «Мои коллизии». */
+  disciplines?: string[];
+  createdAt?: string;
 }
 
 export interface LoginResponse {
@@ -1064,4 +1072,23 @@ export interface FeedEntry {
 export interface CollisionCard {
   collision: CollisionRow;
   feed: FeedEntry[];
+}
+
+export interface CheckModelView {
+  modelId: string;
+  name: string;
+  discipline: string | null;
+}
+
+/** Утверждённая проверка для «Коллизии → Проверки». */
+export interface CheckView {
+  partId: string;
+  name: string;
+  object: string | null;
+  part: string | null;
+  version: number;
+  lastRunAt: string | null;
+  lastRun: ApprovedRunSummary | null;
+  open: number;
+  models: CheckModelView[];
 }

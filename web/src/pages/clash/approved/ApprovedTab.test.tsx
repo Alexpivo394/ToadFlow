@@ -50,7 +50,7 @@ const responses = {
   'POST /api/clash/collisions/c3/merge': null,
 };
 
-const open = (extra: Record<string, unknown> = {}, path = '/clash/parts/p1?tab=approved') => renderApp(path, { ...responses, ...extra });
+const open = (extra: Record<string, unknown> = {}, path = '/clash/checks/p1') => renderApp(path, { ...responses, ...extra });
 
 describe('Approved tab', () => {
   it('ApprovedTab_DefaultsToOpenStatuses', async () => {
@@ -65,7 +65,7 @@ describe('Approved tab', () => {
   });
 
   it('CollisionCard_FeedShowsDepthAndStatus', async () => {
-    open({}, '/clash/parts/p1?tab=approved&collision=c1');
+    open({}, '/clash/checks/p1?collision=c1');
 
     expect(await screen.findByText('Гильза есть')).toBeTruthy();
     expect(screen.getByText(/активная → фиктивная/)).toBeTruthy();
@@ -75,7 +75,7 @@ describe('Approved tab', () => {
   });
 
   it('CollisionCard_FakeRequiresNote', async () => {
-    open({}, '/clash/parts/p1?tab=approved&collision=c1');
+    open({}, '/clash/checks/p1?collision=c1');
     fireEvent.click(await screen.findByRole('button', { name: 'Фиктивная…' }));
 
     const apply = screen.getByRole('button', { name: 'Отметить фиктивной' }) as HTMLButtonElement;
@@ -89,7 +89,7 @@ describe('Approved tab', () => {
   });
 
   it('CollisionCard_Merge_Confirms', async () => {
-    open({}, '/clash/parts/p1?tab=approved&collision=c3');
+    open({}, '/clash/checks/p1?collision=c3');
     expect(await screen.findByText(/Возможно, это коллизия №9/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Объединить' }));
@@ -101,7 +101,7 @@ describe('Approved tab', () => {
 
   it('ApprovedTab_ObserverHasNoActions', async () => {
     open({ '/api/auth/me': { id: 'u2', login: 'viewer', displayName: 'Наблюдатель', role: 'Viewer', isDisabled: false, lastLoginAt: null } },
-      '/clash/parts/p1?tab=approved&collision=c3');
+      '/clash/checks/p1?collision=c3');
 
     expect(await screen.findByText(/Возможно, это коллизия №9/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Объединить' })).toBeNull();

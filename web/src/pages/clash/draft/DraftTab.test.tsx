@@ -56,7 +56,7 @@ const responses = {
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const calls = () => (fetch as unknown as FetchMock).mock.calls;
 
-const open = (query = '') => renderApp(`/clash/parts/p1?tab=draft${query}`, responses);
+const open = (query = '') => renderApp(`/clash/setup/parts/p1?tab=draft${query}`, responses);
 
 describe('Draft tab', () => {
   it('DraftTab_ChecksInMatrixOrderWithZeros', async () => {
@@ -110,7 +110,7 @@ describe('Draft tab', () => {
   });
 
   it('DraftTab_LegacyResultBanner', async () => {
-    renderApp('/clash/parts/p1?tab=draft', { ...responses, '/api/clash/parts/p1/draft/summary': { total: 10, checks: [], legacy: true } });
+    renderApp('/clash/setup/parts/p1?tab=draft', { ...responses, '/api/clash/parts/p1/draft/summary': { total: 10, checks: [], legacy: true } });
 
     expect(await screen.findByText(/прогоните черновик заново/)).toBeTruthy();
   });
@@ -125,7 +125,7 @@ describe('Draft tab', () => {
   });
 
   it('DraftTab_FailedRunShowsError', async () => {
-    renderApp('/clash/parts/p1?tab=draft', {
+    renderApp('/clash/setup/parts/p1?tab=draft', {
       ...responses,
       '/api/clash/parts/p1/draft/run': { ...succeeded, state: 'Failed', error: 'слепок модели повреждён' },
     });

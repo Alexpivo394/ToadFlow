@@ -26,7 +26,8 @@ function FeedLine({ entry }: { entry: FeedEntry }) {
  * Карточка коллизии под 3D: статус и ручные переходы («фиктивная» — с примечанием), «кто правит», примечание, предложение
  * объединить с прежней коллизией и лента, новые сверху. Наблюдатель только читает.
  */
-export function CollisionCard({ collisionId, readOnly }: { collisionId: string; readOnly: boolean }) {
+export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId: string; canEdit: boolean; canMerge: boolean }) {
+  const readOnly = !canEdit;
   const queryClient = useQueryClient();
   const card = useApi<Card>(['clash-collisions', 'card', collisionId], `/api/clash/collisions/${collisionId}`);
   const [faking, setFaking] = useState(false);
@@ -66,7 +67,7 @@ export function CollisionCard({ collisionId, readOnly }: { collisionId: string; 
         <Alert color="blue" p="xs">
           <Group justify="space-between" wrap="nowrap">
             <Text size="sm">Возможно, это коллизия №{c.suggestedPredecessorNumber}: элемент пересоздан с новым UniqueId.</Text>
-            {!readOnly && (
+            {canMerge && (
               <Button size="xs" variant="light" loading={busy}
                 onClick={() => askConfirm(`Объединить с коллизией №${c.suggestedPredecessorNumber}? Останутся её номер, статус и лента.`,
                   () => void post('merge', { predecessorId: c.suggestedPredecessorId }, `Объединена с №${c.suggestedPredecessorNumber}`), 'blue')}>

@@ -51,7 +51,7 @@ async function pick(label: string, option: string, root: HTMLElement = document.
 
 describe('Clash home', () => {
   it('ClashHome_ProjectsAndPartCards', async () => {
-    renderApp('/clash', responses);
+    renderApp('/clash/setup/parts', responses);
 
     expect(await screen.findByText('Корпус 1')).toBeTruthy();
     expect(screen.getByText('Полковая')).toBeTruthy();
@@ -66,19 +66,19 @@ describe('Clash home', () => {
   });
 
   it('ClashHome_RemembersProject', async () => {
-    renderApp('/clash', responses);
+    renderApp('/clash/setup/parts', responses);
     fireEvent.click(await screen.findByText('Без проекта'));
     await waitFor(() => expect(calls().some(([url]) => url === '/api/clash/parts?object=')).toBe(true));
     cleanup();
 
-    renderApp('/clash', responses);
+    renderApp('/clash/setup/parts', responses);
 
     await screen.findByText('Без проекта');
     await waitFor(() => expect(calls().filter(([url]) => url.startsWith('/api/clash/parts?')).every(([url]) => url === '/api/clash/parts?object=')).toBe(true));
   });
 
   it('NewPartWizard_SuggestsModelsAndCreates', async () => {
-    renderApp('/clash', responses);
+    renderApp('/clash/setup/parts', responses);
     fireEvent.click(await screen.findByRole('button', { name: '+ Новая часть' }));
     const dialog = await screen.findByRole('dialog');
 
@@ -100,7 +100,7 @@ describe('Clash home', () => {
   });
 
   it('NewPartWizard_FromTemplate', async () => {
-    renderApp('/clash', responses);
+    renderApp('/clash/setup/parts', responses);
     fireEvent.click(await screen.findByRole('button', { name: '+ Новая часть' }));
     const dialog = await screen.findByRole('dialog');
     await pick('Часть здания', 'корпус 2', dialog);
@@ -116,7 +116,7 @@ describe('Clash home', () => {
   });
 
   it('UploadsTab_GroupedByProjectWithStale', async () => {
-    renderApp('/clash/snapshots', responses);
+    renderApp('/clash/setup/snapshots', responses);
 
     expect(await screen.findByText('POL_K2_AR.rvt')).toBeTruthy();
     expect(screen.getByText('Полковая')).toBeTruthy();
@@ -125,13 +125,14 @@ describe('Clash home', () => {
     expect(screen.queryByText('Параметры')).toBeNull(); // каталога на этой странице больше нет
   });
 
-  it('ClashHome_ViewerHasNoNewPart', async () => {
-    renderApp('/clash', {
+  /** Настройка проверок — координатору и администратору: наблюдателя уводит в «Проверки». */
+  it('ClashHome_ViewerHasNoSetup', async () => {
+    renderApp('/clash/setup/parts', {
       ...responses,
       '/api/auth/me': { id: 'u2', login: 'viewer', displayName: 'Наблюдатель', role: 'Viewer', isDisabled: false, lastLoginAt: null },
     });
 
-    expect(await screen.findByText('Корпус 1')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Проверки' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '+ Новая часть' })).toBeNull();
   });
 });

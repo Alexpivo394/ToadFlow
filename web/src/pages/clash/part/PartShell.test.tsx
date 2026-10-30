@@ -9,7 +9,7 @@ const calls = () => (fetch as unknown as FetchMock).mock.calls;
 const puts = () => calls().filter(([url, init]) => url === '/api/clash/parts/p1/draft' && init?.method === 'PUT');
 
 async function openSets(responses: Record<string, unknown> = partResponses) {
-  renderApp('/clash/parts/p1?tab=sets', responses);
+  renderApp('/clash/setup/parts/p1?tab=sets', responses);
   return (await screen.findByLabelText('Имя набора')) as HTMLInputElement;
 }
 
@@ -85,7 +85,7 @@ describe('Part shell', () => {
     const name = await openSets();
     fireEvent.change(name, { target: { value: 'Стены наружные' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Коллизии' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Части' }));
 
     expect(await screen.findByText('Есть несохранённые изменения. Уйти без сохранения?')).toBeTruthy();
   });

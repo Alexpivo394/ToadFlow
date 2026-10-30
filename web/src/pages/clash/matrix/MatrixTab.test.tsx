@@ -18,7 +18,7 @@ const three = { ...partResponses, '/api/clash/parts/p1/draft': draft(1, { ...con
 
 describe('Matrix tab', () => {
   it('Matrix_UpperTriangleOnly', async () => {
-    renderApp('/clash/parts/p1?tab=matrix', three);
+    renderApp('/clash/setup/parts/p1?tab=matrix', three);
 
     expect(await screen.findByRole('button', { name: 'АР × ОВ' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'АР × АР' })).toBeTruthy();
@@ -28,7 +28,7 @@ describe('Matrix tab', () => {
   });
 
   it('Matrix_ClickToggles', async () => {
-    renderApp('/clash/parts/p1?tab=matrix', three);
+    renderApp('/clash/setup/parts/p1?tab=matrix', three);
 
     fireEvent.click(await screen.findByRole('button', { name: 'АР × ОВ' }));
     fireEvent.click(screen.getByRole('button', { name: 'ВК × ВК' }));
@@ -41,7 +41,7 @@ describe('Matrix tab', () => {
   });
 
   it('Matrix_ShiftSelectAndSetTolerance', async () => {
-    renderApp('/clash/parts/p1?tab=matrix', three);
+    renderApp('/clash/setup/parts/p1?tab=matrix', three);
 
     fireEvent.mouseDown(await screen.findByRole('button', { name: 'АР × ОВ' }), { shiftKey: true });
     fireEvent.mouseDown(screen.getByRole('button', { name: 'ОВ × ВК' }), { shiftKey: true });
@@ -57,7 +57,7 @@ describe('Matrix tab', () => {
   });
 
   it('Matrix_HeaderSelectsRow', async () => {
-    renderApp('/clash/parts/p1?tab=matrix', three);
+    renderApp('/clash/setup/parts/p1?tab=matrix', three);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Строка ОВ' }));
 
@@ -65,7 +65,7 @@ describe('Matrix tab', () => {
   });
 
   it('Exclusions_SetsGroupedByGroup', async () => {
-    renderApp('/clash/parts/p1?tab=exclusions', partResponses);
+    renderApp('/clash/setup/parts/p1?tab=exclusions', partResponses);
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Исключение' }));
     fireEvent.click(screen.getAllByLabelText('Набор B')[0]);

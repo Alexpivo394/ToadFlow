@@ -15,7 +15,7 @@ async function savedBody() {
 
 describe('Sets tab', () => {
   it('SetsTab_CustomGroupWithSource', async () => {
-    renderApp('/clash/parts/p1?tab=sets', partResponses);
+    renderApp('/clash/setup/parts/p1?tab=sets', partResponses);
     fireEvent.click(await screen.findByRole('button', { name: '+ Своя группа' }));
     const dialog = await screen.findByRole('dialog');
 
@@ -30,7 +30,7 @@ describe('Sets tab', () => {
   });
 
   it('SetsTab_OneOfWithPickedValues', async () => {
-    renderApp('/clash/parts/p1?tab=sets', partResponses);
+    renderApp('/clash/setup/parts/p1?tab=sets', partResponses);
     await screen.findByLabelText('Имя набора');
 
     fireEvent.click(screen.getAllByLabelText('Оператор')[0]);
@@ -44,7 +44,7 @@ describe('Sets tab', () => {
   });
 
   it('SetsTab_UnassignedWarning', async () => {
-    renderApp('/clash/parts/p1?tab=sets', {
+    renderApp('/clash/setup/parts/p1?tab=sets', {
       ...partResponses,
       '/api/clash/parts/p1/unassigned': { count: 312, byCategory: [{ value: 'OST_Furniture', count: 300 }, { value: 'OST_Something', count: 12 }] },
     });
@@ -56,7 +56,7 @@ describe('Sets tab', () => {
   });
 
   it('SetsTab_UnassignedHiddenForCustomGroup', async () => {
-    renderApp('/clash/parts/p1?tab=sets', {
+    renderApp('/clash/setup/parts/p1?tab=sets', {
       ...partResponses,
       '/api/clash/parts/p1/unassigned': { count: 31375, byCategory: [{ value: 'OST_Walls', count: 31375 }] },
     });
@@ -75,7 +75,7 @@ describe('Sets tab', () => {
   });
 
   it('SetsTab_CountsPerOrGroup', async () => {
-    renderApp('/clash/parts/p1?tab=sets', partResponses);
+    renderApp('/clash/setup/parts/p1?tab=sets', partResponses);
 
     expect(await screen.findByText('попало 14')).toBeTruthy();
     expect(screen.getByText(/В набор попало/)).toBeTruthy();
@@ -83,15 +83,15 @@ describe('Sets tab', () => {
       .toBe(true));
   });
 
-  it('SetsTab_ReadOnlyForViewer', async () => {
-    renderApp('/clash/parts/p1?tab=sets', {
+  /** Наблюдатель настройку части не видит — его уводит в «Проверки». */
+  it('SetsTab_ViewerHasNoSetup', async () => {
+    renderApp('/clash/setup/parts/p1?tab=sets', {
       ...partResponses,
       '/api/auth/me': { id: 'u2', login: 'viewer', displayName: 'Наблюдатель', role: 'Viewer', isDisabled: false, lastLoginAt: null },
     });
 
-    expect(((await screen.findByLabelText('Имя набора')) as HTMLInputElement).disabled).toBe(true);
-    expect(screen.queryByRole('button', { name: '+ Набор' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Проверки' })).toBeTruthy();
+    expect(screen.queryByLabelText('Имя набора')).toBeNull();
   });
 });
 

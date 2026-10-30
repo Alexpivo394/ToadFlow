@@ -7,7 +7,7 @@ type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const approvals = () => (fetch as unknown as FetchMock).mock.calls.filter(([url, init]) => url === '/api/clash/parts/p1/approve' && init?.method === 'POST');
 
 async function openDialog(responses: Record<string, unknown>) {
-  renderApp('/clash/parts/p1?tab=draft', { ...partResponses, ...responses });
+  renderApp('/clash/setup/parts/p1?tab=draft', { ...partResponses, ...responses });
   fireEvent.click(await screen.findByRole('button', { name: 'Утвердить…' }));
   return screen.findByRole('dialog');
 }
@@ -37,14 +37,15 @@ describe('Approve dialog', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
-  it('ApproveDialog_Observer_NoButton', async () => {
-    renderApp('/clash/parts/p1?tab=draft', {
+  /** Утверждает координатор; наблюдатель в настройку части не попадает. */
+  it('ApproveDialog_ObserverHasNoSetup', async () => {
+    renderApp('/clash/setup/parts/p1?tab=draft', {
       ...partResponses,
       '/api/auth/me': { id: 'u2', login: 'viewer', displayName: 'Наблюдатель', role: 'Viewer', isDisabled: false, lastLoginAt: null },
     });
 
-    expect((await screen.findAllByText('Корпус 1')).length).toBeGreaterThan(0);
-    expect(await screen.findByRole('button', { name: 'Прогнать' }).catch(() => null)).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Проверки' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Прогнать' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Утвердить…' })).toBeNull();
   });
 });

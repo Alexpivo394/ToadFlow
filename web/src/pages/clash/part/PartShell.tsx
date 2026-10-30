@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Anchor, Avatar, Badge, Breadcrumbs, Button, Group, List, Menu, Modal, SegmentedControl, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,6 @@ import type { ApprovedVersionView, ClashPartView, ClashTemplateView, DraftView, 
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm, Panel } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
-import { ApprovedTab } from '../approved/ApprovedTab';
 import { VersionsDrawer } from '../approved/VersionsDrawer';
 import { DraftTab } from '../draft/DraftTab';
 import { ExclusionsTab } from '../matrix/ExclusionsTab';
@@ -18,7 +17,7 @@ import { SetsTab } from '../sets/SetsTab';
 import { ModelsTab } from './ModelsTab';
 import { type Conflicts, useDraft } from './useDraft';
 
-export type PartTab = 'models' | 'sets' | 'matrix' | 'exclusions' | 'draft' | 'approved';
+export type PartTab = 'models' | 'sets' | 'matrix' | 'exclusions' | 'draft';
 
 const tabNames: Record<string, string> = { models: 'модели', sets: 'наборы', matrix: 'матрица', exclusions: 'исключения', draft: 'черновик', approved: 'утверждённая' };
 
@@ -61,7 +60,10 @@ function ConflictDialog({ conflicts, onResolve, onClose }: { conflicts: Conflict
   );
 }
 
-/** Часть проекта: шапка с сохранением и присутствием, вкладки модели, наборы, матрица, исключения, черновик. */
+/**
+ * Настройка части: шапка с сохранением и присутствием, вкладки модели, наборы, матрица, исключения, черновик. Коллизии
+ * утверждённой версии — на странице проверки, ссылка «Коллизии этой проверки».
+ */
 export function PartShell() {
   const { id } = useParams();
   const partId = id!;
@@ -116,7 +118,7 @@ export function PartShell() {
   return (
     <Stack gap="sm">
       <Breadcrumbs>
-        <Anchor component="button" size="sm" onClick={() => leave('/clash')}>Коллизии</Anchor>
+        <Anchor component="button" size="sm" onClick={() => leave('/clash/setup/parts')}>Части</Anchor>
         <Text size="sm" c="dimmed">{part.data.object ?? 'Без проекта'}</Text>
         <Text size="sm">{part.data.name}</Text>
       </Breadcrumbs>
@@ -128,6 +130,7 @@ export function PartShell() {
               <Group gap={6}>
                 <Badge variant="light" color="green">Утверждена v{approved.version} · {formatDateTime(approved.approvedAt)} · {approved.userName}</Badge>
                 <Button size="compact-xs" variant="subtle" onClick={() => setShowVersions(true)}>Версии</Button>
+                <Anchor component={RouterLink} to={`/clash/checks/${partId}`} size="sm">Коллизии этой проверки</Anchor>
               </Group>
             )
             : <Badge variant="light" color="gray">Не утверждена</Badge>}
@@ -182,7 +185,6 @@ export function PartShell() {
             <Tabs.Tab value="matrix">Матрица</Tabs.Tab>
             <Tabs.Tab value="exclusions">Исключения</Tabs.Tab>
             <Tabs.Tab value="draft">Черновик</Tabs.Tab>
-            <Tabs.Tab value="approved">Утверждённая</Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="models"><ModelsTab part={part.data} readOnly={readOnly} /></Tabs.Panel>
           <Tabs.Panel value="sets">
@@ -197,7 +199,6 @@ export function PartShell() {
           <Tabs.Panel value="draft">
             <DraftTab partId={partId} readOnly={readOnly} dirty={draft.dirty} onSave={draft.save} />
           </Tabs.Panel>
-          <Tabs.Panel value="approved"><ApprovedTab partId={partId} readOnly={readOnly} /></Tabs.Panel>
         </Tabs>
       </Panel>
       {draft.conflicts && <ConflictDialog conflicts={draft.conflicts} onResolve={draft.resolve} onClose={draft.dismiss} />}

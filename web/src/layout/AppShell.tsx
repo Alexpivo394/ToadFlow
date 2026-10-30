@@ -1,7 +1,7 @@
 import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
 import { ActionIcon, AppShell as Shell, Box, Burger, Group, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconBox, IconCalendarTime, IconChartBar, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
+import { IconAdjustments, IconBox, IconCalendarTime, IconChartBar, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
 import { Brand } from '../components/ui';
 import { t } from '../i18n/ru';
@@ -20,13 +20,16 @@ const settingsLinks = [
 ];
 
 export function AppShell() {
-  const { user, logout, can } = useAuth();
+  const { user, logout, can, isStaff, disciplines } = useAuth();
   const [opened, { toggle, close }] = useDisclosure();
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const location = useLocation();
-  useLiveUpdates(user !== null);
+  // Хаб рассылает события всех модулей — проектировщику он закрыт; его экраны обновляются при открытии и после действий.
+  useLiveUpdates(user !== null && isStaff);
 
   const inSettings = location.pathname.startsWith('/settings');
+  const inSetup = location.pathname.startsWith('/clash/setup');
+  const inClash = location.pathname.startsWith('/clash') && !inSetup;
 
   return (
     <Shell navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }} header={{ height: { base: 52, sm: 0 } }} padding="md">
@@ -44,18 +47,36 @@ export function AppShell() {
               <Text fw={700} size="lg">{t.appName}</Text>
             </Brand>
           </Box>
-          <NavLink component={RouterLink} to="/" end label={t.nav.dashboard} leftSection={<IconLayoutDashboard size={18} />} onClick={close} />
-          <NavLink component={RouterLink} to="/schedules" label={t.nav.schedules} leftSection={<IconCalendarTime size={18} />} onClick={close} />
-          <NavLink component={RouterLink} to="/history" label={t.nav.history} leftSection={<IconHistory size={18} />} onClick={close} />
-          <NavLink component={RouterLink} to="/analytics" label={t.nav.analytics} leftSection={<IconChartBar size={18} />} onClick={close} />
-          <NavLink component={RouterLink} to="/clash" label={t.nav.clash} leftSection={<IconBox size={18} />} onClick={close} />
-          <NavLink label={t.nav.settings} leftSection={<IconSettings size={18} />} defaultOpened={inSettings} active={inSettings} childrenOffset={28}>
-            {settingsLinks
-              .filter((link) => !link.admin || can('Admin'))
-              .map((link) => (
-                <NavLink key={link.to} component={RouterLink} to={link.to} label={link.label} onClick={close} />
-              ))}
+          {isStaff && (
+            <>
+              <NavLink component={RouterLink} to="/" end label={t.nav.dashboard} leftSection={<IconLayoutDashboard size={18} />} onClick={close} />
+              <NavLink component={RouterLink} to="/schedules" label={t.nav.schedules} leftSection={<IconCalendarTime size={18} />} onClick={close} />
+              <NavLink component={RouterLink} to="/history" label={t.nav.history} leftSection={<IconHistory size={18} />} onClick={close} />
+              <NavLink component={RouterLink} to="/analytics" label={t.nav.analytics} leftSection={<IconChartBar size={18} />} onClick={close} />
+            </>
+          )}
+          <NavLink label={t.nav.clash} leftSection={<IconBox size={18} />} defaultOpened active={inClash} childrenOffset={28}>
+            {disciplines.length > 0 && <NavLink component={RouterLink} to="/clash/my" label={t.nav.clashMy} onClick={close} />}
+            <NavLink component={RouterLink} to="/clash/checks" label={t.nav.clashChecks} onClick={close} />
+            <NavLink component={RouterLink} to="/clash/summary" label={t.nav.clashSummary} onClick={close} />
           </NavLink>
+          {can('Operator') && (
+            <NavLink label={t.nav.clashSetup} leftSection={<IconAdjustments size={18} />} defaultOpened active={inSetup} childrenOffset={28}>
+              <NavLink component={RouterLink} to="/clash/setup" end label={t.nav.setupOverview} onClick={close} />
+              <NavLink component={RouterLink} to="/clash/setup/parts" label={t.nav.setupParts} onClick={close} />
+              <NavLink component={RouterLink} to="/clash/setup/templates" label={t.nav.setupTemplates} onClick={close} />
+              <NavLink component={RouterLink} to="/clash/setup/snapshots" label={t.nav.setupSnapshots} onClick={close} />
+            </NavLink>
+          )}
+          {isStaff && (
+            <NavLink label={t.nav.settings} leftSection={<IconSettings size={18} />} defaultOpened={inSettings} active={inSettings} childrenOffset={28}>
+              {settingsLinks
+                .filter((link) => !link.admin || can('Admin'))
+                .map((link) => (
+                  <NavLink key={link.to} component={RouterLink} to={link.to} label={link.label} onClick={close} />
+                ))}
+            </NavLink>
+          )}
 
           <Box mt="auto" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
             <Group justify="space-between" wrap="nowrap" px="sm">

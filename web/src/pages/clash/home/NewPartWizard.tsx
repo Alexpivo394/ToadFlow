@@ -132,7 +132,7 @@ export function NewPartWizard({ project, onClose }: { project: ProjectKey; onClo
       {
         onSuccess: (created) => {
           onClose();
-          if (created?.id) navigate(`/clash/parts/${created.id}`);
+          if (created?.id) navigate(`/clash/setup/parts/${created.id}`);
         },
       },
     );

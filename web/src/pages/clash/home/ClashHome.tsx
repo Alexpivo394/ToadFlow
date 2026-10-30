@@ -13,7 +13,7 @@ import { UploadsTab } from './UploadsTab';
 
 export type ClashTab = 'checks' | 'uploads' | 'templates';
 
-const paths: Record<ClashTab, string> = { checks: '/clash', uploads: '/clash/snapshots', templates: '/clash/templates' };
+const paths: Record<ClashTab, string> = { checks: '/clash/setup/parts', uploads: '/clash/setup/snapshots', templates: '/clash/setup/templates' };
 
 function TemplatesTab() {
   const { can } = useAuth();
@@ -53,7 +53,7 @@ function TemplatesTab() {
   );
 }
 
-/** «Коллизии»: проверки (части по проектам), выгрузки моделей по проектам и шаблоны. */
+/** «Настройка проверок»: части по проектам, выгрузки моделей по проектам и шаблоны. */
 export function ClashHome({ tab }: { tab: ClashTab }) {
   const navigate = useNavigate();
   const projects = useApi<ClashProjectView[]>(['clash-projects'], '/api/clash/projects');
@@ -83,10 +83,10 @@ export function ClashHome({ tab }: { tab: ClashTab }) {
 
   return (
     <>
-      <PageTitle>{t.nav.clash}</PageTitle>
+      <PageTitle>{t.nav.clashSetup}</PageTitle>
       <Tabs value={tab} onChange={(v) => navigate(paths[(v as ClashTab) ?? 'checks'])} keepMounted={false}>
         <Tabs.List mb="md">
-          <Tabs.Tab value="checks">Проверки</Tabs.Tab>
+          <Tabs.Tab value="checks">Части</Tabs.Tab>
           <Tabs.Tab value="uploads">Выгрузки</Tabs.Tab>
           <Tabs.Tab value="templates">Шаблоны</Tabs.Tab>
         </Tabs.List>
