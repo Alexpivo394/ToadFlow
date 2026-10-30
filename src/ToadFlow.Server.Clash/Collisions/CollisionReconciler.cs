@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash.Analytics;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
@@ -46,6 +47,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             var feed = new List<ClashCollisionEvent>();
             var samples = new List<ClashCollisionSample>();
             int created = 0, returned = 0, fixedNow = 0, goneByRules = 0, uncheckedNow = 0;
+            var moves = new List<(ClashCollision Collision, CollisionStatus To)>(); // переходы прогона — для снимка сводки по разделам
             var seen = new HashSet<Guid>();
 
             foreach (var hit in hits)
@@ -65,6 +67,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                     {
                         feed.Add(StatusEvent(collision.Id, was, next, note, version, now));
                         if (next == CollisionStatus.Returned) returned++;
+                        moves.Add((collision, next));
                     }
 
                     if (newVersion) feed.Add(FoundEvent(collision.Id, version, hit.DepthMm, now));
@@ -90,6 +93,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                 feed.Add(FoundEvent(collision.Id, version, hit.DepthMm, now));
                 samples.Add(SampleOf(collision, run, version, now));
                 created++;
+                moves.Add((collision, CollisionStatus.New));
             }
 
             var facts = gone.ToDictionary(g => (g.ModelA, g.UniqueIdA, g.ModelB, g.UniqueIdB));
@@ -115,6 +119,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                     collision.Status = next;
                     collision.UpdatedAt = now;
                     feed.Add(StatusEvent(collision.Id, was, next, null, version, now));
+                    moves.Add((collision, next));
                     switch (next)
                     {
                         case CollisionStatus.Fixed: fixedNow++; break;
@@ -153,6 +158,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                 .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
             var summary = new ApprovedRunSummary(hits.Count, created, counts.GetValueOrDefault(CollisionStatus.Active), returned, fixedNow, goneByRules,
                 uncheckedNow, counts.GetValueOrDefault(CollisionStatus.Fake), stats?.ReusedPairs ?? 0);
+            await AddStatsAsync(run, now, moves, ct);
 
             await db.Set<ClashApprovedHit>().Where(h => h.RunId == run.Id).ExecuteDeleteAsync(ct);
             part.ApprovedRunId = run.Id;
@@ -171,6 +177,47 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         {
             await db.Database.CloseConnectionAsync();
         }
+    }
+
+    private sealed record StatRow(string Discipline, int Open, int Fake);
+
+    /// <summary>
+    ///     Снимок сводки по разделам после сверки: открытые и фиктивные — запросом по коллизиям части (UNION сторон A и B убирает
+    ///     повтор коллизии внутри одного раздела, строка <see cref="ClashCollisionStat.Total" /> — итог), переходы — из сверки.
+    /// </summary>
+    private async Task AddStatsAsync(EngineRun run, DateTimeOffset now, IReadOnlyList<(ClashCollision Collision, CollisionStatus To)> moves,
+        CancellationToken ct)
+    {
+        var open = CollisionEndpoints.Open.Select(s => s.ToString()).ToArray();
+        var fake = nameof(CollisionStatus.Fake);
+        var rows = await db.Database.SqlQuery<StatRow>($"""
+            SELECT d.discipline AS "Discipline",
+                   count(*) FILTER (WHERE d.status = ANY({open}))::int AS "Open",
+                   count(*) FILTER (WHERE d.status = {fake})::int AS "Fake"
+            FROM (SELECT id, status, discipline_a AS discipline FROM clash_collisions WHERE part_id = {run.PartId}
+                  UNION SELECT id, status, discipline_b FROM clash_collisions WHERE part_id = {run.PartId}
+                  UNION SELECT id, status, '' FROM clash_collisions WHERE part_id = {run.PartId}) d
+            GROUP BY d.discipline
+            """).ToListAsync(ct);
+
+        var stats = rows.ToDictionary(r => r.Discipline, r => new ClashCollisionStat
+        {
+            RunId = run.Id, PartId = run.PartId, At = now, Discipline = r.Discipline, Open = r.Open, Fake = r.Fake
+        });
+        foreach (var (collision, to) in moves)
+        foreach (var discipline in new[] { ClashCollisionStat.Total, collision.DisciplineA, collision.DisciplineB }.Distinct())
+        {
+            if (!stats.TryGetValue(discipline, out var stat)) continue;
+            switch (to)
+            {
+                case CollisionStatus.New: stat.New++; break;
+                case CollisionStatus.Fixed: stat.Fixed++; break;
+                case CollisionStatus.Returned: stat.Returned++; break;
+                case CollisionStatus.GoneByRules: stat.GoneByRules++; break;
+            }
+        }
+
+        db.Set<ClashCollisionStat>().AddRange(stats.Values);
     }
 
     private static ElementPresence Presence(string? value) =>

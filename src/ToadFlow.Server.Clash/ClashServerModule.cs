@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using Microsoft.AspNetCore.Authentication;
+using ToadFlow.Server.Clash.Analytics;
 using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Overview;
@@ -187,6 +188,14 @@ public sealed class ClashServerModule : IServerModule
             entity.HasKey(s => s.UserId);
             entity.HasOne<User>().WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
         });
+
+        model.Entity<ClashCollisionStat>(entity =>
+        {
+            entity.ToTable("clash_collision_stats");
+            entity.HasKey(s => new { s.RunId, s.Discipline });
+            entity.HasIndex(s => new { s.PartId, s.Discipline, s.At });
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(s => s.PartId).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     public void MapExternalEndpoints(IEndpointRouteBuilder app) => app.MapClashEngine();
@@ -214,6 +223,7 @@ public sealed class ClashServerModule : IServerModule
         members.MapClashVersions();
         members.MapClashMy();
         members.MapClashChecks();
+        members.MapClashAnalytics();
     }
 
     /// <summary>
