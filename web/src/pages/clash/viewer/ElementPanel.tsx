@@ -19,9 +19,11 @@ function Brief({ element }: { element: ViewerElementView }) {
   );
 }
 
-function Properties({ runId, element }: { runId: string; element: ViewerElementView }) {
+function Properties({ runId, collisionId, element }: { runId: string; collisionId?: string; element: ViewerElementView }) {
   const [filter, setFilter] = useState('');
-  const path = `/api/clash/runs/${runId}/elements/${element.modelId}/${encodeURIComponent(element.uniqueId)}`;
+  // Коллизия утверждённой проверки — свой маршрут: он открыт и проектировщику, маршрут прогона — нет.
+  const tail = `/elements/${element.modelId}/${encodeURIComponent(element.uniqueId)}`;
+  const path = collisionId ? `/api/clash/collisions/${collisionId}${tail}` : `/api/clash/runs/${runId}${tail}`;
   const properties = useApi<ViewerElementProperties>(['clash-viewer', runId, 'element', element.modelId, element.uniqueId], path);
   if (properties.error) return <Text size="sm" c="red">{properties.error.message}</Text>;
   if (!properties.data) return <Loader size="sm" />;
@@ -65,7 +67,12 @@ function Properties({ runId, element }: { runId: string; element: ViewerElementV
 }
 
 /** Правая панель просмотрщика: кратко A и B, по щелчку в сцене — все свойства выбранного элемента. */
-export function ElementPanel({ runId, scene, selected }: { runId: string; scene: ViewerSceneView | undefined; selected: number | null }) {
+export function ElementPanel({ runId, collisionId, scene, selected }: {
+  runId: string;
+  collisionId?: string;
+  scene: ViewerSceneView | undefined;
+  selected: number | null;
+}) {
   const element = selected != null ? scene?.elements[selected] : undefined;
   return (
     <ScrollArea h="100%" type="auto">
@@ -74,7 +81,7 @@ export function ElementPanel({ runId, scene, selected }: { runId: string; scene:
         {element ? (
           <Stack gap="xs">
             <Brief element={element} />
-            <Properties runId={runId} element={element} />
+            <Properties runId={runId} collisionId={collisionId} element={element} />
           </Stack>
         ) : (
           <Text size="xs" c="dimmed">Щёлкните элемент в сцене, чтобы увидеть его свойства</Text>

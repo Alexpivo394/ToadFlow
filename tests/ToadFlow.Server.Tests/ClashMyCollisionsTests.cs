@@ -153,6 +153,8 @@ public class ClashMyCollisionsTests : ServerTest
         (await MyAsync(ov, $"?partId={partId}&level=Этаж%201")).Length.ShouldBe(2);
         (await MyAsync(ov, $"?partId={Guid.NewGuid()}")).ShouldBeEmpty();
         (await MyAsync(ov, "?pair=АР%20×%20ОВ")).Length.ShouldBe(2);
+        (await MyAsync(ov, "?object=" + Uri.EscapeDataString("Без проекта"))).Length.ShouldBe(2); // часть без объекта — как в списке проектов
+        (await MyAsync(ov, "?object=DON")).ShouldBeEmpty();
     }
 
     /// <summary>

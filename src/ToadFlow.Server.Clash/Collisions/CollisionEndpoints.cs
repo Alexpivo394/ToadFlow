@@ -121,6 +121,7 @@ public static class CollisionEndpoints
         collision.MapGet("", CardAsync);
         collision.MapGet("/scene", ViewerEndpoints.CollisionSceneAsync);
         collision.MapGet("/meshes", ViewerEndpoints.CollisionMeshesAsync);
+        collision.MapGet("/elements/{modelId}/{uniqueId}", ViewerEndpoints.CollisionElementAsync);
         var write = collision.MapGroup("").RequireAuthorization(Policies.Designer);
         write.MapPost("/status", StatusAsync);
         write.MapPost("/assignee", AssigneeAsync);

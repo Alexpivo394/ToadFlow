@@ -180,7 +180,7 @@ export function MyPage() {
                   title={current ? `№ ${current.collision.number} · ${current.partName} · глубина ${Math.round(current.collision.depthMm)} мм` : undefined} />
               </Box>
               <Box pt="xs" style={{ flex: 2, minHeight: 0 }}>
-                <CollisionCard collisionId={collisionId} canEdit={canWork} canMerge={can('Operator')} />
+                <CollisionCard key={collisionId} collisionId={collisionId} canEdit={canWork} canMerge={can('Operator')} />
               </Box>
             </>
           ) : (

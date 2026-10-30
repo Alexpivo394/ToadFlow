@@ -2,7 +2,8 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../../test/renderApp';
 
-vi.mock('../viewer/ClashViewer', () => ({ default: () => <div>сцена</div> }));
+// WebGL в jsdom нет: заглушка сцены умеет «щёлкнуть» первый элемент.
+vi.mock('../viewer/ClashViewer', () => ({ default: (props: { onPick: (i: number) => void }) => <button onClick={() => props.onPick(0)}>щёлкнуть элемент</button> }));
 
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const calls = () => (fetch as unknown as FetchMock).mock.calls;
@@ -26,7 +27,9 @@ const row = (n: number, assignee = 'Both') => ({
   mineToFix: assignee !== 'SideA', takenBy: assignee === 'SideA' ? 'Пётр' : null, takenAt: assignee === 'SideA' ? '2026-10-30T10:00:00Z' : null,
 });
 
-const scene = { runId: 'r1', number: 1, x: 0, y: 0, z: 0, radiusMm: 5000, depthMm: 30, elements: [], meshTriangles: 0, truncated: false };
+const element = { index: 0, role: 'A', modelId: 'm1', modelName: 'DON_K1_KR.rvt', discipline: 'КР', uniqueId: 'ua1', elementId: 1001, category: 'OST_Walls',
+  family: 'Стена', type: '200', level: 'Этаж 1', min: [0, 0, 0], max: [1, 1, 1], triangles: 12, mesh: true };
+const scene = { runId: 'r1', number: 1, x: 0, y: 0, z: 0, radiusMm: 5000, depthMm: 30, elements: [element], meshTriangles: 12, truncated: false };
 
 function responses(disciplines = ['ОВК']) {
   let taken = false; // «Беру» переносит №2 в «Мне править»
@@ -49,6 +52,8 @@ function responses(disciplines = ['ОВК']) {
     '/api/clash/collisions/c2/meshes': new ArrayBuffer(4),
     'POST /api/clash/collisions/c2/take': () => { taken = true; return null; },
     'POST /api/clash/collisions/c1/assignee': null,
+    '/api/clash/collisions/c1/elements/m1/ua1': { modelName: 'DON_K1_KR.rvt', discipline: 'КР', uniqueId: 'ua1', elementId: 1001, category: 'OST_Walls',
+      family: 'Стена', type: '200', level: 'Этаж 1', workset: 'Несущие', parameters: [{ name: 'Марка', text: 'С-1', number: null }] },
   };
 }
 
@@ -84,6 +89,16 @@ describe('My collisions', () => {
     await waitFor(() => expect(posts('/api/clash/collisions/c2/take')).toHaveLength(1));
     fireEvent.click(screen.getByRole('button', { name: /Мне править/ }));
     expect(await screen.findByRole('button', { name: 'Коллизия 2' })).toBeTruthy();
+  });
+
+  /** Свойства элемента 3D — через маршрут коллизии: маршрут прогона проектировщику закрыт. */
+  it('MyPage_ElementPropertiesViaCollision', async () => {
+    renderApp('/clash/my?collision=c1', responses());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'щёлкнуть элемент' }));
+
+    expect(await screen.findByText('Несущие')).toBeTruthy();
+    expect(calls().some(([url]) => url.startsWith('/api/clash/runs/'))).toBe(false);
   });
 
   it('CollisionCard_HandOverRequiresSide_NoteOptional', async () => {

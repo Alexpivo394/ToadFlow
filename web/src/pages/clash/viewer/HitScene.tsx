@@ -152,7 +152,7 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
           <Paper withBorder shadow="sm" p="xs" radius="md" w={320} style={{ position: 'absolute', top: 8, right: 8, maxHeight: 'calc(100% - 16px)', display: 'flex' }}>
             <ScrollArea.Autosize mah="100%" style={{ flex: 1 }}>
               {meshes.error && <Text size="xs" c="red">{meshes.error.message}</Text>}
-              <ElementPanel runId={scene.data.runId} scene={scene.data} selected={selected} />
+              <ElementPanel runId={scene.data.runId} collisionId={collisionId} scene={scene.data} selected={selected} />
             </ScrollArea.Autosize>
           </Paper>
         )}

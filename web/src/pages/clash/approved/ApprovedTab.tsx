@@ -185,7 +185,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
                   title={current ? `№ ${current.number} · глубина ${Math.round(current.depthMm)} мм` : undefined} />
               </Box>
               <Box pt="xs" style={{ flex: 2, minHeight: 0 }}>
-                <CollisionCard collisionId={collisionId} canEdit={canEdit} canMerge={canRun} />
+                <CollisionCard key={collisionId} collisionId={collisionId} canEdit={canEdit} canMerge={canRun} />
               </Box>
             </>
           ) : (

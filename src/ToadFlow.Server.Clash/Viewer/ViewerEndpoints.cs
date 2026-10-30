@@ -141,9 +141,23 @@ public static class ViewerEndpoints
     }
 
     private static async Task<IResult> ElementAsync(Guid runId, string modelId, string uniqueId, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
-        CancellationToken ct)
+        CancellationToken ct) =>
+        await VisibleRunAsync(runId, db, ct) is { } run
+            ? Element(run, modelId, uniqueId, storage, cache)
+            : Results.NotFound(new { error = Stale });
+
+    /// <summary>Свойства элемента 3D коллизии утверждённой проверки — из слепков прогона, который нашёл её последним.</summary>
+    public static async Task<IResult> CollisionElementAsync(Guid id, string modelId, string uniqueId, ToadFlowDb db, ClashStorage storage,
+        PartElementsCache cache, CancellationToken ct)
     {
-        if (await VisibleRunAsync(runId, db, ct) is not { } run) return Results.NotFound(new { error = Stale });
+        var runId = await db.Set<ClashCollision>().AsNoTracking().Where(c => c.Id == id).Select(c => (Guid?)c.LastFoundRunId).SingleOrDefaultAsync(ct);
+        if (runId is null) return Results.NotFound(new { error = "коллизия не найдена" });
+        var run = await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == runId, ct);
+        return run is null ? Gone() : Element(run, modelId, uniqueId, storage, cache);
+    }
+
+    private static IResult Element(EngineRun run, string modelId, string uniqueId, ClashStorage storage, PartElementsCache cache)
+    {
         if (run.Models.FirstOrDefault(m => m.ModelId.ToString("N") == modelId) is not { } model)
             return Results.NotFound(new { error = "модели нет в прогоне" });
         var folder = storage.SnapshotFolder(model.ModelId, model.SnapshotId);

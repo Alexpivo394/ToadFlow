@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Clash.Parts;
+using ToadFlow.Server.Clash.Projects;
 using ToadFlow.Server.Data;
 
 namespace ToadFlow.Server.Clash.Collisions;
@@ -56,6 +57,9 @@ public static class MyCollisions
         db.Set<ClashPart>().AsNoTracking().Where(p => p.ApprovedVersion != null)
             .Select(p => new ApprovedPart(p.Id, p.Name, p.Object, p.Part)).ToListAsync(ct);
 
+    /// <summary>Проект части, как в списках: без объекта — <see cref="ProjectEndpoints.Unparsed" />.</summary>
+    private static string ProjectOf(string? @object) => string.IsNullOrWhiteSpace(@object) ? ProjectEndpoints.Unparsed : @object.Trim();
+
     /// <summary>От какой отметки считать новые.</summary>
     public static DateTimeOffset Mark(ClashUserState? state, DateTimeOffset now) =>
         state?.PreviousSeenAt ?? (state?.SeenAt ?? now) - ClashUserState.FirstVisitWindow;
@@ -65,7 +69,7 @@ public static class MyCollisions
         DateTimeOffset mark)
     {
         var ids = parts.Where(p => (filter.PartId is not { } partId || p.Id == partId)
-                                   && (string.IsNullOrWhiteSpace(filter.Object) || p.Object == filter.Object))
+                                   && (string.IsNullOrWhiteSpace(filter.Object) || ProjectOf(p.Object) == filter.Object.Trim()))
             .Select(p => p.Id).ToArray();
         var query = db.Set<ClashCollision>().AsNoTracking()
             .Where(c => ids.Contains(c.PartId) && (disciplines.Contains(c.DisciplineA) || disciplines.Contains(c.DisciplineB)));

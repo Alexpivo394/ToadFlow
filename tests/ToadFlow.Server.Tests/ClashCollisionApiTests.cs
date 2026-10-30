@@ -196,6 +196,25 @@ public class ClashCollisionApiTests : ServerTest
         (await admin.GetAsync($"/api/clash/runs/{runId}/elements/{models[0]}/wall-1")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    /// <summary>Свойства элемента в 3D коллизии нужны и проектировщику: маршрут прогона ему закрыт, маршрут коллизии — открыт.</summary>
+    [Test]
+    public async Task Designer_ElementPropertiesOfCollision()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var models = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models.Select(m => m.ModelId.ToString("N")).Order().ToArray();
+        var hit = Fp(Hit(1)) with { ModelA = models[0], UniqueIdA = "wall-1", ModelB = models[1], UniqueIdB = "wall-1", X = 50, Y = 50, Z = 50 };
+        var runId = await RunAsync(admin, engine, partId, [hit], approve: true);
+        var id = (await ListAsync(admin, partId)).Single().Id;
+        var designer = await ClientAsync(UserRole.Designer);
+
+        var wall = await designer.GetJsonAsync<ViewerElementProperties>($"/api/clash/collisions/{id}/elements/{models[0]}/wall-1");
+
+        wall.UniqueId.ShouldBe("wall-1");
+        (await designer.GetAsync($"/api/clash/runs/{runId}/elements/{models[0]}/wall-1")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await designer.GetAsync($"/api/clash/collisions/{id}/elements/{models[0]}/nothing")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     [Test]
     public async Task CollisionScene_SnapshotsPruned_410()
     {

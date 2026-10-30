@@ -110,6 +110,17 @@ describe('Approved tab', () => {
     expect(screen.queryByRole('button', { name: 'Прогнать утверждённую' })).toBeNull();
   });
 
+  /** Набранное примечание и форма «Передать» не переходят на другую коллизию при ↑/↓ или выборе в списке. */
+  it('CollisionCard_SwitchCollision_ClearsDraft', async () => {
+    open({}, '/clash/checks/p1?collision=c1');
+    fireEvent.change(await screen.findByLabelText('Примечание'), { target: { value: 'Двигаем трубу' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Коллизия 3' }));
+
+    expect(await screen.findByText(/Возможно, это коллизия №9/)).toBeTruthy();
+    expect((screen.getByLabelText('Примечание') as HTMLTextAreaElement).value).toBe('');
+  });
+
   it('Feed_UserNameOpensContactCard', async () => {
     open({}, '/clash/checks/p1?collision=c1');
 

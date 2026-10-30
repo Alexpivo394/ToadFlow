@@ -148,11 +148,47 @@ public class RealSnapshotsCheck : ServerTest
         var fourth = await RunAsync($"v2, ОВК без {removed.Count} элементов");
         fourth.Run.Summary!.Fixed.ShouldBeGreaterThan(0);
         report.AppendLine($"Повтор быстрее первого прогона в {first.Elapsed / second.Elapsed:0.0} раза");
+
+        // Этап 5: рабочие места по ролям — «Мои» проектировщика ОВК, сводка и обзор координатора на всей части.
+        var all = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=1")).Total;
+        await UserAsync("ovk", "Проектировщик ОВК", UserRole.Designer, ["ОВК"]);
+        var ovkClient = await LoginAsync("ovk", UserPassword);
+        report.AppendLine($"Этап 5, часть DON, коллизий всего {all:N0}:");
+        async Task<T> TimedAsync<T>(HttpClient client, string label, string url)
+        {
+            await client.GetJsonAsync<T>(url); // прогрев
+            var watch = Stopwatch.StartNew();
+            var result = await client.GetJsonAsync<T>(url);
+            report.AppendLine($"  {label}: {watch.Elapsed.TotalSeconds:0.00} с");
+            watch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(2), label);
+            return result;
+        }
+
+        var my = await TimedAsync<MyCollisionPage>(ovkClient, "«Мои» ОВК, первая страница", "/api/clash/my");
+        var mySummary = await TimedAsync<MySummary>(ovkClient, "«Мои», счётчики", "/api/clash/my/summary");
+        report.AppendLine($"    мне править {mySummary.ToFix:N0}, взяла другая сторона {mySummary.TakenByOther:N0}, новых {mySummary.NewSinceVisit:N0}; на странице {my.Items.Count}");
+        var analytics = await TimedAsync<ToadFlow.Server.Clash.Analytics.ClashAnalyticsView>(admin, "Сводка без фильтров", "/api/clash/analytics");
+        await TimedAsync<ToadFlow.Server.Clash.Analytics.ClashAnalyticsView>(admin, "Сводка по разделу ОВК", "/api/clash/analytics?discipline=%D0%9E%D0%92%D0%9A");
+        report.AppendLine($"    активных {analytics.Current.Open:N0}, за период: добавилось {analytics.Period.New:N0}, исправлено {analytics.Period.Fixed:N0}; " +
+                          $"отстают: {string.Join(", ", analytics.Lagging.Take(3).Select(l => $"{l.Key} {l.Open:N0}"))}");
+        await TimedAsync<ToadFlow.Server.Clash.Overview.OverviewView>(admin, "Обзор координатора", "/api/clash/overview");
         await WriteReportAsync(report);
 
         if (int.TryParse(Environment.GetEnvironmentVariable("TOADCLASH_HOLD_MINUTES"), out var minutes) && minutes > 0)
             await HoldAsync(TimeSpan.FromMinutes(minutes));
     }
+
+    /// <summary>Пользователь с паролем тестов; уже есть — не трогается.</summary>
+    private Task UserAsync(string login, string name, UserRole role, string[] disciplines, bool pending = false) => DbAsync(async db =>
+    {
+        if (db.Users.Any(u => u.Login == login)) return;
+        var user = ToadFlow.Server.Data.Entities.User.Create(login, name, role, "", DateTimeOffset.UtcNow);
+        user.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<ToadFlow.Server.Data.Entities.User>().HashPassword(user, UserPassword);
+        user.Disciplines = disciplines;
+        user.IsPending = pending;
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+    });
 
     private static double Median(IEnumerable<double> values)
     {
@@ -185,14 +221,12 @@ public class RealSnapshotsCheck : ServerTest
             if (response.Content.Headers.ContentType is { } contentType) context.Response.ContentType = contentType.ToString();
             await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
         });
-        // Второй пользователь — проверить совместную работу двумя браузерами (вход coord2 / пароль тестов).
-        await DbAsync(async db =>
-        {
-            var user = ToadFlow.Server.Data.Entities.User.Create("coord2", "Координатор 2", UserRole.Operator, "", DateTimeOffset.UtcNow);
-            user.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<ToadFlow.Server.Data.Entities.User>().HashPassword(user, UserPassword);
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
-        });
+        // Пользователи для показа, пароль тестов: coord2 — второй координатор (совместная работа двумя браузерами), ovk —
+        // проектировщик ОВК, boss — наблюдатель (руководитель), newbie — заявка, ждущая подтверждения.
+        await UserAsync("coord2", "Координатор 2", UserRole.Operator, []);
+        await UserAsync("ovk", "Проектировщик ОВК", UserRole.Designer, ["ОВК"]);
+        await UserAsync("boss", "Руководитель", UserRole.Viewer, []);
+        await UserAsync("newbie", "Новый проектировщик", UserRole.Designer, ["ВК"], pending: true);
 
         await app.StartAsync();
         Console.WriteLine($"Сервер с реальной частью: http://localhost:5000 до {DateTime.Now + duration:HH:mm}");
