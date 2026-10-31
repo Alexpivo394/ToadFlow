@@ -106,6 +106,61 @@ public sealed class EngineClient(HttpClient http)
         return true;
     }
 
+    /// <summary>Задание картинок; null — заданий нет или ждёт либо идёт прогон движка.</summary>
+    public async Task<EngineImageAssignment?> ClaimImagesAsync(CancellationToken ct)
+    {
+        using var response = await http.PostAsync("api/engine/images/claim", null, ct);
+        if (response.StatusCode == HttpStatusCode.NoContent) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<EngineImageAssignment>(Json, ct);
+    }
+
+    /// <returns>null — задание переключено на другой прогон или снято.</returns>
+    public async Task<EngineImageBatch?> ImageBatchAsync(Guid partId, Guid runId, CancellationToken ct)
+    {
+        using var response = await http.GetAsync($"api/engine/images/{partId}/batch?runId={runId}", ct);
+        if (response.StatusCode == HttpStatusCode.Conflict) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<EngineImageBatch>(Json, ct);
+    }
+
+    /// <summary>Сдаёт пачку: манифест и PNG нарисованных коллизий.</summary>
+    /// <returns>false — задание переключено на другой прогон или снято.</returns>
+    public async Task<bool> PostImagesAsync(Guid partId, Guid runId, IReadOnlyList<(EngineImageResult Result, byte[]? Png)> items, CancellationToken ct)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(JsonSerializer.Serialize(items.Select(i => i.Result).ToList(), Json), System.Text.Encoding.UTF8, "application/json"),
+            EngineApi.ImageManifestPart);
+        foreach (var (result, png) in items)
+        {
+            if (png is null) continue;
+            var file = new ByteArrayContent(png);
+            file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            content.Add(file, "images", $"{result.CollisionId:N}.png");
+        }
+
+        using var response = await http.PostAsync($"api/engine/images/{partId}?runId={runId}", content, ct);
+        if (response.StatusCode == HttpStatusCode.Conflict) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <returns>false — задание переключено на другой прогон или снято.</returns>
+    public async Task<bool> ImagesDoneAsync(Guid partId, Guid runId, CancellationToken ct)
+    {
+        using var response = await http.PostAsync($"api/engine/images/{partId}/done?runId={runId}", null, ct);
+        if (response.StatusCode == HttpStatusCode.Conflict) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <param name="yield">Работник уступает задание прогону движка: попытка не тратится.</param>
+    public async Task ImagesFailAsync(Guid partId, Guid runId, string error, bool yield, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync($"api/engine/images/{partId}/fail?runId={runId}", new EngineImageFailure(error, yield), Json, ct);
+        if (response.StatusCode != HttpStatusCode.Conflict) response.EnsureSuccessStatusCode();
+    }
+
     public async Task FailAsync(Guid runId, string error, bool retry, CancellationToken ct)
     {
         using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/fail", new EngineFailure(runId, error, retry), Json, ct);

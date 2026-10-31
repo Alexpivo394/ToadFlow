@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Alexpivo394.Revit.Clash.Geometry;
 using Alexpivo394.Revit.Clash.Rules;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using ToadFlow.Contracts;
@@ -111,6 +112,7 @@ public class RealSnapshotsCheck : ServerTest
 
         (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = "всё против всего, 20 мм", run = true })).EnsureSuccessStatusCode();
         var first = await RunAsync("v1, первый прогон");
+        await DrawImagesAsync(partId, report);
         var numbers = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=200")).Items
             .ToDictionary(c => (c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB), c => c.Number);
 
@@ -233,11 +235,12 @@ public class RealSnapshotsCheck : ServerTest
         // Пока сервер открыт, работник берёт прогоны из очереди — «Прогнать» из веба считается.
         using var hold = new CancellationTokenSource(duration);
         var worker = Worker();
+        var images = ImageWorker();
         while (!hold.IsCancellationRequested)
         {
             try
             {
-                if (await worker.RunOnceAsync(hold.Token) is null) await Task.Delay(2000, hold.Token);
+                if (await worker.RunOnceAsync(hold.Token) is null && await images.RunOnceAsync(hold.Token) is null) await Task.Delay(2000, hold.Token);
             }
             catch (OperationCanceledException)
             {
@@ -245,6 +248,56 @@ public class RealSnapshotsCheck : ServerTest
         }
 
         await app.StopAsync();
+    }
+
+    /// <summary>
+    ///     Картинки всех коллизий части после первого прогона: время, среднее на картинку на поток, размер PNG и пик памяти процесса за
+    ///     время рисования (замер по рабочему набору раз в 200 мс). Пять случайных картинок — в <c>%TEMP%	oadclash-images-sample</c>.
+    /// </summary>
+    private async Task DrawImagesAsync(Guid partId, StringBuilder report)
+    {
+        const int threads = 8;
+        var process = Process.GetCurrentProcess();
+        long peak = 0;
+        using var sampling = new CancellationTokenSource();
+        var sampler = Task.Run(async () =>
+        {
+            while (!sampling.IsCancellationRequested)
+            {
+                process.Refresh();
+                peak = Math.Max(peak, process.WorkingSet64);
+                try { await Task.Delay(200, sampling.Token); } catch (OperationCanceledException) { }
+            }
+        });
+        var watch = Stopwatch.StartNew();
+        (await ImageWorker(threads).RunOnceAsync(CancellationToken.None)).ShouldBe(true);
+        var elapsed = watch.Elapsed;
+        await sampling.CancelAsync();
+        await sampler;
+
+        var folder = Path.Combine(Server.ClashStorageRoot, "images", partId.ToString("N"));
+        var files = new DirectoryInfo(folder).GetFiles("*.png");
+        var withImage = await DbAsync(db => db.Set<ClashCollision>().Where(c => c.PartId == partId && c.HasImage).CountAsync());
+        var without = await DbAsync(db => db.Set<ClashCollision>().Where(c => c.PartId == partId && !c.HasImage).CountAsync());
+        var bytes = files.Sum(f => f.Length);
+        report.AppendLine($"Картинки v1: {files.Length:N0} за {elapsed.TotalSeconds:0} с, {elapsed.TotalMilliseconds * threads / Math.Max(1, files.Length):0} мс на картинку на поток " +
+                          $"({threads} потоков), PNG в среднем {bytes / 1024.0 / Math.Max(1, files.Length):0.0} КБ, всего {bytes / 1024.0 / 1024:0} МБ; " +
+                          $"пик рабочего набора процесса {peak / 1024.0 / 1024 / 1024:0.00} ГБ; с картинкой {withImage:N0}, без {without:N0}");
+
+        var sample = Path.Combine(Path.GetTempPath(), "toadclash-images-sample");
+        if (Directory.Exists(sample)) Directory.Delete(sample, true);
+        Directory.CreateDirectory(sample);
+        foreach (var file in files.OrderBy(f => f.Name.GetHashCode()).Take(5)) file.CopyTo(Path.Combine(sample, file.Name));
+    }
+
+    private ImageWorker ImageWorker(int threads = 8)
+    {
+        var cache = Path.Combine(Path.GetTempPath(), "toadflow-engine-cache-real");
+        var http = new HttpClient(Server.Server.CreateHandler()) { BaseAddress = new Uri("http://localhost/"), Timeout = TimeSpan.FromMinutes(10) };
+        http.DefaultRequestHeaders.Add(EngineApi.KeyHeader, ServerFactory.EngineKey);
+        var client = new EngineClient(http);
+        var options = new WorkerOptions { CacheRoot = cache, Threads = threads };
+        return new ImageWorker(client, new SnapshotCache(client, options), options, NullLogger<ImageWorker>.Instance);
     }
 
     private EngineWorker Worker()

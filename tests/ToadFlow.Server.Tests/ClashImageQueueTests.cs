@@ -350,4 +350,19 @@ public class ClashImageQueueTests : ServerTest
 
         Directory.Exists(folder).ShouldBeFalse();
     }
+
+    [Test]
+    public async Task Images_Batch_EngineRunWaiting_EmptyWithFlag()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var runId = await RunApprovedAsync(admin, engine, partId, [Fp(Hit(1))], approve: true);
+        await ClaimImagesAsync(engine);
+        (await BatchOkAsync(engine, partId, runId)).EngineRunWaiting.ShouldBeFalse();
+
+        await EnqueueAsync(partId);
+
+        var batch = await BatchOkAsync(engine, partId, runId);
+        (batch.EngineRunWaiting, batch.Items.Count).ShouldBe((true, 0));
+    }
 }

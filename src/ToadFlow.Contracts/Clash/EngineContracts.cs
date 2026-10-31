@@ -121,8 +121,9 @@ public sealed record EngineImageRequest(
     long FingerprintA,
     long FingerprintB);
 
-/// <summary>Пачка коллизий задания; пустая — рисовать больше нечего.</summary>
-public sealed record EngineImageBatch(Guid RunId, IReadOnlyList<EngineImageRequest> Items);
+/// <summary>Пачка коллизий задания; пустая без <paramref name="EngineRunWaiting" /> — рисовать больше нечего.</summary>
+/// <param name="EngineRunWaiting">Прогон движка ждёт или идёт: работник отпускает задание (<see cref="EngineImageFailure.Yield" />), пачка пуста.</param>
+public sealed record EngineImageBatch(Guid RunId, IReadOnlyList<EngineImageRequest> Items, bool EngineRunWaiting = false);
 
 /// <summary>Строка манифеста сданной пачки: картинка коллизии нарисована (<paramref name="Ok" />) или нарисовать нельзя.</summary>
 public sealed record EngineImageResult(Guid CollisionId, long FingerprintA, long FingerprintB, bool Ok);

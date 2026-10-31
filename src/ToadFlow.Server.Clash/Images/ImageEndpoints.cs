@@ -95,13 +95,18 @@ public static class ImageEndpoints
         }
     }
 
-    /// <summary>Пачка коллизий, найденных прогоном задания, без картинки или с картинкой по устаревшим отпечаткам; продлевает аренду.</summary>
+    /// <summary>
+    ///     Пачка коллизий, найденных прогоном задания, без картинки или с картинкой по устаревшим отпечаткам; продлевает аренду.
+    ///     Ждёт или идёт прогон движка — пачка пуста с признаком: работник отпускает задание после сданной пачки.
+    /// </summary>
     private static async Task<IResult> BatchAsync(Guid partId, Guid runId, ToadFlowDb db, TimeProvider time, CancellationToken ct)
     {
         var lease = time.GetUtcNow() + ClashImageJob.Lease;
         var extended = await db.Set<ClashImageJob>().Where(j => j.PartId == partId && j.RunId == runId)
             .ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, lease), ct);
         if (extended == 0) return Stale();
+        if (await db.Set<EngineRun>().AnyAsync(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running, ct))
+            return Results.Ok(new EngineImageBatch(runId, [], EngineRunWaiting: true));
 
         var items = await Needing(db, partId, runId).OrderBy(c => c.Number).Take(EngineApi.ImageBatchSize)
             .Select(c => new EngineImageRequest(c.Id, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.X, c.Y, c.Z, c.FingerprintA, c.FingerprintB))
