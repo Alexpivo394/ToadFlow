@@ -43,6 +43,11 @@ export function setUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
 
+/** Сессия кончилась (ответ 401 вне apiFetch, например у картинки): вызвать обработчик выхода. */
+export function handleUnauthorized(): void {
+  onUnauthorized();
+}
+
 /** Запрос к API: JSON туда и обратно, токен в заголовке, ошибка — с текстом сервера. */
 export async function apiFetch<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const headers = new Headers(init.headers);

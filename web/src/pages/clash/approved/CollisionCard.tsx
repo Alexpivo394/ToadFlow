@@ -176,7 +176,7 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true }: 
           </Button>
         </Group>
       )}
-      {image && c.imageVersion && <CollisionImage collisionId={c.id} imageVersion={c.imageVersion} foundNow={c.foundNow} width={240} />}
+      {image && <CollisionImage collisionId={c.id} imageVersion={c.imageVersion} width={240} />}
       <ScrollArea style={{ flex: 1 }} type="auto">
         <Stack gap="xs">
           {card.data.feed.map((e, i) => <FeedLine key={`${e.at}-${e.kind}-${i}`} entry={e} />)}

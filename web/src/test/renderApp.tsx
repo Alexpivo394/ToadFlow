@@ -1,5 +1,5 @@
-import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { act, render } from '@testing-library/react';
+import { MemoryRouter, useNavigate } from 'react-router';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { ModalsProvider } from '@mantine/modals';
@@ -27,6 +27,19 @@ vi.mock('@microsoft/signalr', () => {
   }
   return { HubConnectionBuilder: Builder, LogLevel: { Warning: 3 } };
 });
+
+let navigateFn: ((to: string) => void) | null = null;
+
+function NavigateProbe() {
+  const navigate = useNavigate();
+  navigateFn = (to) => { void navigate(to); };
+  return null;
+}
+
+/** Переход внутри отрисованного приложения (как по ссылке): для проверки, что страница следует за адресом. */
+export function navigateTo(to: string) {
+  act(() => navigateFn?.(to));
+}
 
 /** Ответ сервера с ошибкой: статус и текст в поле <c>error</c>, как у API. */
 export class Failure {
@@ -73,6 +86,7 @@ export function renderApp(path: string, responses: Record<string, unknown>) {
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <ModalsProvider>
             <MemoryRouter initialEntries={[path]}>
+              <NavigateProbe />
               <AuthProvider>
                 <App />
               </AuthProvider>

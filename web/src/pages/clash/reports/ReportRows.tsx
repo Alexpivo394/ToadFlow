@@ -22,7 +22,7 @@ export function ReportRows({ rows, selected, onOpen }: { rows: ReportRow[]; sele
             bg={c.id === selected ? 'var(--mantine-primary-color-light)' : undefined}
             style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
             <Group gap="sm" wrap="nowrap" align="flex-start">
-              <CollisionImage collisionId={c.id} imageVersion={c.imageVersion} foundNow={c.foundNow} width={160} />
+              <CollisionImage collisionId={c.id} imageVersion={c.imageVersion} width={160} />
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Group gap={6}>
                   <Text size="sm" fw={600}>№ {c.number}</Text>

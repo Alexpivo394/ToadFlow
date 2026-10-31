@@ -25,7 +25,7 @@ export function ReportCollisionDrawer({ partId, collisionId, canEdit, canMerge, 
       {collisionId && (
         <Stack gap="sm">
           <Box>
-            {c && <CollisionImage key={collisionId} collisionId={collisionId} imageVersion={c.imageVersion} foundNow={c.foundNow} width={640} />}
+            {c && <CollisionImage key={collisionId} collisionId={collisionId} imageVersion={c.imageVersion} width={640} />}
           </Box>
           <Anchor component={RouterLink} to={`/clash/checks/${partId}?collision=${collisionId}`} size="sm">Открыть в 3D</Anchor>
           <Box h={420}>

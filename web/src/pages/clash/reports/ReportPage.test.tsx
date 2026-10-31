@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderApp } from '../../../test/renderApp';
+import { navigateTo, renderApp } from '../../../test/renderApp';
 
 vi.mock('../../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 vi.mock('../../../api/client', async (original) => ({ ...(await original<typeof import('../../../api/client')>()), downloadFile: vi.fn(async () => {}) }));
@@ -16,7 +16,7 @@ const collision = (n: number, extra: object = {}) => ({
   id: `c${n}`, number: n, status: 'Returned', assignee: 'Both', foundNow: true, depthMm: 40 + n, x: 0, y: 0, z: 0,
   modelA: 'm1', modelNameA: 'POL_K1_AR.rvt', uniqueIdA: `ua${n}`, elementIdA: 1000 + n, disciplineA: 'АР', categoryA: 'OST_Walls', familyA: 'Стена', typeA: '200', levelA: 'Этаж 1',
   modelB: 'm2', modelNameB: 'POL_K1_OV.rvt', uniqueIdB: `ub${n}`, elementIdB: 2000 + n, disciplineB: 'ОВ', categoryB: 'OST_DuctCurves', familyB: 'Воздуховод', typeB: '500x300', levelB: 'Этаж 1',
-  checks: ['k-arov'], firstVersion: 1, lastFoundVersion: 2, suggestedPredecessorId: null, suggestedPredecessorNumber: null, imageVersion: null, ...extra,
+  checks: ['k-arov'], firstVersion: 1, lastFoundVersion: 2, suggestedPredecessorId: null, suggestedPredecessorNumber: null, imageVersion: 'v1', ...extra,
 });
 
 const summary = { found: 30, new: 12, active: 15, returned: 3, fixed: 4, goneByRules: 1, unchecked: 2, fake: 5, reusedPairs: 0 };
@@ -75,7 +75,50 @@ describe('Report page', () => {
     renderApp('/clash/reports/r2', responses({ '/api/clash/reports/r2': report({ newerRunId: 'r3', newerRunAt: '2026-11-01T09:00:00Z' }) }));
 
     expect(await screen.findByText(/Есть более новый прогон от 01\.11\.2026/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Открыть новый отчёт/ }).getAttribute('href')).toBe('/clash/reports/r3');
+    expect(screen.getByRole('link', { name: /Открыть новый отчёт/ }).getAttribute('href')).toBe('/clash/reports/r3?scope=changes');
+  });
+
+  it('ReportPage_NewerReportLink_KeepsFilters', async () => {
+    renderApp('/clash/reports/r2?level=Этаж 1&q=17', responses({
+      '/api/clash/reports/r2': report({ newerRunId: 'r3', newerRunAt: '2026-11-01T09:00:00Z' }),
+      '/api/clash/reports/r3': report({ run: { ...report().run, runId: 'r3' } }),
+      '/api/clash/reports/r3/collisions': { total: 0, items: [] },
+    }));
+
+    const link = await screen.findByRole('link', { name: /Открыть новый отчёт/ });
+    const [path, query] = link.getAttribute('href')!.split('?');
+    expect(path).toBe('/clash/reports/r3');
+    expect(new URLSearchParams(query).get('level')).toBe('Этаж 1');
+    expect(new URLSearchParams(query).get('q')).toBe('17');
+    fireEvent.click(link);
+
+    await waitFor(() => expect(calls().some(([url]) => url.startsWith('/api/clash/reports/r3/collisions'))).toBe(true));
+    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe('Этаж 1'));
+    expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('17');
+  });
+
+  it('ReportPage_NavigateWithoutParams_ClearsFilterFields', async () => {
+    renderApp('/clash/reports/r2?level=Этаж 1&q=17', responses({
+      '/api/clash/reports/r3': report({ run: { ...report().run, runId: 'r3' } }),
+      '/api/clash/reports/r3/collisions': { total: 0, items: [] },
+    }));
+    expect(((await screen.findByPlaceholderText('Уровень')) as HTMLInputElement).value).toBe('Этаж 1');
+
+    navigateTo('/clash/reports/r3');
+
+    await waitFor(() => expect(calls().some(([url]) => url.startsWith('/api/clash/reports/r3/collisions'))).toBe(true));
+    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe(''));
+    expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('');
+  });
+
+  it('ReportPage_NavigateSameReportWithoutParams_ClearsFilterFields', async () => {
+    renderApp('/clash/reports/r2?level=Этаж 1&q=17', responses());
+    expect(((await screen.findByPlaceholderText('Уровень')) as HTMLInputElement).value).toBe('Этаж 1');
+
+    navigateTo('/clash/reports/r2');
+
+    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe(''));
+    expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('');
   });
 
   it('ReportPage_PairClick_FiltersRows', async () => {
@@ -132,6 +175,6 @@ describe('Report page', () => {
     const drawer = await screen.findByRole('dialog');
     expect(await within(drawer).findByText('Переносим трубу')).toBeTruthy();
     expect(within(drawer).getByRole('link', { name: 'Открыть в 3D' }).getAttribute('href')).toBe('/clash/checks/p1?collision=c1');
-    expect(within(drawer).getByText('картинка ещё рисуется')).toBeTruthy();
+    expect(screen.queryByText('картинка ещё рисуется')).toBeNull();
   });
 });

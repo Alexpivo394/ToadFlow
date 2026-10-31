@@ -129,7 +129,7 @@ export function ReportPage() {
       {view.newerRunId && (
         <Alert color="yellow" title={`Есть более новый прогон от ${formatFullDateTime(view.newerRunAt)}`}>
           Этот отчёт показывает изменения своего прогона; статусы в строках — текущие.{' '}
-          <Anchor component={RouterLink} to={`/clash/reports/${view.newerRunId}`}>Открыть новый отчёт</Anchor>
+          <Anchor component={RouterLink} to={`/clash/reports/${view.newerRunId}?${filters}`}>Открыть новый отчёт</Anchor>
         </Alert>
       )}
 
@@ -216,10 +216,10 @@ export function ReportPage() {
               data={[{ value: 'Both', label: 'обе стороны' }, { value: 'SideA', label: 'сторона A' }, { value: 'SideB', label: 'сторона B' }]} />
             <Select size="xs" w={200} placeholder="Модель" clearable searchable data={view.models.map((m) => m.name)} value={params.get('model')}
               onChange={(v) => update({ model: v })} />
-            <TextInput size="xs" w={120} placeholder="Уровень" defaultValue={params.get('level') ?? ''}
+            <TextInput key={`${runId}|level|${params.get('level') ?? ''}`} size="xs" w={120} placeholder="Уровень" defaultValue={params.get('level') ?? ''}
               onBlur={(e) => update({ level: e.currentTarget.value.trim() || null })}
               onKeyDown={(e) => { if (e.key === 'Enter') update({ level: e.currentTarget.value.trim() || null }); }} />
-            <TextInput size="xs" w={160} placeholder="№, ID или UniqueId" defaultValue={params.get('q') ?? ''}
+            <TextInput key={`${runId}|q|${params.get('q') ?? ''}`} size="xs" w={160} placeholder="№, ID или UniqueId" defaultValue={params.get('q') ?? ''}
               onBlur={(e) => update({ q: e.currentTarget.value.trim() || null })}
               onKeyDown={(e) => { if (e.key === 'Enter') update({ q: e.currentTarget.value.trim() || null }); }} />
           </Group>

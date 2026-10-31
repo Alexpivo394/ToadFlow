@@ -1051,7 +1051,7 @@ export interface CollisionRow {
   suggestedPredecessorId: string | null;
   suggestedPredecessorNumber: number | null;
   /** Версия картинки (отпечатки, по которым она нарисована) для адреса /image?v=; null — картинки нет. */
-  imageVersion?: string | null;
+  imageVersion: string;
 }
 
 export interface CollisionPage {
