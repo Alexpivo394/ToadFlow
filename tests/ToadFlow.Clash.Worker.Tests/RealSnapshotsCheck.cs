@@ -112,6 +112,7 @@ public class RealSnapshotsCheck : ServerTest
 
         (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = "всё против всего, 20 мм", run = true })).EnsureSuccessStatusCode();
         var first = await RunAsync("v1, первый прогон");
+        await RequestImagesAsync(admin, partId, report);
         await ReportV1Async(admin, first.Run.Run.RunId, report);
         var numbers = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=200")).Items
             .ToDictionary(c => (c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB), c => c.Number);
@@ -286,6 +287,94 @@ public class RealSnapshotsCheck : ServerTest
         var chat = await admin.GetJsonAsync<ToadFlow.Server.Clash.Reports.ChatMessageView>($"/api/clash/reports/{runId}/chat?baseUrl={web}");
         report.AppendLine("  Текст для чата:");
         foreach (var line in chat.Text.Split('\n')) report.AppendLine($"    {line}");
+    }
+
+    /// <summary>
+    ///     Картинки по запросу после первого прогона: 200 коллизий части (по номеру, каждая 300-я). Первые 20 — по одной (у первой
+    ///     холодный кеш оглавлений), остальные 180 — параллельно по 50, как страница отчёта. Пишет время первой картинки, p50 и p95
+    ///     по одной, время пачки из 50 и пик рабочего набора процесса (выборка раз в 200 мс). Цели (в отчёт, не в утверждения):
+    ///     p95 тёплой картинки не больше 300 мс, пачка из 50 не больше 3 с. Пять картинок — в <c>%TEMP%\toadclash-images-sample</c>.
+    /// </summary>
+    private static async Task RequestImagesAsync(HttpClient admin, Guid partId, StringBuilder report)
+    {
+        const int sampleSize = 200, single = 20, batch = 50, step = 300, pageSize = 200;
+        var total = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=1")).Total;
+        var stride = Math.Max(1, Math.Min(step, total / sampleSize));
+        var pages = new Dictionary<int, IReadOnlyList<CollisionRow>>();
+        var picked = new List<CollisionRow>();
+        for (var index = 0; index < total && picked.Count < sampleSize; index += stride)
+        {
+            var page = index / pageSize + 1;
+            if (!pages.TryGetValue(page, out var items))
+                pages[page] = items = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize={pageSize}&page={page}")).Items;
+            if (index % pageSize < items.Count) picked.Add(items[index % pageSize]);
+        }
+
+        picked = picked.OrderBy(c => c.Number).ToList();
+        var process = Process.GetCurrentProcess();
+        long peak = 0;
+        using var sampling = new CancellationTokenSource();
+        var sampler = Task.Run(async () =>
+        {
+            while (!sampling.IsCancellationRequested)
+            {
+                process.Refresh();
+                peak = Math.Max(peak, process.WorkingSet64);
+                try { await Task.Delay(200, sampling.Token); } catch (OperationCanceledException) { }
+            }
+        });
+
+        var sampleFolder = Path.Combine(Path.GetTempPath(), "toadclash-images-sample");
+        if (Directory.Exists(sampleFolder)) Directory.Delete(sampleFolder, true);
+        Directory.CreateDirectory(sampleFolder);
+        var failures = new List<string>();
+        long bytes = 0, images = 0;
+
+        async Task<TimeSpan> RequestAsync(CollisionRow row)
+        {
+            var watch = Stopwatch.StartNew();
+            using var response = await admin.GetAsync($"/api/clash/collisions/{row.Id}/image?v={row.ImageVersion}");
+            var data = await response.Content.ReadAsByteArrayAsync();
+            var elapsed = watch.Elapsed;
+            if (response.IsSuccessStatusCode)
+            {
+                Interlocked.Add(ref bytes, data.Length);
+                Interlocked.Increment(ref images);
+                if (Directory.GetFiles(sampleFolder).Length < 5) File.WriteAllBytes(Path.Combine(sampleFolder, $"{row.Number}.png"), data);
+            }
+            else
+            {
+                lock (failures) failures.Add($"№ {row.Number}: {(int)response.StatusCode}");
+            }
+
+            return elapsed;
+        }
+
+        var cold = new List<double>();
+        foreach (var row in picked.Take(single)) cold.Add((await RequestAsync(row)).TotalMilliseconds);
+
+        // Тёплые: повтор тех же адресов, когда файлы уже в кеше.
+        var warm = new List<double>();
+        foreach (var row in picked.Take(single)) warm.Add((await RequestAsync(row)).TotalMilliseconds);
+
+        var batches = new List<double>();
+        foreach (var chunk in picked.Skip(single).Chunk(batch))
+        {
+            var watch = Stopwatch.StartNew();
+            await Task.WhenAll(chunk.Select(RequestAsync));
+            batches.Add(watch.Elapsed.TotalSeconds);
+        }
+
+        await sampling.CancelAsync();
+        await sampler;
+
+        static double Percentile(List<double> values, double p) =>
+            values.Count == 0 ? 0 : values.Order().ElementAt(Math.Min(values.Count - 1, (int)Math.Ceiling(values.Count * p) - 1));
+
+        report.AppendLine($"Картинки по запросу v1: {picked.Count} из {total:N0} коллизий (каждая {stride}-я); первая (холодный кеш оглавлений) {(cold.Count > 0 ? cold[0] / 1000 : 0):0.00} с; " +
+                          $"по одной ({cold.Count}) p50 {Percentile(cold, 0.5):0} мс, p95 {Percentile(cold, 0.95):0} мс; повтор из кеша p95 {Percentile(warm, 0.95):0} мс (цель ≤ 300); " +
+                          $"пачки до {batch}: {string.Join(", ", batches.Select(b => $"{b:0.0} с"))} (цель ≤ 3 с); PNG в среднем {bytes / 1024.0 / Math.Max(1, images):0.0} КБ; " +
+                          $"пик рабочего набора процесса {peak / 1024.0 / 1024 / 1024:0.00} ГБ; ошибок {failures.Count}{(failures.Count > 0 ? " (" + string.Join(", ", failures.Take(5)) + ")" : "")}");
     }
 
     private EngineWorker Worker()
