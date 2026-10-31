@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Alexpivo394.Revit.Clash.Geometry;
 using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.Extensions.Caching.Memory;
@@ -22,23 +23,43 @@ public sealed class PartElementsCache : IDisposable
     private static readonly TimeSpan Sliding = TimeSpan.FromMinutes(10);
 
     private readonly MemoryCache _cache = new(new MemoryCacheOptions { SizeLimit = ElementLimit });
+    private readonly ConcurrentDictionary<Guid, Lazy<CachedSnapshot>> _loading = new();
     private int _loads;
 
     /// <summary>Сколько раз слепок читался с диска (для тестов).</summary>
     public int Loads => Volatile.Read(ref _loads);
 
-    public CachedSnapshot Get(Guid snapshotId, string folder) =>
-        _cache.GetOrCreate(snapshotId, entry =>
+    /// <summary>
+    ///     Слепок из памяти или с диска. Одновременные запросы холодного слепка ждут одно чтение; неудачное чтение не запоминается —
+    ///     следующий запрос прочтёт заново.
+    /// </summary>
+    public CachedSnapshot Get(Guid snapshotId, string folder)
+    {
+        if (_cache.TryGetValue(snapshotId, out CachedSnapshot? cached)) return cached!;
+        var load = _loading.GetOrAdd(snapshotId, id => new Lazy<CachedSnapshot>(() => Load(id, folder)));
+        try
         {
-            Interlocked.Increment(ref _loads);
-            ModelIndex index;
-            using (var geometry = File.OpenRead(Path.Combine(folder, "model.tcg"))) index = ModelGeometryFile.ReadIndex(geometry);
-            ModelParameters parameters;
-            using (var values = File.OpenRead(Path.Combine(folder, "model.tcp"))) parameters = ModelParametersFile.Read(values);
-            entry.Size = Math.Max(1, index.Elements.Count);
-            entry.SlidingExpiration = Sliding;
-            return new CachedSnapshot(index, parameters);
-        })!;
+            return load.Value;
+        }
+        finally
+        {
+            _loading.TryRemove(KeyValuePair.Create(snapshotId, load));
+        }
+    }
+
+    /// <summary>Читает слепок и кладёт в память; слепок, положенный между проверкой и чтением, берётся из памяти.</summary>
+    private CachedSnapshot Load(Guid snapshotId, string folder)
+    {
+        if (_cache.TryGetValue(snapshotId, out CachedSnapshot? cached)) return cached!;
+        Interlocked.Increment(ref _loads);
+        ModelIndex index;
+        using (var geometry = File.OpenRead(Path.Combine(folder, "model.tcg"))) index = ModelGeometryFile.ReadIndex(geometry);
+        ModelParameters parameters;
+        using (var values = File.OpenRead(Path.Combine(folder, "model.tcp"))) parameters = ModelParametersFile.Read(values);
+        var snapshot = new CachedSnapshot(index, parameters);
+        _cache.Set(snapshotId, snapshot, new MemoryCacheEntryOptions { Size = Math.Max(1, index.Elements.Count), SlidingExpiration = Sliding });
+        return snapshot;
+    }
 
     public void Dispose() => _cache.Dispose();
 }

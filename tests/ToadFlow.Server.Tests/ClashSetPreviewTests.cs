@@ -97,6 +97,56 @@ public class ClashSetPreviewTests : ServerTest
         (cache.Loads - before).ShouldBe(1);
     }
 
+    /// <summary>Слепок model.tcg и model.tcp в новом временном каталоге.</summary>
+    private static string SnapshotFolder(int padding)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "toadflow-clash-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var files = ClashFixtures.ModelFiles("model", padding: padding);
+        File.WriteAllBytes(Path.Combine(folder, "model.tcg"), files.Geometry);
+        File.WriteAllBytes(Path.Combine(folder, "model.tcp"), files.Parameters);
+        return folder;
+    }
+
+    [Test]
+    public async Task ElementsCache_ConcurrentColdGet_LoadedOnce()
+    {
+        var folder = SnapshotFolder(padding: 5000);
+        using var cache = new PartElementsCache();
+        var snapshotId = Guid.NewGuid();
+        using var start = new Barrier(16);
+
+        var snapshots = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Factory.StartNew(() =>
+        {
+            start.SignalAndWait();
+            return cache.Get(snapshotId, folder);
+        }, TaskCreationOptions.LongRunning)));
+
+        cache.Loads.ShouldBe(1);
+        snapshots.Distinct().Count().ShouldBe(1);
+        cache.Get(snapshotId, folder).ShouldBeSameAs(snapshots[0]);
+        cache.Loads.ShouldBe(1);
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_FailedLoad_NotCached()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        using var cache = new PartElementsCache();
+        var snapshotId = Guid.NewGuid();
+        var geometry = Path.Combine(folder, "model.tcg");
+        var bytes = File.ReadAllBytes(geometry);
+        File.Delete(geometry);
+
+        Should.Throw<FileNotFoundException>(() => cache.Get(snapshotId, folder));
+        File.WriteAllBytes(geometry, bytes);
+
+        cache.Get(snapshotId, folder).Elements.Count.ShouldBe(2);
+        cache.Loads.ShouldBe(2);
+        Directory.Delete(folder, recursive: true);
+    }
+
     [Test]
     public async Task Preview_ModelWithoutSnapshotSkipped()
     {
