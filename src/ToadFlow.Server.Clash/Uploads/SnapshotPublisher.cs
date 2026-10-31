@@ -75,6 +75,12 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
         return ResultOf(snapshot);
     }
 
+    /// <summary>
+    ///     Сколько дней после окончания удачного утверждённого прогона его слепки не удаляются ротацией: по ним рисуются картинки
+    ///     коллизий, которые этот прогон нашёл последним (исправленные, ушедшие из-за правил, не проверенные).
+    /// </summary>
+    public const int ImageSnapshotDays = 14;
+
     public static ClashExtractResult ResultOf(ClashSnapshot snapshot) =>
         new(snapshot.Id, snapshot.Elements, snapshot.Triangles, snapshot.Inventory, snapshot.GeometryBytes, snapshot.ParametersBytes);
 
@@ -83,12 +89,15 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
     ///     Слепки прогонов движка в очереди и в работе не удаляются, пока прогон не закончится, а слепки прогона — видимого
     ///     результата части — пока у части не появится новый результат: на них открывается просмотрщик коллизий. Слепки прогона,
     ///     предыдущего у утверждённого, тоже остаются: исправленные утверждённым прогоном коллизии рисуются по прогону, который
-    ///     нашёл их последним.
+    ///     нашёл их последним. Слепки удачных утверждённых прогонов моложе <see cref="ImageSnapshotDays" /> дней остаются по той же
+    ///     причине для коллизий, которые давно не находили.
     /// </summary>
     public async Task PruneAsync(Guid modelId, int keep, CancellationToken ct)
     {
+        var recent = time.GetUtcNow() - TimeSpan.FromDays(ImageSnapshotDays);
         var active = (await db.Set<EngineRun>().AsNoTracking()
                 .Where(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running
+                            || (r.Kind == EngineRunKind.Approved && r.State == EngineRunState.Succeeded && r.FinishedAt >= recent)
                             || db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id || p.ApprovedRunId == r.Id)
                             || db.Set<ClashPart>().Any(p => db.Set<EngineRun>().Any(approved => approved.Id == p.ApprovedRunId && approved.PreviousRunId == r.Id))
                             || db.Set<EngineRun>().Any(next => next.PreviousRunId == r.Id

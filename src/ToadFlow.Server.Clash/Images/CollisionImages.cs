@@ -69,7 +69,7 @@ public sealed class CollisionImageOptions
 public sealed class CollisionImages
 {
     /// <summary>Версия рисовальщика: увеличить, когда картинки должны перерисоваться (другой ракурс, цвета, размер).</summary>
-    public const int RendererVersion = 1;
+    public const int RendererVersion = 2;
 
     private readonly ConcurrentDictionary<(Guid, string), Lazy<Task<ImageResult>>> _pending = new();
     private readonly PartElementsCache _cache;

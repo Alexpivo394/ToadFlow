@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { partResponses } from '../../../test/clashPart';
 import { renderApp } from '../../../test/renderApp';
 
+vi.mock('../../../api/client', async (original) => ({ ...(await original<typeof import('../../../api/client')>()), downloadFile: vi.fn(async () => {}) }));
+const { downloadFile } = await import('../../../api/client');
+
 // WebGL в jsdom нет: вместо сцены three.js — заглушка с номером коллизии.
 vi.mock('../viewer/ClashViewer', () => ({ default: (props: { scene: { number: number } }) => <div>сцена {props.scene.number}</div> }));
 
@@ -156,5 +159,25 @@ describe('Approved run line', () => {
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/clash/reports/r2', '/clash/reports/r1']);
     expect(within(drawer).getByText(/по расписанию \(Ночное\)/)).toBeTruthy();
+  });
+
+  it('ApprovedTab_ExportsListWithItsFilters', async () => {
+    const runs = [{ runId: 'r2', partId: 'p1', version: 2, finishedAt: '2026-10-31T09:05:00Z', trigger: 'manual', startedBy: 'Иванов', searchSeconds: 10,
+      summary: { found: 3, new: 1, active: 2, returned: 0, fixed: 1, goneByRules: 0, unchecked: 0, fake: 0, reusedPairs: 0 } }];
+    open({ '/api/clash/parts/p1/approved/runs': runs }, '/clash/checks/p1?check=k-arov');
+
+    fireEvent.change(await screen.findByPlaceholderText('№, ID или UniqueId'), { target: { value: '1001' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Excel' }));
+
+    await waitFor(() => expect(downloadFile).toHaveBeenCalled());
+    const [path, name] = vi.mocked(downloadFile).mock.calls[0];
+    const url = new URL(path, 'http://x');
+    expect(url.pathname).toBe('/api/clash/reports/r2/export.xlsx');
+    expect(url.searchParams.get('scope')).toBe('open');
+    expect(url.searchParams.get('check')).toBe('k-arov');
+    expect(url.searchParams.get('q')).toBe('1001');
+    expect(url.searchParams.get('status')?.split(',')).toContain('New');
+    expect(name).toMatch(/\.xlsx$/);
+    expect(screen.getByRole('button', { name: 'HTML' })).toBeTruthy();
   });
 });

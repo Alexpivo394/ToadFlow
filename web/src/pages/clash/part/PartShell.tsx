@@ -192,8 +192,7 @@ export function PartShell() {
               present={(presence.data ?? []).filter((p) => p.userId !== user?.id)} />
           </Tabs.Panel>
           <Tabs.Panel value="matrix">
-            <MatrixTab config={config} readOnly={readOnly} onChange={draft.edit}
-              onFill={() => act(`/api/clash/parts/${partId}/draft/matrix/fill`, 'Матрица заполнена')} />
+            <MatrixTab config={config} readOnly={readOnly} onChange={draft.edit} />
           </Tabs.Panel>
           <Tabs.Panel value="exclusions"><ExclusionsTab config={config} readOnly={readOnly} onChange={draft.edit} /></Tabs.Panel>
           <Tabs.Panel value="draft">

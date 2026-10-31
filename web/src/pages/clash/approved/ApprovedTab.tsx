@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router';
 import { Alert, Badge, Box, Button, Chip, Group, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { downloadFile } from '../../../api/client';
 import { useApi, useApiMutation } from '../../../api/queries';
 import type { ApprovedRunView, ReportRunView, ApprovedVersionView, CollisionPage, CollisionRow, CollisionStatus, CollisionSummary } from '../../../api/types';
 import { Empty } from '../../../components/ui';
@@ -54,6 +56,42 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
       {current?.run.state === 'Failed' && current.run.error && <Alert color="red" title="Прогон не удался">{current.run.error}</Alert>}
       <RunsDrawer partId={partId} opened={runsOpened} onClose={() => setRunsOpened(false)} />
     </Stack>
+  );
+}
+
+/**
+ * Выгрузка списка проверки в Excel или HTML с его фильтрами (статусы, проверка, поиск): «открытые сейчас» отчёта последнего
+ * удачного прогона — та же выборка, что в списке.
+ */
+function ExportButtons({ partId, filters }: { partId: string; filters: URLSearchParams }) {
+  const runs = useApi<ReportRunView[]>(['clash-collisions', partId, 'runs'], `/api/clash/parts/${partId}/approved/runs`);
+  const latest = runs.data?.[0] ?? null;
+  const [exporting, setExporting] = useState<string | null>(null);
+  if (!latest) return null;
+
+  const exportFile = async (format: 'xlsx' | 'html') => {
+    const query = new URLSearchParams(filters);
+    query.delete('page');
+    query.delete('pageSize');
+    query.set('scope', 'open');
+    query.set('baseUrl', window.location.origin);
+    setExporting(format);
+    try {
+      await downloadFile(`/api/clash/reports/${latest.runId}/export.${format}?${query}`,
+        `Коллизии ${new Date().toISOString().slice(0, 10)}.${format}`);
+    } catch (error) {
+      notifications.show({ color: 'red', title: 'Не получилось выгрузить', message: (error as Error).message });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  return (
+    <Group gap={4}>
+      <Text size="xs" c="dimmed">Выгрузить список:</Text>
+      <Button size="compact-xs" variant="default" loading={exporting === 'xlsx'} onClick={() => exportFile('xlsx')}>Excel</Button>
+      <Button size="compact-xs" variant="default" loading={exporting === 'html'} onClick={() => exportFile('html')}>HTML</Button>
+    </Group>
   );
 }
 
@@ -147,6 +185,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
               </Group>
             </Chip.Group>
             <TextInput size="xs" placeholder="№, ID или UniqueId" value={query} onChange={(e) => { setPage(1); setQuery(e.currentTarget.value); }} />
+            <ExportButtons partId={partId} filters={search} />
           </Stack>
           <ScrollArea style={{ flex: 1 }} type="auto">
             {items.map((r) => (

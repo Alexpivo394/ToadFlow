@@ -16,6 +16,7 @@ using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Parts;
+using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
 using ToadFlow.Server.Tests.Infrastructure;
@@ -370,6 +371,34 @@ public class ClashImageTests : ServerTest
         var response = await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image");
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         PngSize(await response.Content.ReadAsByteArrayAsync()).ShouldBe((640, 400));
+    }
+
+    /// <summary>
+    ///     Коллизия, исправленная два утверждённых прогона назад: прогон, нашедший её последним, уже не предыдущий у утверждённого.
+    ///     Его слепки защищены <see cref="SnapshotPublisher.ImageSnapshotDays" /> дней после окончания — картинка рисуется;
+    ///     прогон старше — слепки уходят при ротации, 410.
+    /// </summary>
+    [Test]
+    [Arguments(0, HttpStatusCode.OK)]
+    [Arguments(15, HttpStatusCode.Gone)]
+    public async Task Image_FixedTwoRunsAgo_SnapshotsKeptForRecentRuns(int ageDays, HttpStatusCode expected)
+    {
+        var setup = await PartAsync();
+        (await setup.Admin.PutJsonAsync("/api/clash/settings", new { storage = new { keepSnapshots = 1 } })).EnsureSuccessStatusCode();
+        var first = await RunApprovedAsync(setup, [Pair(setup, 1)], approve: true);
+        await RepublishArAsync(setup.Admin);
+        await RunApprovedAsync(setup, [], gone: [new EngineGonePair(setup.Ar, "a1", setup.Ov, "b1", "Absent", "InGeometry", null)]);
+        await RepublishArAsync(setup.Admin);
+        await RunApprovedAsync(setup, []);
+        var collision = (await CollisionsAsync(setup.PartId)).Single();
+        collision.LastFoundRunId.ShouldBe(first);
+        await DbAsync(db => db.Set<EngineRun>().Where(r => r.Id == first)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.FinishedAt, DateTimeOffset.UtcNow.AddDays(-ageDays))));
+
+        await RepublishArAsync(setup.Admin);
+
+        var response = await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image");
+        response.StatusCode.ShouldBe(expected, await response.Content.ReadAsStringAsync());
     }
 
     [Test]
