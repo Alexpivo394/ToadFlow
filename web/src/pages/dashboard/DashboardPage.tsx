@@ -4,7 +4,7 @@ import { BarChart } from '@mantine/charts';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { AgentView, Dashboard, GeneralSettings } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
-import { ClashAttention } from '../clash/setup/ClashAttention';
+import { PendingUsersNotice } from './PendingUsersNotice';
 import { ConfirmButton, Empty, PageTitle, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime, formatDuration, formatRelative, pluralRu } from '../../lib/format';
@@ -105,7 +105,7 @@ export function DashboardPage() {
   return (
     <>
       <PageTitle>{t.nav.dashboard}</PageTitle>
-      <RequireRole role="Operator"><ClashAttention /></RequireRole>
+      <RequireRole role="Operator"><PendingUsersNotice /></RequireRole>
       <SimpleGrid cols={{ base: 2, md: 5 }} mb="md">
         <Kpi title="За 24 часа" value={kpi?.exported24h ?? '—'} hint={`${pluralRu(kpi?.exported24h ?? 0, ['модель обработана', 'модели обработано', 'моделей обработано'])}`} />
         <Kpi title="Ошибки" value={kpi?.failed24h ?? '—'} color={kpi?.failed24h ? 'red' : undefined} hint={`за 24 часа · ${kpi?.failedPercent ?? 0}%`} />

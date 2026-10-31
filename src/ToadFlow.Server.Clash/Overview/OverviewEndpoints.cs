@@ -4,7 +4,6 @@ using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
-using ToadFlow.Server.Users;
 
 namespace ToadFlow.Server.Clash.Overview;
 
@@ -14,17 +13,16 @@ public sealed record OverviewPart(Guid PartId, string Name, string? Object, int 
 
 public sealed record OverviewModel(Guid PartId, string PartName, Guid ModelId, string ModelName, string Reason);
 
-/// <summary>Где проблема по всем утверждённым проверкам. Пусто во всех списках и нет заявок — «всё в порядке».</summary>
+/// <summary>Где проблема по всем утверждённым проверкам. Пусто во всех списках — «всё в порядке».</summary>
 public sealed record OverviewView(
     IReadOnlyList<OverviewModel> NotUploaded,
     IReadOnlyList<OverviewPart> RunFailed,
     IReadOnlyList<OverviewPart> NoRecentRun,
     IReadOnlyList<OverviewPart> Unchecked,
     IReadOnlyList<OverviewPart> Spike,
-    IReadOnlyList<OverviewPart> Stuck,
-    int PendingUsers);
+    IReadOnlyList<OverviewPart> Stuck);
 
-/// <summary>Обзор координатора: первым делом утром — что не выгрузилось, не прогналось, всплески, висящие коллизии и заявки.</summary>
+/// <summary>Обзор координатора: первым делом утром — что не выгрузилось, не прогналось, всплески и висящие коллизии.</summary>
 public static class OverviewEndpoints
 {
     public static void MapClashOverview(this RouteGroupBuilder api) =>
@@ -93,9 +91,7 @@ public static class OverviewEndpoints
         var stuck = parts.Where(p => stuckCounts.ContainsKey(p.Id))
             .Select(p => new OverviewPart(p.Id, p.Name, p.Object, stuckCounts[p.Id], $"висят {stuckCounts[p.Id]}")).ToList();
 
-        var fresh = now - RegistrationEndpoints.PendingLifetime;
-        var pending = await db.Users.CountAsync(u => u.IsPending && u.CreatedAt >= fresh, ct);
-        return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck, pending);
+        return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck);
     }
 
     /// <summary>Открытые коллизии без движения: ни одной записи в ленте (и создания) после <paramref name="before" />.</summary>

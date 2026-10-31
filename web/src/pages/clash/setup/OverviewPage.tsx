@@ -1,18 +1,15 @@
 import type { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Anchor, Badge, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Anchor, Badge, SimpleGrid, Stack } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { ClashOverview, ClashSettingsView, OverviewPart } from '../../../api/types';
 import { Empty, PageTitle, Panel } from '../../../components/ui';
 import { t } from '../../../i18n/ru';
-import { pluralRu } from '../../../lib/format';
 
 /** Сколько всего проблем в обзоре. */
 export function problemCount(o: ClashOverview): number {
-  return o.notUploaded.length + o.runFailed.length + o.noRecentRun.length + o.unchecked.length + o.spike.length + o.stuck.length + o.pendingUsers;
+  return o.notUploaded.length + o.runFailed.length + o.noRecentRun.length + o.unchecked.length + o.spike.length + o.stuck.length;
 }
-
-export const pendingText = (n: number) => `${n} ${pluralRu(n, ['заявка', 'заявки', 'заявок'])} на регистрацию`;
 
 function Card({ title, count, color = 'orange', children }: { title: string; count: number; color?: string; children: ReactNode }) {
   if (count === 0) return null;
@@ -33,7 +30,7 @@ function PartLinks({ parts, to }: { parts: OverviewPart[]; to: (p: OverviewPart)
 
 /**
  * «Настройка проверок → Обзор»: первым делом утром — что не выгрузилось, какие прогоны не прошли, всплески новых,
- * висящие коллизии и заявки. Каждый пункт ведёт туда, где проблему решают.
+ * и висящие коллизии. Каждый пункт ведёт туда, где проблему решают.
  */
 export function OverviewPage() {
   const overview = useApi<ClashOverview>(['clash-overview'], '/api/clash/overview', { refetchInterval: 60_000 });
@@ -66,12 +63,6 @@ export function OverviewPage() {
           </Card>
           <Card title="Висят" count={o.stuck.length}>
             <PartLinks parts={o.stuck} to={(p) => `/clash/checks/${p.partId}?stuckDays=${stuckDays}`} />
-          </Card>
-          <Card title="Заявки на регистрацию" count={o.pendingUsers} color="blue">
-            <Group>
-              <Anchor component={RouterLink} to="/settings/users" size="sm">{pendingText(o.pendingUsers)}</Anchor>
-              <Text size="xs" c="dimmed">подтвердить и указать разделы</Text>
-            </Group>
           </Card>
         </SimpleGrid>
       )}

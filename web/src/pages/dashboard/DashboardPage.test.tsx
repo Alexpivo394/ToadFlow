@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderApp } from '../../test/renderApp';
 
@@ -18,7 +18,35 @@ const agents = [
   },
 ];
 
+type FetchMock = { mock: { calls: [string, RequestInit?][] } };
+const calls = () => (fetch as unknown as FetchMock).mock.calls;
+
+const pendingUser = (id: string) => ({ id, login: id, displayName: id, role: 'Designer', isDisabled: false, lastLoginAt: null, isPending: true,
+  position: null, email: null, phone: null, disciplines: [], createdAt: '2026-10-31T00:00:00Z' });
+const viewer = { id: 'u2', login: 'boss', displayName: 'Руководитель', role: 'Viewer', isDisabled: false, lastLoginAt: null };
+
 describe('DashboardPage', () => {
+  // Коллизии — лишь модуль: на общем «Обзоре» только заявки на регистрацию, и только тому, кто их подтверждает.
+  it('Dashboard_PendingUsersNotice_NoClashBlock', async () => {
+    const base = { '/api/dashboard': dashboard, '/api/agents': [], '/api/settings': { silenceTimeoutMinutes: 10 } };
+    const { unmount } = renderApp('/', { ...base, '/api/users/pending': [pendingUser('a'), pendingUser('b')] });
+
+    fireEvent.click(await screen.findByRole('link', { name: '2 заявки на регистрацию ждут подтверждения' }));
+    expect(await screen.findByText('Заявки на регистрацию (2)')).toBeTruthy();
+    expect(calls().some(([url]) => url.startsWith('/api/clash/'))).toBe(false);
+    unmount();
+
+    const calm = renderApp('/', { ...base, '/api/users/pending': [] });
+    expect(await screen.findByText('142')).toBeTruthy();
+    expect(screen.queryByText(/заявк/)).toBeNull();
+    calm.unmount();
+
+    renderApp('/', { ...base, '/api/auth/me': viewer });
+    expect(await screen.findByText('142')).toBeTruthy();
+    expect(calls().some(([url]) => url.startsWith('/api/users'))).toBe(false);
+  });
+
+
   it('renders KPIs, agents, upcoming runs and errors', async () => {
     renderApp('/', { '/api/dashboard': dashboard, '/api/agents': agents, '/api/settings': { silenceTimeoutMinutes: 10 } });
 

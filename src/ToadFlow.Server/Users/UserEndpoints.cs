@@ -20,7 +20,7 @@ public sealed record PasswordRequest(string Password);
 public sealed record ApproveUserRequest(string[]? Disciplines);
 
 /// <summary>
-///     Пользователи. Список, заявки на регистрацию и разделы — координатор; создание, роль, отключение, пароль и удаление —
+///     Пользователи. Список, заявки на регистрацию, разделы, имя и контакты — координатор; создание, роль, отключение, пароль и удаление —
 ///     администратор.
 /// </summary>
 public static class UserEndpoints
@@ -45,6 +45,7 @@ public static class UserEndpoints
         users.MapPost("/{id:guid}/approve", ApproveAsync);
         users.MapPost("/{id:guid}/reject", RejectAsync);
         users.MapPut("/{id:guid}/disciplines", SetDisciplinesAsync);
+        users.MapPut("/{id:guid}/contacts", SetContactsAsync);
 
         var admin = users.MapGroup("").RequireAuthorization(Policies.Admin);
         admin.MapPost("/", CreateAsync);
@@ -96,6 +97,23 @@ public static class UserEndpoints
         user.Disciplines = disciplines;
         await db.SaveChangesAsync(ct);
         events.Publish(new UserChanged(http.User.Actor(), id, $"Разделы {user.DisplayName}: {RegistrationEndpoints.DisciplineText(disciplines)}"));
+        return Results.Ok(UserView.From(user));
+    }
+
+    /// <summary>Имя и контакты — координатор правит их из карточки пользователя, как сам человек в профиле.</summary>
+    private static async Task<IResult> SetContactsAsync(Guid id, ProfileRequest request, ToadFlowDb db, IMemoryCache cache, HttpContext http,
+        IDomainEvents events, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "Укажите имя" });
+        if (ProfileEndpoints.Contacts(request.Position, request.Email, request.Phone, out var contacts) is { } error) return Results.BadRequest(new { error });
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound();
+
+        user.DisplayName = request.DisplayName.Trim();
+        (user.Position, user.Email, user.Phone) = contacts;
+        await db.SaveChangesAsync(ct);
+        cache.ForgetUser(id);
+        events.Publish(new UserChanged(http.User.Actor(), id, $"Изменены имя и контакты пользователя {user.DisplayName} ({user.Login})"));
         return Results.Ok(UserView.From(user));
     }
 

@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Anchor, Autocomplete, Group, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Anchor, Autocomplete, Group, ScrollArea, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core';
 import { BarChart, LineChart } from '@mantine/charts';
 import { useApi } from '../../../api/queries';
 import type { CheckView, ClashAnalyticsView } from '../../../api/types';
 import { Empty, PageTitle, Panel } from '../../../components/ui';
 import { t } from '../../../i18n/ru';
 import { Stat } from '../../analytics/parts';
-import { assigneeLabel } from '../approved/StatusBadge';
 
 type Period = 'week' | 'month' | 'custom';
 type GroupBy = 'discipline' | 'object' | 'part';
@@ -98,9 +97,33 @@ export function SummaryPage() {
               <BarChart h={180} data={v.current.ageBuckets.map((b) => ({ bucket: b.label, Коллизий: b.count }))} dataKey="bucket"
                 series={[{ name: 'Коллизий', color: 'blue.6' }]} tickLine="none" gridAxis="none" />
             </Panel>
-            <Panel title="Кто правит">
-              <BarChart h={180} data={v.current.byAssignee.map((a) => ({ who: assigneeLabel[a.assignee], Коллизий: a.count }))} dataKey="who"
-                series={[{ name: 'Коллизий', color: 'teal.6' }]} tickLine="none" gridAxis="none" />
+            <Panel title="На ком коллизии">
+              <Text size="sm" mb={4} c={v.current.undecided > 0 ? 'orange' : undefined}>
+                Не решено, кто правит: {n(v.current.undecided)} из {n(v.current.open)}
+              </Text>
+              <Text size="xs" c="dimmed" mb="xs">Пока «кто правит» — обе стороны, коллизия висит на двух разделах. Решают «Беру» и «Передать…» в карточке.</Text>
+              {v.current.byDiscipline.length === 0 ? <Empty>Открытых нет</Empty> : (
+                <ScrollArea.Autosize mah={200}>
+                  <Table aria-label="На ком коллизии" highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Раздел</Table.Th>
+                        <Table.Th ta="right">Правит сам</Table.Th>
+                        <Table.Th ta="right">Не решено</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {v.current.byDiscipline.map((d) => (
+                        <Table.Tr key={d.discipline}>
+                          <Table.Td>{d.discipline || 'без раздела'}</Table.Td>
+                          <Table.Td ta="right">{n(d.assigned)}</Table.Td>
+                          <Table.Td ta="right" c={d.undecided > 0 ? 'orange' : undefined}>{n(d.undecided)}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </ScrollArea.Autosize>
+              )}
             </Panel>
           </SimpleGrid>
 

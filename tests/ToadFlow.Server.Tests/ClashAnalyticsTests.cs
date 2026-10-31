@@ -178,12 +178,28 @@ public class ClashAnalyticsTests : ServerTest
         var vk = await AnalyticsAsync(admin, "?object=DON&discipline=ВК");
 
         (don.Current.Open, don.Current.Fake, don.Current.FakeShare).ShouldBe((1, 1, 0.5));
-        don.Current.ByAssignee.Single(a => a.Assignee == CollisionAssignee.Both).Count.ShouldBe(1);
         don.Current.AgeBuckets.Sum(b => b.Count).ShouldBe(1);
         don.Current.AgeBuckets[0].Count.ShouldBe(1); // до 7 дней
         vk.Current.Open.ShouldBe(1);
         (await AnalyticsAsync(admin, "?groupBy=object")).Lagging.Select(l => (l.Key, l.Open)).ShouldBe([("Без проекта", 3), ("DON", 1)]);
         (await AnalyticsAsync(admin, $"?partId={other}")).Current.Open.ShouldBe(3);
+    }
+
+    /// <summary>«На ком коллизии»: по разделу — сколько он правит сам и сколько ещё не решено, кто правит.</summary>
+    [Test]
+    public async Task Analytics_LoadByDiscipline()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Hit(1), Hit(2), Hit(3, disciplineB: "ВК"), Hit(4, disciplineA: "ОВ")], approve: true);
+        await DbAsync(db => db.Set<ClashCollision>().Where(c => c.Number == 1).ExecuteUpdateAsync(c => c.SetProperty(x => x.Assignee, CollisionAssignee.SideB)));
+        await DbAsync(db => db.Set<ClashCollision>().Where(c => c.Number == 3).ExecuteUpdateAsync(c => c.SetProperty(x => x.Assignee, CollisionAssignee.SideA)));
+
+        var current = (await AnalyticsAsync(admin, "")).Current;
+
+        // №1 АР×ОВ — правит ОВ; №2 АР×ОВ — не решено; №3 АР×ВК — правит АР; №4 ОВ×ОВ — правит ОВ (обе стороны — один раздел).
+        current.Undecided.ShouldBe(1);
+        current.ByDiscipline.Select(d => (d.Discipline, d.Assigned, d.Undecided)).ShouldBe([("ОВ", 2, 1), ("АР", 1, 1)]);
     }
 
     private sealed record GeneralBody(string TimeZoneId);

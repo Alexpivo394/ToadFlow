@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../../test/renderApp';
 
@@ -14,7 +14,8 @@ const check = (partId: string, name: string, object: string, disciplines: string
 const view = (lagging: object[]) => ({
   from: '2026-10-01', to: '2026-10-31',
   current: {
-    open: 120, fake: 30, fakeShare: 0.2, byAssignee: [{ assignee: 'Both', count: 100 }, { assignee: 'SideA', count: 15 }, { assignee: 'SideB', count: 5 }],
+    open: 120, fake: 30, fakeShare: 0.2, undecided: 30,
+    byDiscipline: [{ discipline: 'ОВК', assigned: 60, undecided: 25 }, { discipline: 'КР', assigned: 20, undecided: 30 }],
     ageBuckets: [{ label: 'до 7 дней', count: 50 }, { label: '7–30 дней', count: 40 }, { label: '30–90 дней', count: 20 }, { label: 'больше 90 дней', count: 10 }],
   },
   period: { new: 40, fixed: 25, returned: 3 },
@@ -41,6 +42,18 @@ describe('Clash summary', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Неделя' }));
 
     await waitFor(() => expect(analytics().some((p) => p.get('object') === 'DON' && p.get('discipline') === 'ОВК' && p.get('from') !== null)).toBe(true));
+  });
+
+  it('Summary_LoadByDiscipline', async () => {
+    renderApp('/clash/summary', responses);
+
+    const table = await screen.findByRole('table', { name: 'На ком коллизии' });
+    expect(screen.getByText('Не решено, кто правит: 30 из 120')).toBeTruthy();
+    const ovk = within(table).getByText('ОВК').closest('tr') as HTMLElement;
+    expect(within(ovk).getByText('60')).toBeTruthy();
+    expect(within(ovk).getByText('25')).toBeTruthy();
+    expect(screen.queryByText('Кто правит')).toBeNull();
+    expect(screen.queryByText(/сторона/)).toBeNull();
   });
 
   it('Summary_LaggingRowOpensList', async () => {

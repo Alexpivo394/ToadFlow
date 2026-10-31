@@ -1170,7 +1170,6 @@ export interface ClashOverview {
   unchecked: OverviewPart[];
   spike: OverviewPart[];
   stuck: OverviewPart[];
-  pendingUsers: number;
 }
 
 export interface ClashAnalyticsView {
@@ -1180,7 +1179,8 @@ export interface ClashAnalyticsView {
     open: number;
     fake: number;
     fakeShare: number;
-    byAssignee: { assignee: CollisionAssignee; count: number }[];
+    undecided: number;
+    byDiscipline: { discipline: string; assigned: number; undecided: number }[];
     ageBuckets: { label: string; count: number }[];
   };
   period: { new: number; fixed: number; returned: number };

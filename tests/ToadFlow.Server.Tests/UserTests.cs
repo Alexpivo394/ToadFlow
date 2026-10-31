@@ -116,5 +116,25 @@ public class UserTests : ServerTest
         (await designer.PutJsonAsync($"/api/users/{target.Id}/disciplines", new[] { "АР" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    /// <summary>Имя и контакты пользователя правит координатор из карточки в «Пользователях»; проектировщик чужие — нет.</summary>
+    [Test]
+    public async Task Users_OperatorEditsContacts()
+    {
+        var coordinator = await ClientAsync(UserRole.Operator);
+        var designer = await ClientAsync(UserRole.Designer);
+        var target = await designer.GetJsonAsync<UserView>("/api/auth/me");
+
+        (await coordinator.PutJsonAsync($"/api/users/{target.Id}/contacts",
+            new { displayName = "Ольга Ковалёва", position = "ГИП ОВ", email = "olga@example.com", phone = "+7 900" })).EnsureSuccessStatusCode();
+        (await coordinator.PutJsonAsync($"/api/users/{target.Id}/contacts", new { displayName = " ", position = (string?)null })).StatusCode
+            .ShouldBe(HttpStatusCode.BadRequest);
+        (await coordinator.PutJsonAsync($"/api/users/{target.Id}/contacts", new { displayName = "О", email = "без собаки" })).StatusCode
+            .ShouldBe(HttpStatusCode.BadRequest);
+        (await designer.PutJsonAsync($"/api/users/{target.Id}/contacts", new { displayName = "Я" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var user = await DbAsync(db => db.Users.SingleAsync(u => u.Id == target.Id));
+        (user.DisplayName, user.Position, user.Email, user.Phone).ShouldBe(("Ольга Ковалёва", "ГИП ОВ", "olga@example.com", "+7 900"));
+    }
+
     private sealed record UserView(Guid Id, string Login, string DisplayName, UserRole Role);
 }

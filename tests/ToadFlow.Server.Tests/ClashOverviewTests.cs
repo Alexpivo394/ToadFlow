@@ -122,15 +122,8 @@ public class ClashOverviewTests : ServerTest
     }
 
     [Test]
-    public async Task Overview_CountsPendingUsers()
+    public async Task Overview_Viewer403()
     {
-        var admin = await AdminAsync();
-        (await Server.CreateClient().PostJsonAsync("/api/auth/register",
-            new { login = "olga", displayName = "Ольга", password = "secret-123", disciplines = new[] { "ОВ" } })).EnsureSuccessStatusCode();
-
-        var overview = await OverviewAsync(admin);
-
-        overview.PendingUsers.ShouldBe(1);
         (await (await ClientAsync(UserRole.Viewer)).GetAsync("/api/clash/overview")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 

@@ -8,14 +8,20 @@ using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Clash.Analytics;
 
-public sealed record AssigneeCount(CollisionAssignee Assignee, int Count);
+/// <summary>На ком коллизии раздела.</summary>
+/// <param name="Assigned">Открытые, которые правит этот раздел: «кто правит» — его сторона, или обе стороны из него.</param>
+/// <param name="Undecided">Открытые с другим разделом, где «кто правит» — обе стороны: ещё не договорились.</param>
+public sealed record DisciplineLoad(string Discipline, int Assigned, int Undecided);
 
 /// <param name="Label">«до 7 дней», «7–30 дней», «30–90 дней», «больше 90 дней».</param>
 public sealed record AgeBucket(string Label, int Count);
 
-/// <summary>Сейчас — прямо по коллизиям: открытые, фиктивные, «кто правит» и возраст открытых.</summary>
+/// <summary>Сейчас — прямо по коллизиям: открытые, фиктивные, на ком коллизии и возраст открытых.</summary>
 /// <param name="FakeShare">Доля фиктивных среди открытых и фиктивных, от 0 до 1.</param>
-public sealed record AnalyticsCurrent(int Open, int Fake, double FakeShare, IReadOnlyList<AssigneeCount> ByAssignee, IReadOnlyList<AgeBucket> AgeBuckets);
+/// <param name="Undecided">Открытые двух разделов, где ещё не решено, кто правит.</param>
+/// <param name="ByDiscipline">По разделам, больше всего коллизий — первым.</param>
+public sealed record AnalyticsCurrent(int Open, int Fake, double FakeShare, int Undecided, IReadOnlyList<DisciplineLoad> ByDiscipline,
+    IReadOnlyList<AgeBucket> AgeBuckets);
 
 /// <summary>Переходы за период — сумма снимков прогонов периода.</summary>
 public sealed record AnalyticsPeriod(int New, int Fixed, int Returned);
@@ -139,7 +145,30 @@ public static class AnalyticsEndpoints
     {
         var openCount = await open.CountAsync(ct);
         var fake = await collisions.CountAsync(c => c.Status == CollisionStatus.Fake, ct);
-        var byAssignee = await open.GroupBy(c => c.Assignee).Select(g => new AssigneeCount(g.Key, g.Count())).ToListAsync(ct);
+        var pairs = await open.GroupBy(c => new { c.DisciplineA, c.DisciplineB, c.Assignee })
+            .Select(g => new { g.Key.DisciplineA, g.Key.DisciplineB, g.Key.Assignee, Count = g.Count() }).ToListAsync(ct);
+        var load = new Dictionary<string, (int Assigned, int Undecided)>();
+        void Add(string discipline, int assigned, int undecided)
+        {
+            var (a, u) = load.GetValueOrDefault(discipline);
+            load[discipline] = (a + assigned, u + undecided);
+        }
+
+        foreach (var p in pairs)
+        {
+            if (p.Assignee == CollisionAssignee.SideA) Add(p.DisciplineA, p.Count, 0);
+            else if (p.Assignee == CollisionAssignee.SideB) Add(p.DisciplineB, p.Count, 0);
+            else if (p.DisciplineA == p.DisciplineB) Add(p.DisciplineA, p.Count, 0);
+            else
+            {
+                Add(p.DisciplineA, 0, p.Count);
+                Add(p.DisciplineB, 0, p.Count);
+            }
+        }
+
+        var undecided = pairs.Where(p => p.Assignee == CollisionAssignee.Both && p.DisciplineA != p.DisciplineB).Sum(p => p.Count);
+        var byDiscipline = load.Select(l => new DisciplineLoad(l.Key, l.Value.Assigned, l.Value.Undecided))
+            .OrderByDescending(l => l.Assigned + l.Undecided).ThenBy(l => l.Discipline, StringComparer.CurrentCultureIgnoreCase).ToList();
         var (d7, d30, d90) = (now.AddDays(-7), now.AddDays(-30), now.AddDays(-90));
         var ages = await open.GroupBy(c => c.CreatedAt > d7 ? 0 : c.CreatedAt > d30 ? 1 : c.CreatedAt > d90 ? 2 : 3)
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
@@ -148,8 +177,7 @@ public static class AnalyticsEndpoints
             new("до 7 дней", ages.GetValueOrDefault(0)), new("7–30 дней", ages.GetValueOrDefault(1)),
             new("30–90 дней", ages.GetValueOrDefault(2)), new("больше 90 дней", ages.GetValueOrDefault(3))
         ];
-        return new AnalyticsCurrent(openCount, fake, openCount + fake == 0 ? 0 : (double)fake / (openCount + fake),
-            Enum.GetValues<CollisionAssignee>().Select(a => byAssignee.FirstOrDefault(x => x.Assignee == a) ?? new AssigneeCount(a, 0)).ToList(), buckets);
+        return new AnalyticsCurrent(openCount, fake, openCount + fake == 0 ? 0 : (double)fake / (openCount + fake), undecided, byDiscipline, buckets);
     }
 
     private static async Task<IReadOnlyList<AnalyticsLagging>> LaggingByPartAsync(IQueryable<ClashCollision> open, IQueryable<ClashCollision> stuck,
