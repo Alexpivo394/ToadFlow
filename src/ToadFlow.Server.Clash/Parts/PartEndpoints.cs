@@ -137,9 +137,10 @@ public static class PartEndpoints
         return Results.Ok(await ViewAsync(part, models, ct));
     }
 
-    private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, ClashStorage storage, CancellationToken ct)
     {
         var deleted = await db.Set<ClashPart>().Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+        if (deleted > 0) storage.DeleteImageFolder(id);
         return deleted == 0 ? Results.NotFound() : Results.NoContent();
     }
 

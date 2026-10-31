@@ -2,6 +2,7 @@ using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Clash.Engine;
+using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Viewer;
 using ToadFlow.Server.Data;
@@ -21,6 +22,7 @@ public sealed record StatusCount(CollisionStatus Status, int Count);
 public sealed record CollisionSummary(int Total, IReadOnlyList<StatusCount> Statuses, IReadOnlyList<CheckCount> Checks);
 
 /// <param name="SuggestedPredecessorNumber">Номер коллизии, с которой стоит объединить эту; null — предложения нет.</param>
+/// <param name="ImageVersion">Версия картинки — отпечатки, по которым она нарисована (для адреса <c>/image?v=</c>); null — картинки нет.</param>
 public sealed record CollisionRow(
     Guid Id,
     int Number,
@@ -53,7 +55,8 @@ public sealed record CollisionRow(
     int FirstVersion,
     int LastFoundVersion,
     Guid? SuggestedPredecessorId,
-    int? SuggestedPredecessorNumber);
+    int? SuggestedPredecessorNumber,
+    string? ImageVersion = null);
 
 public sealed record CollisionPage(int Total, IReadOnlyList<CollisionRow> Items);
 
@@ -123,6 +126,7 @@ public static class CollisionEndpoints
         collision.MapGet("", CardAsync);
         collision.MapGet("/scene", ViewerEndpoints.CollisionSceneAsync);
         collision.MapGet("/meshes", ViewerEndpoints.CollisionMeshesAsync);
+        collision.MapGet("/image", ImageEndpoints.ImageAsync);
         collision.MapGet("/elements/{modelId}/{uniqueId}", ViewerEndpoints.CollisionElementAsync);
         var write = collision.MapGroup("").RequireAuthorization(Policies.Designer);
         write.MapPost("/status", StatusAsync);
@@ -331,7 +335,7 @@ public static class CollisionEndpoints
     ///     остаются; эта удаляется. Прежняя, если эта найдена, проходит переход «найдена». Прежняя, которую последний прогон
     ///     нашёл, не объединяется: её пара ещё есть в моделях и следующим прогоном вернулась бы новой коллизией.
     /// </summary>
-    private static async Task<IResult> MergeAsync(Guid id, CollisionMergeRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
+    private static async Task<IResult> MergeAsync(Guid id, CollisionMergeRequest request, ToadFlowDb db, ClashStorage storage, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -366,6 +370,10 @@ public static class CollisionEndpoints
             (recreated.DisciplinePair, recreated.Checks, recreated.X, recreated.Y, recreated.Z, recreated.DepthMm);
         (predecessor.FingerprintA, predecessor.FingerprintB, predecessor.FoundNow) = (recreated.FingerprintA, recreated.FingerprintB, recreated.FoundNow);
         (predecessor.LastFoundVersion, predecessor.LastFoundRunId, predecessor.UpdatedAt) = (recreated.LastFoundVersion, recreated.LastFoundRunId, now);
+        // Картинка удалённой коллизии — по нынешней геометрии пары: она переходит к прежней. Нет её — прежняя картинка устарела и
+        // перерисуется: отпечатки картинки не совпадут с новыми.
+        if (recreated.HasImage)
+            (predecessor.HasImage, predecessor.ImageFingerprintA, predecessor.ImageFingerprintB) = (true, recreated.ImageFingerprintA, recreated.ImageFingerprintB);
 
         var user = http.User.UserId();
         db.Set<ClashCollisionEvent>().Add(Event(predecessor.Id, now, user, CollisionEventKind.Merged,
@@ -384,6 +392,9 @@ public static class CollisionEndpoints
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+        if (recreated.HasImage && File.Exists(storage.ImagePath(partId, recreated.Id)))
+            File.Move(storage.ImagePath(partId, recreated.Id), storage.ImagePath(partId, predecessor.Id), overwrite: true);
+        else storage.DeleteImage(partId, recreated.Id);
         events.Publish(new ClashCollisionsChanged(http.User.Actor(), predecessor.PartId, predecessor.Id));
         return Results.Ok();
     }
@@ -467,5 +478,8 @@ public static class CollisionEndpoints
         c.ModelB, names.GetValueOrDefault(c.ModelB, c.ModelB), c.UniqueIdB, c.ElementIdB, c.DisciplineB, c.CategoryB, c.FamilyB, c.TypeB, c.LevelB,
         c.Checks, c.FirstVersion, c.LastFoundVersion,
         c.SuggestedPredecessorId is { } p && suggested.ContainsKey(p) ? p : null,
-        c.SuggestedPredecessorId is { } q && suggested.TryGetValue(q, out var number) ? number : null);
+        c.SuggestedPredecessorId is { } q && suggested.TryGetValue(q, out var number) ? number : null,
+        ImageVersionOf(c));
+
+    internal static string? ImageVersionOf(ClashCollision c) => c.HasImage ? $"{c.ImageFingerprintA:x16}{c.ImageFingerprintB:x16}" : null;
 }

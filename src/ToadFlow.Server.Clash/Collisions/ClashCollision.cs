@@ -89,6 +89,17 @@ public sealed class ClashCollision
     public int LastFoundVersion { get; set; }
     public Guid LastFoundRunId { get; set; }
 
+    /// <summary>Прогон, которым пара найдена впервые; пусто у коллизий, найденных до этапа 6.</summary>
+    public Guid? FirstRunId { get; set; }
+
+    /// <summary>Отпечатки, по которым нарисована (или не смогла нарисоваться) картинка; null — картинки ещё не было.</summary>
+    public long? ImageFingerprintA { get; set; }
+
+    public long? ImageFingerprintB { get; set; }
+
+    /// <summary>Картинка есть в хранилище (<c>ClashStorage.ImagePath</c>).</summary>
+    public bool HasImage { get; set; }
+
     /// <summary>Возможно, это прежняя коллизия с пересозданным элементом; объединяет человек.</summary>
     public Guid? SuggestedPredecessorId { get; set; }
 
@@ -139,6 +150,9 @@ public sealed class ClashCollisionEvent
     public CollisionStatus? FromStatus { get; set; }
     public CollisionStatus? ToStatus { get; set; }
     public int? Version { get; set; }
+
+    /// <summary>Прогон, сверка которого сделала запись; null — запись человека или запись до этапа 6.</summary>
+    public Guid? RunId { get; set; }
 }
 
 /// <summary>Коллизии части изменились (прогон, статус, примечание) — экрану утверждённой проверки пора обновиться. В журнал не пишется.</summary>

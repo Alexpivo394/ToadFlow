@@ -4,6 +4,7 @@ using NpgsqlTypes;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash.Analytics;
 using ToadFlow.Server.Clash.Engine;
+using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
 
@@ -18,7 +19,8 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
     private const string CollisionColumns =
         "id, part_id, number, status, assignee, found_now, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
         "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, discipline_pair, checks, x, y, z, depth_mm, " +
-        "fingerprint_a, fingerprint_b, first_version, last_found_version, last_found_run_id, suggested_predecessor_id, created_at, updated_at";
+        "fingerprint_a, fingerprint_b, first_version, last_found_version, last_found_run_id, suggested_predecessor_id, created_at, updated_at, " +
+        "first_run_id, image_fingerprint_a, image_fingerprint_b, has_image";
 
     /// <summary>
     ///     Последняя часть утверждённого прогона пришла: сверяет коллизии, закрывает прогон, делает его основой следующего.
@@ -65,12 +67,12 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                     collision.Status = next;
                     if (next != was)
                     {
-                        feed.Add(StatusEvent(collision.Id, was, next, note, version, now));
+                        feed.Add(StatusEvent(collision.Id, was, next, note, version, run.Id, now));
                         if (next == CollisionStatus.Returned) returned++;
                         moves.Add((collision, next));
                     }
 
-                    if (newVersion) feed.Add(FoundEvent(collision.Id, version, hit.DepthMm, now));
+                    if (newVersion) feed.Add(FoundEvent(collision.Id, version, hit.DepthMm, run.Id, now));
                     if (sample) samples.Add(SampleOf(collision, run, version, now));
                     updated.Add(collision);
                     continue;
@@ -84,13 +86,14 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                     Status = CollisionStatus.New,
                     Assignee = CollisionAssignee.Both,
                     FirstVersion = version,
+                    FirstRunId = run.Id,
                     CreatedAt = now
                 };
                 Fill(collision, hit, run, version, now);
                 existing[key] = collision;
                 seen.Add(collision.Id);
                 inserted.Add(collision);
-                feed.Add(FoundEvent(collision.Id, version, hit.DepthMm, now));
+                feed.Add(FoundEvent(collision.Id, version, hit.DepthMm, run.Id, now));
                 samples.Add(SampleOf(collision, run, version, now));
                 created++;
                 moves.Add((collision, CollisionStatus.New));
@@ -118,7 +121,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                 {
                     collision.Status = next;
                     collision.UpdatedAt = now;
-                    feed.Add(StatusEvent(collision.Id, was, next, null, version, now));
+                    feed.Add(StatusEvent(collision.Id, was, next, null, version, run.Id, now));
                     moves.Add((collision, next));
                     switch (next)
                     {
@@ -153,6 +156,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
 
             await CopyEventsAsync(connection, feed, ct);
             await CopySamplesAsync(connection, samples, ct);
+            await ImageJobs.QueueAsync(db, run.PartId, run.Id, ct);
 
             var counts = await db.Set<ClashCollision>().Where(c => c.PartId == run.PartId).GroupBy(c => c.Status)
                 .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
@@ -274,15 +278,16 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         return existing.GetValueOrDefault((a.Item1, a.Item2, b.Item1, b.Item2));
     }
 
-    private static ClashCollisionEvent StatusEvent(Guid id, CollisionStatus from, CollisionStatus to, string? note, int version, DateTimeOffset now) => new()
+    private static ClashCollisionEvent StatusEvent(Guid id, CollisionStatus from, CollisionStatus to, string? note, int version, Guid runId,
+        DateTimeOffset now) => new()
     {
-        Id = Guid.CreateVersion7(), CollisionId = id, At = now, Kind = CollisionEventKind.Status, FromStatus = from, ToStatus = to, Version = version,
+        Id = Guid.CreateVersion7(), CollisionId = id, At = now, Kind = CollisionEventKind.Status, FromStatus = from, ToStatus = to, Version = version, RunId = runId,
         Text = note ?? ""
     };
 
-    private static ClashCollisionEvent FoundEvent(Guid id, int version, float depth, DateTimeOffset now) => new()
+    private static ClashCollisionEvent FoundEvent(Guid id, int version, float depth, Guid runId, DateTimeOffset now) => new()
     {
-        Id = Guid.CreateVersion7(), CollisionId = id, At = now, Kind = CollisionEventKind.Found, Version = version,
+        Id = Guid.CreateVersion7(), CollisionId = id, At = now, Kind = CollisionEventKind.Found, Version = version, RunId = runId,
         Text = $"Найдена версией {version}, глубина {depth:0} мм"
     };
 
@@ -322,6 +327,11 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             else await importer.WriteNullAsync(ct);
             await importer.WriteAsync(c.CreatedAt, NpgsqlDbType.TimestampTz, ct);
             await importer.WriteAsync(c.UpdatedAt, NpgsqlDbType.TimestampTz, ct);
+            if (c.FirstRunId is { } firstRun) await importer.WriteAsync(firstRun, NpgsqlDbType.Uuid, ct);
+            else await importer.WriteNullAsync(ct);
+            await WriteNullableAsync(importer, c.ImageFingerprintA, ct);
+            await WriteNullableAsync(importer, c.ImageFingerprintB, ct);
+            await importer.WriteAsync(c.HasImage, NpgsqlDbType.Boolean, ct);
         }
 
         await importer.CompleteAsync(ct);
@@ -341,6 +351,12 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         await WriteNullableAsync(importer, level, ct);
     }
 
+    private static async Task WriteNullableAsync(NpgsqlBinaryImporter importer, long? value, CancellationToken ct)
+    {
+        if (value is { } number) await importer.WriteAsync(number, NpgsqlDbType.Bigint, ct);
+        else await importer.WriteNullAsync(ct);
+    }
+
     private static async Task WriteNullableAsync(NpgsqlBinaryImporter importer, string? value, CancellationToken ct)
     {
         if (value is null) await importer.WriteNullAsync(ct);
@@ -351,7 +367,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
     {
         if (rows.Count == 0) return;
         await using var importer = await connection.BeginBinaryImportAsync(
-            "COPY clash_collision_events (id, collision_id, at, user_id, kind, text, from_status, to_status, version) FROM STDIN (FORMAT BINARY)", ct);
+            "COPY clash_collision_events (id, collision_id, at, user_id, kind, text, from_status, to_status, version, run_id) FROM STDIN (FORMAT BINARY)", ct);
         foreach (var e in rows)
         {
             await importer.StartRowAsync(ct);
@@ -365,6 +381,8 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             await WriteNullableAsync(importer, e.FromStatus?.ToString(), ct);
             await WriteNullableAsync(importer, e.ToStatus?.ToString(), ct);
             if (e.Version is { } version) await importer.WriteAsync(version, NpgsqlDbType.Integer, ct);
+            else await importer.WriteNullAsync(ct);
+            if (e.RunId is { } eventRun) await importer.WriteAsync(eventRun, NpgsqlDbType.Uuid, ct);
             else await importer.WriteNullAsync(ct);
         }
 

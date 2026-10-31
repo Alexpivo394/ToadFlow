@@ -439,6 +439,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("fingerprint_b");
 
+                    b.Property<Guid?>("FirstRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("first_run_id");
+
                     b.Property<int>("FirstVersion")
                         .HasColumnType("integer")
                         .HasColumnName("first_version");
@@ -446,6 +450,18 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<bool>("FoundNow")
                         .HasColumnType("boolean")
                         .HasColumnName("found_now");
+
+                    b.Property<bool>("HasImage")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_image");
+
+                    b.Property<long?>("ImageFingerprintA")
+                        .HasColumnType("bigint")
+                        .HasColumnName("image_fingerprint_a");
+
+                    b.Property<long?>("ImageFingerprintB")
+                        .HasColumnType("bigint")
+                        .HasColumnName("image_fingerprint_b");
 
                     b.Property<Guid>("LastFoundRunId")
                         .HasColumnType("uuid")
@@ -543,6 +559,9 @@ namespace ToadFlow.Server.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Checks"), "gin");
 
+                    b.HasIndex("PartId", "LastFoundRunId")
+                        .HasDatabaseName("ix_clash_collisions_part_id_last_found_run_id");
+
                     b.HasIndex("PartId", "Number")
                         .IsUnique()
                         .HasDatabaseName("ix_clash_collisions_part_id_number");
@@ -582,6 +601,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("kind");
 
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasColumnType("text")
@@ -602,6 +625,10 @@ namespace ToadFlow.Server.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_clash_collision_events");
+
+                    b.HasIndex("RunId")
+                        .HasDatabaseName("ix_clash_collision_events_run_id")
+                        .HasFilter("run_id IS NOT NULL");
 
                     b.HasIndex("CollisionId", "At")
                         .HasDatabaseName("ix_clash_collision_events_collision_id_at");
@@ -933,6 +960,34 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasDatabaseName("ix_clash_engine_runs_state_created_at");
 
                     b.ToTable("clash_engine_runs", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Images.ClashImageJob", b =>
+                {
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
+
+                    b.HasKey("PartId")
+                        .HasName("pk_clash_image_jobs");
+
+                    b.ToTable("clash_image_jobs", (string)null);
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashDraftVersion", b =>
@@ -2216,6 +2271,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_engine_runs_clash_parts_part_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Images.ClashImageJob", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_image_jobs_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashDraftVersion", b =>

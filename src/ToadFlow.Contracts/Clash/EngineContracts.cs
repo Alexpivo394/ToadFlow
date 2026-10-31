@@ -104,6 +104,32 @@ public sealed record EngineIdentityMatch(string Model, string OldUniqueId, strin
 /// <param name="Retry">Сбой может не повториться (сеть, ввод-вывод): прогон вернётся в очередь, пока есть попытки.</param>
 public sealed record EngineFailure(Guid RunId, string Error, bool Retry);
 
+/// <summary>Задание картинок части: прогон, коллизии которого рисуются, и его слепки.</summary>
+public sealed record EngineImageAssignment(Guid PartId, Guid RunId, IReadOnlyList<EngineRunModel> Models);
+
+/// <summary>Коллизия, которой нужна картинка. Точка — абсолютные мм в общей системе; отпечатки — те, по которым рисуется картинка.</summary>
+/// <param name="ModelA">Id модели в форме <c>N</c> — <c>ModelKey</c> слепка.</param>
+public sealed record EngineImageRequest(
+    Guid CollisionId,
+    string ModelA,
+    string UniqueIdA,
+    string ModelB,
+    string UniqueIdB,
+    double X,
+    double Y,
+    double Z,
+    long FingerprintA,
+    long FingerprintB);
+
+/// <summary>Пачка коллизий задания; пустая — рисовать больше нечего.</summary>
+public sealed record EngineImageBatch(Guid RunId, IReadOnlyList<EngineImageRequest> Items);
+
+/// <summary>Строка манифеста сданной пачки: картинка коллизии нарисована (<paramref name="Ok" />) или нарисовать нельзя.</summary>
+public sealed record EngineImageResult(Guid CollisionId, long FingerprintA, long FingerprintB, bool Ok);
+
+/// <param name="Yield">Работник уступает задание прогону движка: попытка не засчитывается.</param>
+public sealed record EngineImageFailure(string Error, bool Yield = false);
+
 /// <summary>Правила протокола работника движка.</summary>
 public static class EngineApi
 {
@@ -118,4 +144,10 @@ public static class EngineApi
 
     /// <summary>Прогон утверждённой версии.</summary>
     public const string Approved = "Approved";
+
+    /// <summary>Сколько коллизий в одной пачке картинок.</summary>
+    public const int ImageBatchSize = 200;
+
+    /// <summary>Часть multipart-сдачи картинок с манифестом (JSON-массив <see cref="EngineImageResult" />).</summary>
+    public const string ImageManifestPart = "manifest";
 }

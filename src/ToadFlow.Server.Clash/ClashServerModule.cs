@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication;
 using ToadFlow.Server.Clash.Analytics;
 using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
+using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Overview;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Projects;
@@ -163,6 +164,7 @@ public sealed class ClashServerModule : IServerModule
             entity.HasIndex(c => new { c.PartId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB }).IsUnique();
             entity.HasIndex(c => new { c.PartId, c.Number }).IsUnique();
             entity.HasIndex(c => new { c.PartId, c.Status });
+            entity.HasIndex(c => new { c.PartId, c.LastFoundRunId });
             entity.HasIndex(c => c.Checks).HasMethod("gin");
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(c => c.PartId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -179,7 +181,15 @@ public sealed class ClashServerModule : IServerModule
             entity.ToTable("clash_collision_events");
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.HasIndex(e => new { e.CollisionId, e.At });
+            entity.HasIndex(e => e.RunId).HasFilter("run_id IS NOT NULL");
             entity.HasOne<ClashCollision>().WithMany().HasForeignKey(e => e.CollisionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ClashImageJob>(entity =>
+        {
+            entity.ToTable("clash_image_jobs");
+            entity.HasKey(j => j.PartId);
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(j => j.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<ClashUserState>(entity =>
@@ -198,7 +208,11 @@ public sealed class ClashServerModule : IServerModule
         });
     }
 
-    public void MapExternalEndpoints(IEndpointRouteBuilder app) => app.MapClashEngine();
+    public void MapExternalEndpoints(IEndpointRouteBuilder app)
+    {
+        app.MapClashEngine();
+        app.MapClashImages();
+    }
 
     public void MapEndpoints(RouteGroupBuilder api)
     {

@@ -81,6 +81,7 @@ public class AuthorizationMatrixTests : ServerTest
         var members = routes.Where(route => !route.staff && !route.path.StartsWith("/api/agent/") && !route.path.StartsWith("/api/engine/"))
             .Select(route => $"{route.method} {route.path}").ToList();
         members.ShouldContain("GET /api/clash/collisions/{id:guid}");
+        members.ShouldContain("GET /api/clash/collisions/{id:guid}/image");
         members.ShouldContain("GET /api/clash/parts/{id:guid}/approved/collisions");
         members.ShouldContain("GET /api/clash/parts/{id:guid}/versions");
         members.ShouldContain("POST /api/clash/collisions/{id:guid}/status");
