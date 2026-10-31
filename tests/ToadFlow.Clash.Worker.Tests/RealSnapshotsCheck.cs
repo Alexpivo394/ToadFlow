@@ -113,6 +113,7 @@ public class RealSnapshotsCheck : ServerTest
         (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = "всё против всего, 20 мм", run = true })).EnsureSuccessStatusCode();
         var first = await RunAsync("v1, первый прогон");
         await DrawImagesAsync(partId, report);
+        await ReportV1Async(admin, first.Run.Run.RunId, report);
         var numbers = (await admin.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions?status=all&pageSize=200")).Items
             .ToDictionary(c => (c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB), c => c.Number);
 
@@ -251,8 +252,47 @@ public class RealSnapshotsCheck : ServerTest
     }
 
     /// <summary>
+    ///     Отчёт первого прогона: время шапки и первой страницы «изменений», выгрузка Excel по всей части и HTML по паре ОВК × КР
+    ///     (время, размер; файлы — в <c>%TEMP%\toadclash-report-sample</c>), текст для чата.
+    /// </summary>
+    private static async Task ReportV1Async(HttpClient admin, Guid runId, StringBuilder report)
+    {
+        const string web = "http://toadflow.local";
+        var watch = Stopwatch.StartNew();
+        var view = await admin.GetJsonAsync<ToadFlow.Server.Clash.Reports.ReportView>($"/api/clash/reports/{runId}");
+        var header = watch.Elapsed;
+        watch.Restart();
+        var page = await admin.GetJsonAsync<ToadFlow.Server.Clash.Reports.ReportPage>($"/api/clash/reports/{runId}/collisions?scope=changes&pageSize=50");
+        var firstPage = watch.Elapsed;
+        report.AppendLine($"Отчёт v1: шапка {header.TotalSeconds:0.00} с, первая страница изменений {firstPage.TotalSeconds:0.00} с (строк {page.Total:N0}); " +
+                          $"пары: {string.Join(", ", view.Pairs.OrderByDescending(p => p.Open).Take(3).Select(p => $"{p.Pair} {p.Open:N0}"))}");
+
+        var sample = Path.Combine(Path.GetTempPath(), "toadclash-report-sample");
+        Directory.CreateDirectory(sample);
+        async Task<(TimeSpan Elapsed, long Bytes)> DownloadAsync(string url, string file)
+        {
+            var timer = Stopwatch.StartNew();
+            using var response = await admin.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            await using (var output = File.Create(Path.Combine(sample, file)))
+                await response.Content.CopyToAsync(output);
+            return (timer.Elapsed, new FileInfo(Path.Combine(sample, file)).Length);
+        }
+
+        var xlsx = await DownloadAsync($"/api/clash/reports/{runId}/export.xlsx?scope=changes&baseUrl={web}", "report-v1.xlsx");
+        report.AppendLine($"  Excel по всей части ({page.Total:N0} строк): {xlsx.Elapsed.TotalSeconds:0.0} с, {xlsx.Bytes / 1024.0 / 1024:0.0} МБ");
+        var pair = view.Pairs.First(p => p.Pair.Contains("ОВК") && p.Pair.Contains("КР")).Pair;
+        var html = await DownloadAsync($"/api/clash/reports/{runId}/export.html?scope=changes&pair={Uri.EscapeDataString(pair)}&baseUrl={web}", "report-v1-ovk-kr.html");
+        var pairRows = view.Pairs.First(p => p.Pair == pair);
+        report.AppendLine($"  HTML по паре {pair} ({pairRows.New:N0} новых): {html.Elapsed.TotalSeconds:0.0} с, {html.Bytes / 1024.0 / 1024:0.0} МБ");
+        var chat = await admin.GetJsonAsync<ToadFlow.Server.Clash.Reports.ChatMessageView>($"/api/clash/reports/{runId}/chat?baseUrl={web}");
+        report.AppendLine("  Текст для чата:");
+        foreach (var line in chat.Text.Split('\n')) report.AppendLine($"    {line}");
+    }
+
+    /// <summary>
     ///     Картинки всех коллизий части после первого прогона: время, среднее на картинку на поток, размер PNG и пик памяти процесса за
-    ///     время рисования (замер по рабочему набору раз в 200 мс). Пять случайных картинок — в <c>%TEMP%	oadclash-images-sample</c>.
+    ///     время рисования (замер по рабочему набору раз в 200 мс). Пять случайных картинок — в <c>%TEMP%\toadclash-images-sample</c>.
     /// </summary>
     private async Task DrawImagesAsync(Guid partId, StringBuilder report)
     {
