@@ -17,9 +17,9 @@ public static class ReportEndpoints
         report.MapGet("/collisions", CollisionsAsync);
         report.MapGet("/chat", ChatAsync);
         report.MapGet("/export.xlsx", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
-            ClashStorage storage, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "xlsx", http, reports, general, storage, ct));
+            Data.ToadFlowDb db, Images.CollisionImages collisionImages, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "xlsx", http, reports, general, db, collisionImages, ct));
         report.MapGet("/export.html", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
-            ClashStorage storage, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "html", http, reports, general, storage, ct));
+            Data.ToadFlowDb db, Images.CollisionImages collisionImages, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "html", http, reports, general, db, collisionImages, ct));
         members.MapGet("/clash/parts/{id:guid}/approved/runs", async (Guid id, RunReports reports, CancellationToken ct) =>
             Results.Ok(await reports.RunsAsync(id, ct)));
     }
@@ -49,7 +49,7 @@ public static class ReportEndpoints
     ///     Выгрузка отчёта с фильтрами страницы: строки читаются из базы потоком и пишутся в тело ответа, не собираясь в памяти.
     /// </summary>
     private static async Task<IResult> ExportAsync(Guid runId, string? scope, string? sort, string? baseUrl, string format, HttpContext http,
-        RunReports reports, ISettingsStore general, ClashStorage storage, CancellationToken ct)
+        RunReports reports, ISettingsStore general, Data.ToadFlowDb db, Images.CollisionImages collisionImages, CancellationToken ct)
     {
         if (WebBase(baseUrl) is not { } web) return BadBaseUrl();
         if (await reports.ContextAsync(runId, ct) is not { } context || await reports.ViewAsync(runId, ct) is not { } view) return Results.NotFound();
@@ -68,15 +68,29 @@ public static class ReportEndpoints
         else
         {
             var total = await rows.CountAsync(ct);
-            var partId = context.Run.PartId;
-            await ReportHtml.WriteAsync(body, view, Export(rows, context, ct), total, async (row, token) =>
-            {
-                var path = ClashStorage.ImagePath(storage.Root, partId, row.Id, row.ImageVersion);
-                return File.Exists(path) ? await File.ReadAllBytesAsync(path, token) : null;
-            }, web, zone, ct);
+            var images = await RenderImagesAsync(rows, db, collisionImages, ct);
+            await ReportHtml.WriteAsync(body, view, Export(rows, context, ct), total,
+                (row, _) => Task.FromResult(images.GetValueOrDefault(row.Id)), web, zone, ct);
         }
 
         return Results.Empty;
+    }
+
+    /// <summary>
+    ///     Картинки первых <see cref="ReportHtml.MaxImages" /> строк выборки: готовые берутся из кеша, недостающие рисуются (число
+    ///     одновременных отрисовок ограничено в <see cref="Images.CollisionImages" />). Строки без картинки (404, 410) в словаре не появляются.
+    /// </summary>
+    private static async Task<Dictionary<Guid, byte[]>> RenderImagesAsync(IQueryable<ReportRowSource> rows, Data.ToadFlowDb db,
+        Images.CollisionImages images, CancellationToken ct)
+    {
+        var ids = await rows.Select(r => r.Collision.Id).Take(ReportHtml.MaxImages).ToListAsync(ct);
+        var targets = await Images.ImageTargets.LoadAsync(db, ids, ct);
+        var results = await Task.WhenAll(targets.Values.Select(async target => (target.CollisionId, Result: await images.GetAsync(target, ct))));
+        var bytes = new Dictionary<Guid, byte[]>(results.Length);
+        foreach (var (id, result) in results)
+            if (result.Status == StatusCodes.Status200OK)
+                bytes[id] = await File.ReadAllBytesAsync(result.Path!, ct);
+        return bytes;
     }
 
     private static async IAsyncEnumerable<ReportExportRow> Export(IQueryable<ReportRowSource> rows, ReportContext context,

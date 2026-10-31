@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Xml;
+using Alexpivo394.Revit.Clash.Geometry;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -41,6 +42,44 @@ public class ClashReportExportTests : ServerTest
             response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         }
 
+        return (admin, agent, partId, runId);
+    }
+
+    private static ElementInfo Info(string uid) => new(uid, uid.Length, "OST_GenericModel", "Семейство", "Тип", "Этаж 1", null, []);
+
+    /// <summary>
+    ///     Часть АР + ОВ на настоящих слепках (кубы <c>a1…aN</c> и <c>b1…bN</c> через 1 м, ОВ сдвинуты на 50 мм) и утверждённый прогон
+    ///     из <paramref name="count" /> пар. <paramref name="uniqueIdA" /> подменяет элемент A у пары. Картинок в кеше нет.
+    /// </summary>
+    private async Task<(HttpClient Admin, FakeAgent Agent, Guid PartId, Guid RunId)> RenderableRunAsync(int count, Func<int, string?>? uniqueIdA = null)
+    {
+        var admin = await AdminAsync();
+        var agent = await FakeAgent.RegisterAsync(Server, admin);
+        await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
+        ModelGeometry Geometry(string name, string key)
+        {
+            var isAr = name.Contains("_AR");
+            var elements = Enumerable.Range(1, count)
+                .Select(i => ClashFixtures.Box(Info((isAr ? "a" : "b") + i), (i - 1) * 1000 + (isAr ? 0 : 50), 0, 0, 100)).ToArray();
+            return new ModelGeometry(new ModelHeader(key, name, 2022, DateTimeOffset.UtcNow, true, "Navisworks", 0, 0, 0), elements,
+                elements.Select(e => e.Info.UniqueId).ToArray());
+        }
+
+        var partId = await PartAsync(Server, admin, agent, ["POL_K1_AR.rvt", "POL_K1_OV.rvt"], Geometry);
+        var models = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models;
+        var ar = models.Single(m => m.Discipline == "АР").ModelId.ToString("N");
+        var ov = models.Single(m => m.Discipline == "ОВ").ModelId.ToString("N");
+        var hits = Enumerable.Range(1, count).Select(i => Hit(i, ar, ov) with
+        {
+            UniqueIdA = uniqueIdA?.Invoke(i) ?? "a" + i, UniqueIdB = "b" + i, X = (i - 1) * 1000 + 75.0, Y = 50, Z = 50, DepthMm = 50
+        }).ToList();
+
+        var engine = EngineClient(Server);
+        var approve = await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = (string?)null, run = true });
+        var runId = (await approve.ReadJsonAsync<ApprovedVersionView>()).RunId.ShouldNotBeNull();
+        (await engine.PostAsync("/api/engine/runs/claim", null)).EnsureSuccessStatusCode();
+        var response = await PostApprovedResultAsync(engine, runId, 0, true, hits, Stats, [], []);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         return (admin, agent, partId, runId);
     }
 
@@ -174,6 +213,68 @@ public class ClashReportExportTests : ServerTest
         Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(ReportHtml.MaxImages);
         html.ShouldContain("картинки — у первых 500 из 520");
         Regex.Matches(html, "<tr class=\"row\"").Count.ShouldBe(20);
+    }
+
+    [Test]
+    public async Task ExportHtml_RendersMissingImages()
+    {
+        var (admin, agent, _, runId) = await RenderableRunAsync(3);
+        await using var _ = agent;
+        var images = Server.Services.GetRequiredService<CollisionImages>();
+        var before = images.Renders;
+
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+
+        Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(3);
+        (images.Renders - before).ShouldBe(3);
+    }
+
+    [Test]
+    public async Task ExportHtml_MissingElement_RowWithoutImage()
+    {
+        var (admin, agent, _, runId) = await RenderableRunAsync(3, i => i == 2 ? "missing" : null);
+        await using var _ = agent;
+
+        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var html = await response.Content.ReadAsStringAsync();
+        Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(2);
+        Regex.Matches(html, "нет картинки").Count.ShouldBe(1);
+    }
+
+    [Test]
+    public async Task ExportXlsx_10kRows_StreamedAllRows()
+    {
+        var (admin, agent, _, runId) = await RunAsync(Hits(10_000));
+        await using var __ = agent;
+        GC.Collect();
+        var before = GC.GetTotalMemory(true);
+        long peak = 0;
+        using var stop = new CancellationTokenSource();
+        var sampler = Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                peak = Math.Max(peak, GC.GetTotalMemory(false));
+                await Task.Delay(20);
+            }
+        });
+
+        var file = Path.GetTempFileName();
+        using (var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.xlsx?scope=changes&baseUrl={Base}", HttpCompletionOption.ResponseHeadersRead))
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            await using var target = File.Create(file);
+            await (await response.Content.ReadAsStreamAsync()).CopyToAsync(target);
+        }
+
+        await stop.CancelAsync();
+        await sampler;
+        var growth = peak - before;
+        SheetRows(await File.ReadAllBytesAsync(file)).Count.ShouldBe(10_001);
+        growth.ShouldBeLessThan(64L * 1024 * 1024);
+        File.Delete(file);
     }
 
     [Test]
