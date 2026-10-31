@@ -13,7 +13,6 @@
         <PackageReference Include="Alexpivo394.Revit.Clash.Engine"/>
         <PackageReference Include="Alexpivo394.Revit.Clash.Geometry"/>
         <PackageReference Include="Alexpivo394.Revit.Clash.Rules"/>
-        <PackageReference Include="Alexpivo394.Revit.Clash.Render"/>
     </ItemGroup>
 
     <ItemGroup>

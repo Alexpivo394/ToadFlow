@@ -22,7 +22,7 @@ public sealed class ClashStorage(ToadFlowDb db, IOptions<ClashStorageOptions> op
 
     public string UploadFolder(Guid uploadId) => Path.Combine(Root, "uploads", uploadId.ToString("N"));
 
-    /// <summary>Картинки коллизий части: <c>{Root}/images/{часть}/{коллизия}.png</c>.</summary>
+    /// <summary>Картинки коллизий части: <c>{Root}/images/{часть}/{коллизия}-{версия}.png</c>.</summary>
     public string ImageFolder(Guid partId) => Path.Combine(Root, "images", partId.ToString("N"));
 
     public string ImagePath(Guid partId, Guid collisionId) => Path.Combine(ImageFolder(partId), collisionId.ToString("N") + ".png");
@@ -49,6 +49,61 @@ public sealed class ClashStorage(ToadFlowDb db, IOptions<ClashStorageOptions> op
     {
         var path = ImagePath(partId, collisionId);
         if (File.Exists(path)) File.Delete(path);
+    }
+
+    /// <summary>Картинка версии <paramref name="version" />: <c>{root}/images/{часть}/{коллизия}-{версия}.png</c>.</summary>
+    public static string ImagePath(string root, Guid partId, Guid collisionId, string version) =>
+        Path.Combine(root, "images", partId.ToString("N"), $"{collisionId:N}-{version}.png");
+
+    /// <summary>Пишет картинку версии атомарно (временный файл той же папки, затем перенос) и удаляет другие версии коллизии.</summary>
+    public Task WriteImageAsync(Guid partId, Guid collisionId, string version, Stream content, CancellationToken ct) =>
+        WriteImageAsync(Root, partId, collisionId, version, content, ct);
+
+    /// <summary>Все версии картинки коллизии.</summary>
+    public void DeleteImages(Guid partId, Guid collisionId) => DeleteImages(Root, partId, collisionId, keep: null);
+
+    internal static async Task WriteImageAsync(string root, Guid partId, Guid collisionId, string version, Stream content, CancellationToken ct)
+    {
+        var path = ImagePath(root, partId, collisionId, version);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+                await content.CopyToAsync(file, ct);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+
+        DeleteImages(root, partId, collisionId, keep: path);
+    }
+
+    /// <summary>
+    ///     Удаляет картинки коллизии, кроме <paramref name="keep" />: версии <c>{коллизия}-*.png</c> и прежнюю без версии. Файл, который
+    ///     система не даёт удалить (его сейчас отдают), остаётся: устаревшую версию никто не попросит, её удалит следующая запись.
+    /// </summary>
+    private static void DeleteImages(string root, Guid partId, Guid collisionId, string? keep)
+    {
+        var folder = Path.Combine(root, "images", partId.ToString("N"));
+        if (!Directory.Exists(folder)) return;
+        var name = collisionId.ToString("N");
+        foreach (var file in Directory.EnumerateFiles(folder, name + "*"))
+        {
+            var fileName = Path.GetFileName(file);
+            if (!fileName.EndsWith(".png", StringComparison.Ordinal)) continue;
+            if (fileName != name + ".png" && !fileName.StartsWith(name + "-", StringComparison.Ordinal)) continue;
+            if (keep is not null && string.Equals(Path.GetFullPath(file), Path.GetFullPath(keep), StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
     }
 
     public void DeleteImageFolder(Guid partId)

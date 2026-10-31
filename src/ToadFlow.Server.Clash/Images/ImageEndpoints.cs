@@ -205,16 +205,33 @@ public static class ImageEndpoints
         return Results.Ok();
     }
 
-    /// <summary>Картинка коллизии для веба; адрес несёт версию (отпечатки), поэтому ответ кешируется навсегда.</summary>
-    internal static async Task<IResult> ImageAsync(Guid id, ToadFlowDb db, ClashStorage storage, HttpContext http, CancellationToken ct)
+    /// <summary>
+    ///     Картинка коллизии: из кеша или нарисованная по запросу. Навсегда кешируется только ответ на адрес с текущей версией
+    ///     (<c>?v=</c>); без версии или с устаревшей — <c>no-cache</c>. Нет картинки — 404 или 410 с причиной.
+    /// </summary>
+    internal static async Task<IResult> ImageAsync(Guid id, string? v, ToadFlowDb db, CollisionImages images, HttpContext http, CancellationToken ct)
     {
-        var collision = await db.Set<ClashCollision>().AsNoTracking().Where(c => c.Id == id).Select(c => new { c.PartId, c.HasImage })
-            .SingleOrDefaultAsync(ct);
-        if (collision is not { HasImage: true }) return Results.NotFound();
-        var path = storage.ImagePath(collision.PartId, id);
-        if (!File.Exists(path)) return Results.NotFound();
-        http.Response.Headers.CacheControl = CacheControl;
-        return Results.File(path, "image/png");
+        if (!(await ImageTargets.LoadAsync(db, [id], ct)).TryGetValue(id, out var target))
+            return Results.NotFound(new { error = "коллизия не найдена" });
+
+        // Файл версии может удалить запись более новой версии между ответом кеша и чтением: тогда спросить ещё раз.
+        for (var attempt = 0; ; attempt++)
+        {
+            var result = await images.GetAsync(target, ct);
+            if (result.Status != StatusCodes.Status200OK) return Results.Json(new { error = result.Error }, statusCode: result.Status);
+            FileStream file;
+            try
+            {
+                file = new FileStream(result.Path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+            }
+            catch (Exception exception) when (attempt == 0 && exception is FileNotFoundException or DirectoryNotFoundException)
+            {
+                continue;
+            }
+
+            http.Response.Headers.CacheControl = v == target.Version ? CacheControl : "no-cache";
+            return Results.Stream(file, "image/png");
+        }
     }
 
     private static IResult Stale() => Results.Conflict(new { error = "Задание картинок переключено на другой прогон или снято" });

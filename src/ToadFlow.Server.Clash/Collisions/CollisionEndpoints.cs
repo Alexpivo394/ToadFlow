@@ -22,7 +22,7 @@ public sealed record StatusCount(CollisionStatus Status, int Count);
 public sealed record CollisionSummary(int Total, IReadOnlyList<StatusCount> Statuses, IReadOnlyList<CheckCount> Checks);
 
 /// <param name="SuggestedPredecessorNumber">Номер коллизии, с которой стоит объединить эту; null — предложения нет.</param>
-/// <param name="ImageVersion">Версия картинки — отпечатки, по которым она нарисована (для адреса <c>/image?v=</c>); null — картинки нет.</param>
+/// <param name="ImageVersion">Версия картинки (<see cref="ImageTarget.Version" />) для адреса <c>/image?v=</c>; картинка рисуется по запросу.</param>
 public sealed record CollisionRow(
     Guid Id,
     int Number,
@@ -56,7 +56,7 @@ public sealed record CollisionRow(
     int LastFoundVersion,
     Guid? SuggestedPredecessorId,
     int? SuggestedPredecessorNumber,
-    string? ImageVersion = null);
+    string ImageVersion);
 
 public sealed record CollisionPage(int Total, IReadOnlyList<CollisionRow> Items);
 
@@ -335,10 +335,6 @@ public static class CollisionEndpoints
             (recreated.DisciplinePair, recreated.Checks, recreated.X, recreated.Y, recreated.Z, recreated.DepthMm);
         (predecessor.FingerprintA, predecessor.FingerprintB, predecessor.FoundNow) = (recreated.FingerprintA, recreated.FingerprintB, recreated.FoundNow);
         (predecessor.LastFoundVersion, predecessor.LastFoundRunId, predecessor.UpdatedAt) = (recreated.LastFoundVersion, recreated.LastFoundRunId, now);
-        // Картинка удалённой коллизии — по нынешней геометрии пары: она переходит к прежней. Нет её — прежняя картинка устарела и
-        // перерисуется: отпечатки картинки не совпадут с новыми.
-        if (recreated.HasImage)
-            (predecessor.HasImage, predecessor.ImageFingerprintA, predecessor.ImageFingerprintB) = (true, recreated.ImageFingerprintA, recreated.ImageFingerprintB);
 
         var user = http.User.UserId();
         db.Set<ClashCollisionEvent>().Add(Event(predecessor.Id, now, user, CollisionEventKind.Merged,
@@ -357,9 +353,8 @@ public static class CollisionEndpoints
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        if (recreated.HasImage && File.Exists(storage.ImagePath(partId, recreated.Id)))
-            File.Move(storage.ImagePath(partId, recreated.Id), storage.ImagePath(partId, predecessor.Id), overwrite: true);
-        else storage.DeleteImage(partId, recreated.Id);
+        // У прежней теперь пара и прогон удалённой — другая версия картинки, она нарисуется по запросу. Картинки удалённой не нужны.
+        storage.DeleteImages(partId, recreated.Id);
         events.Publish(new ClashCollisionsChanged(http.User.Actor(), predecessor.PartId, predecessor.Id));
         return Results.Ok();
     }
@@ -446,5 +441,5 @@ public static class CollisionEndpoints
         c.SuggestedPredecessorId is { } q && suggested.TryGetValue(q, out var number) ? number : null,
         ImageVersionOf(c));
 
-    internal static string? ImageVersionOf(ClashCollision c) => c.HasImage ? $"{c.ImageFingerprintA:x16}{c.ImageFingerprintB:x16}" : null;
+    internal static string ImageVersionOf(ClashCollision c) => ImageTarget.VersionOf(c);
 }

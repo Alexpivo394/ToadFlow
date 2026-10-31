@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <PackageReference Include="Alexpivo394.Revit.Clash.Geometry"/>
+        <PackageReference Include="Alexpivo394.Revit.Clash.Render"/>
         <PackageReference Include="Alexpivo394.Revit.Clash.Rules"/>
         <PackageReference Include="Alexpivo394.Revit.ParamCheck.Profiles"/>
     </ItemGroup>

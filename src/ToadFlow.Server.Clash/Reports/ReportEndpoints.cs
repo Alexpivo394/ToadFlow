@@ -69,9 +69,9 @@ public static class ReportEndpoints
         {
             var total = await rows.CountAsync(ct);
             var partId = context.Run.PartId;
-            await ReportHtml.WriteAsync(body, view, Export(rows, context, ct), total, async (id, token) =>
+            await ReportHtml.WriteAsync(body, view, Export(rows, context, ct), total, async (row, token) =>
             {
-                var path = storage.ImagePath(partId, id);
+                var path = ClashStorage.ImagePath(storage.Root, partId, row.Id, row.ImageVersion);
                 return File.Exists(path) ? await File.ReadAllBytesAsync(path, token) : null;
             }, web, zone, ct);
         }

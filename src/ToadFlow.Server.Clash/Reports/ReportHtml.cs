@@ -50,7 +50,7 @@ public static class ReportHtml
     /// <param name="total">Сколько строк всего по фильтру — для пометки о картинках.</param>
     /// <param name="image">Картинка коллизии; null — картинки нет.</param>
     public static async Task WriteAsync(Stream output, ReportView report, IAsyncEnumerable<ReportExportRow> rows, int total,
-        Func<Guid, CancellationToken, Task<byte[]?>> image, string webBase, TimeZoneInfo zone, CancellationToken ct)
+        Func<CollisionRow, CancellationToken, Task<byte[]?>> image, string webBase, TimeZoneInfo zone, CancellationToken ct)
     {
         await using var writer = new StreamWriter(output, new UTF8Encoding(false), 64 * 1024, leaveOpen: true);
         var check = report.Check.Object is { Length: > 0 } project ? $"{project} · {report.Check.Name}" : report.Check.Name;
@@ -95,7 +95,7 @@ public static class ReportHtml
         var tableOpen = false;
         await foreach (var row in rows.WithCancellation(ct))
         {
-            if (index < MaxImages) await CardAsync(writer, row, await image(row.Row.Collision.Id, ct), webBase, report.Run.PartId);
+            if (index < MaxImages) await CardAsync(writer, row, await image(row.Row.Collision, ct), webBase, report.Run.PartId);
             else
             {
                 if (!tableOpen)

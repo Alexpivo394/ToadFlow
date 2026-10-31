@@ -49,6 +49,9 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<PartElements>();
         services.AddScoped<IDisciplineSource, PartDisciplines>();
         services.AddSingleton<PartElementsCache>();
+        services.AddOptions<CollisionImageOptions>().Configure<IConfiguration>((options, configuration) =>
+            options.Threads = configuration.GetValue<int>("Clash:ImageThreads"));
+        services.AddSingleton<CollisionImages>();
         services.AddSingleton<PartPresence>();
         services.AddScoped<DraftHits>();
         services.AddScoped<ApprovedRuns>();

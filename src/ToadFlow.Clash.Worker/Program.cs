@@ -17,16 +17,14 @@ builder.Services.AddSingleton(provider =>
 });
 builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<EngineWorker>();
-builder.Services.AddSingleton<ImageWorker>();
 builder.Services.AddHostedService<WorkerLoop>();
 
 await builder.Build().RunAsync();
 
 /// <summary>
-///     Главный цикл: сначала прогон движка, потом картинки — по заданию, отпускаемому между пачками, если ждёт прогон. Нет ни того,
-///     ни другого или сервер недоступен — пауза.
+///     Главный цикл: прогон движка из очереди; очередь пуста или сервер недоступен — пауза.
 /// </summary>
-internal sealed class WorkerLoop(EngineWorker worker, ImageWorker images, WorkerOptions options, ILogger<WorkerLoop> logger) : BackgroundService
+internal sealed class WorkerLoop(EngineWorker worker, WorkerOptions options, ILogger<WorkerLoop> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -37,7 +35,7 @@ internal sealed class WorkerLoop(EngineWorker worker, ImageWorker images, Worker
         {
             try
             {
-                if (await worker.RunOnceAsync(ct) is null && await images.RunOnceAsync(ct) is null) await Task.Delay(options.PollInterval, ct);
+                if (await worker.RunOnceAsync(ct) is null) await Task.Delay(options.PollInterval, ct);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
             {

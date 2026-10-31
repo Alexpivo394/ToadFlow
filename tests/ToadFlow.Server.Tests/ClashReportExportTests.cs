@@ -10,6 +10,7 @@ using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash;
 using ToadFlow.Server.Clash.Collisions;
+using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Reports;
 using ToadFlow.Server.Data.Entities;
@@ -45,15 +46,14 @@ public class ClashReportExportTests : ServerTest
 
     private static IReadOnlyList<EngineHit> Hits(int count) => Enumerable.Range(1, count).Select(i => Hit(i) with { FingerprintA = 11, FingerprintB = 22 }).ToList();
 
-    /// <summary>Картинки всем коллизиям части — как после работника.</summary>
+    /// <summary>Картинки всем коллизиям части в кеше — как после отрисовки по запросу.</summary>
     private async Task ImagesAsync(Guid partId)
     {
         using var scope = Server.Services.CreateScope();
         var storage = scope.ServiceProvider.GetRequiredService<ClashStorage>();
-        var ids = await DbAsync(db => db.Set<ClashCollision>().Where(c => c.PartId == partId).Select(c => c.Id).ToListAsync());
-        foreach (var id in ids) await storage.WriteImageAsync(partId, id, new MemoryStream(TinyPng), CancellationToken.None);
-        await DbAsync(db => db.Set<ClashCollision>().Where(c => c.PartId == partId)
-            .ExecuteUpdateAsync(c => c.SetProperty(x => x.HasImage, true).SetProperty(x => x.ImageFingerprintA, 11L).SetProperty(x => x.ImageFingerprintB, 22L)));
+        var collisions = await DbAsync(db => db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == partId).ToListAsync());
+        foreach (var c in collisions)
+            await storage.WriteImageAsync(partId, c.Id, ImageTarget.VersionOf(c), new MemoryStream(TinyPng), CancellationToken.None);
     }
 
     private static List<List<string>> SheetRows(byte[] xlsx, int sheet = 1)
