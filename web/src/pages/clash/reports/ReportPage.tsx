@@ -61,6 +61,15 @@ export function ReportPage() {
   const page = Math.max(1, Number(params.get('page') ?? 1) || 1);
   const collisionId = params.get('collision');
 
+  // Текстовые фильтры применяются по Enter или уходу из поля; пока пишут — текст свой, а смена адреса (переход, другой отчёт)
+  // переписывает его. Поле не пересоздаётся при применении, фокус остаётся в нём.
+  const urlLevel = params.get('level') ?? '';
+  const urlQuery = params.get('q') ?? '';
+  const [levelText, setLevelText] = useState(urlLevel);
+  const [queryText, setQueryText] = useState(urlQuery);
+  useEffect(() => setLevelText(urlLevel), [urlLevel, runId]);
+  useEffect(() => setQueryText(urlQuery), [urlQuery, runId]);
+
   const update = useCallback((patch: Record<string, string | null>, resetPage = true) =>
     setParams((p) => {
       const next = new URLSearchParams(p);
@@ -216,10 +225,12 @@ export function ReportPage() {
               data={[{ value: 'Both', label: 'обе стороны' }, { value: 'SideA', label: 'сторона A' }, { value: 'SideB', label: 'сторона B' }]} />
             <Select size="xs" w={200} placeholder="Модель" clearable searchable data={view.models.map((m) => m.name)} value={params.get('model')}
               onChange={(v) => update({ model: v })} />
-            <TextInput key={`${runId}|level|${params.get('level') ?? ''}`} size="xs" w={120} placeholder="Уровень" defaultValue={params.get('level') ?? ''}
+            <TextInput key={`${runId}|level`} size="xs" w={120} placeholder="Уровень" value={levelText}
+              onChange={(e) => setLevelText(e.currentTarget.value)}
               onBlur={(e) => update({ level: e.currentTarget.value.trim() || null })}
               onKeyDown={(e) => { if (e.key === 'Enter') update({ level: e.currentTarget.value.trim() || null }); }} />
-            <TextInput key={`${runId}|q|${params.get('q') ?? ''}`} size="xs" w={160} placeholder="№, ID или UniqueId" defaultValue={params.get('q') ?? ''}
+            <TextInput key={`${runId}|q`} size="xs" w={160} placeholder="№, ID или UniqueId" value={queryText}
+              onChange={(e) => setQueryText(e.currentTarget.value)}
               onBlur={(e) => update({ q: e.currentTarget.value.trim() || null })}
               onKeyDown={(e) => { if (e.key === 'Enter') update({ q: e.currentTarget.value.trim() || null }); }} />
           </Group>

@@ -121,6 +121,28 @@ describe('Report page', () => {
     expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('');
   });
 
+  it('ReportPage_FilterEnter_AppliesAndKeepsFocus', async () => {
+    renderApp('/clash/reports/r2', responses());
+    const level = (await screen.findByPlaceholderText('Уровень')) as HTMLInputElement;
+    level.focus();
+    fireEvent.change(level, { target: { value: 'Этаж 2' } });
+
+    fireEvent.keyDown(level, { key: 'Enter' });
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('level') === 'Этаж 2')).toBe(true));
+    const after = screen.getByPlaceholderText('Уровень') as HTMLInputElement;
+    expect(after.value).toBe('Этаж 2');
+    expect(document.activeElement).toBe(after);
+
+    const q = screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement;
+    q.focus();
+    fireEvent.change(q, { target: { value: '17' } });
+    fireEvent.keyDown(q, { key: 'Enter' });
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('q') === '17')).toBe(true));
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('№, ID или UniqueId'));
+  });
+
   it('ReportPage_PairClick_FiltersRows', async () => {
     renderApp('/clash/reports/r2', responses());
 
