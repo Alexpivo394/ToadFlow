@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link as RouterLink, useSearchParams } from 'react-router';
 import { Alert, Badge, Box, Button, Chip, Group, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { useApi, useApiMutation } from '../../../api/queries';
-import type { ApprovedRunView, ApprovedVersionView, CollisionPage, CollisionRow, CollisionStatus, CollisionSummary } from '../../../api/types';
+import type { ApprovedRunView, ReportRunView, ApprovedVersionView, CollisionPage, CollisionRow, CollisionStatus, CollisionSummary } from '../../../api/types';
 import { Empty } from '../../../components/ui';
 import { categoryLabel } from '../../../lib/categories';
 import { formatDateTime, formatDuration } from '../../../lib/format';
 import { ChecksList } from '../draft/DraftTab';
 import { stateLabel } from '../DraftRunPanel';
 import { HitScene } from '../viewer/HitScene';
+import { RunsDrawer } from '../reports/RunsDrawer';
 import { CollisionCard } from './CollisionCard';
 import { assigneeLabel, openStatuses, statusLabel, StatusBadge } from './StatusBadge';
 
@@ -25,6 +26,9 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
   const active = current?.run.state === 'Queued' || current?.run.state === 'Running';
   const s = current?.summary;
   const stats = current?.run.stats;
+  const runs = useApi<ReportRunView[]>(['clash-collisions', partId, 'runs'], `/api/clash/parts/${partId}/approved/runs`);
+  const latest = runs.data?.[0] ?? null;
+  const [runsOpened, setRunsOpened] = useState(false);
 
   return (
     <Stack gap={4}>
@@ -37,6 +41,8 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
         {current && <Text size="xs" c="dimmed">{formatDateTime(current.run.finishedAt ?? current.run.createdAt)}</Text>}
         {stats && <Text size="xs" c="dimmed">· поиск {formatDuration(stats.broadSeconds + stats.narrowSeconds)}</Text>}
         {!current && <Text size="sm" c="dimmed">утверждённая версия ещё не прогонялась</Text>}
+        {latest && <Button component={RouterLink} to={`/clash/reports/${latest.runId}`} size="compact-sm" variant="light">Отчёт</Button>}
+        {latest && <Button size="compact-sm" variant="subtle" onClick={() => setRunsOpened(true)}>Все прогоны</Button>}
       </Group>
       {s && (
         <Text size="sm" c="dimmed">
@@ -46,6 +52,7 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
         </Text>
       )}
       {current?.run.state === 'Failed' && current.run.error && <Alert color="red" title="Прогон не удался">{current.run.error}</Alert>}
+      <RunsDrawer partId={partId} opened={runsOpened} onClose={() => setRunsOpened(false)} />
     </Stack>
   );
 }

@@ -6,6 +6,7 @@ import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
 import type { CollisionAssignee, CollisionCard as Card, CollisionStatus, FeedEntry, UserCard } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
+import { CollisionImage } from '../../../components/CollisionImage';
 import { askConfirm } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
 import { assigneeLabel, statusLabel, StatusBadge } from './StatusBadge';
@@ -55,7 +56,13 @@ function FeedLine({ entry }: { entry: FeedEntry }) {
  * моих разделов — обе стороны); «Передать…» — выбрать сторону и, если нужно, примечание. Статус и «кто правит» проектировщик
  * меняет только в коллизиях своего раздела, примечание пишет в любой. Наблюдатель только читает.
  */
-export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId: string; canEdit: boolean; canMerge: boolean }) {
+export function CollisionCard({ collisionId, canEdit, canMerge, image = true }: {
+  collisionId: string;
+  canEdit: boolean;
+  canMerge: boolean;
+  /** Картинка коллизии над лентой, если она нарисована. */
+  image?: boolean;
+}) {
   const readOnly = !canEdit;
   const { disciplines, isStaff } = useAuth();
   const [handing, setHanding] = useState(false);
@@ -169,6 +176,7 @@ export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId:
           </Button>
         </Group>
       )}
+      {image && c.imageVersion && <CollisionImage collisionId={c.id} imageVersion={c.imageVersion} foundNow={c.foundNow} width={240} />}
       <ScrollArea style={{ flex: 1 }} type="auto">
         <Stack gap="xs">
           {card.data.feed.map((e, i) => <FeedLine key={`${e.at}-${e.kind}-${i}`} entry={e} />)}

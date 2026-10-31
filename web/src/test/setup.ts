@@ -1,7 +1,10 @@
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
 afterEach(() => cleanup());
+
+// Полный прогон идёт во много потоков: первая отрисовка страницы под нагрузкой бывает дольше стандартной секунды ожидания.
+configure({ asyncUtilTimeout: 5000 });
 
 // Mantine в jsdom: недостающие браузерные API.
 Object.defineProperty(window, 'matchMedia', {

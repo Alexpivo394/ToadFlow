@@ -139,3 +139,22 @@ describe('Approved tab', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Approved run line', () => {
+  it('ApprovedRunLine_ReportAndRunsLinks', async () => {
+    const runs = [
+      { runId: 'r2', partId: 'p1', version: 2, finishedAt: '2026-10-31T09:05:00Z', trigger: 'schedule', startedBy: 'Ночное', searchSeconds: 10,
+        summary: { found: 3, new: 1, active: 2, returned: 0, fixed: 1, goneByRules: 0, unchecked: 0, fake: 0, reusedPairs: 0 } },
+      { runId: 'r1', partId: 'p1', version: 1, finishedAt: '2026-10-30T09:05:00Z', trigger: 'manual', startedBy: 'Иванов', searchSeconds: 12,
+        summary: { found: 3, new: 3, active: 0, returned: 0, fixed: 0, goneByRules: 0, unchecked: 0, fake: 0, reusedPairs: 0 } },
+    ];
+    open({ '/api/clash/parts/p1/approved/runs': runs });
+
+    const report = await screen.findByRole('link', { name: 'Отчёт' });
+    expect(report.getAttribute('href')).toBe('/clash/reports/r2');
+    fireEvent.click(screen.getByRole('button', { name: 'Все прогоны' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/clash/reports/r2', '/clash/reports/r1']);
+    expect(within(drawer).getByText(/по расписанию \(Ночное\)/)).toBeTruthy();
+  });
+});

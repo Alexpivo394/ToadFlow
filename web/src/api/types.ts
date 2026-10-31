@@ -1050,6 +1050,8 @@ export interface CollisionRow {
   lastFoundVersion: number;
   suggestedPredecessorId: string | null;
   suggestedPredecessorNumber: number | null;
+  /** Версия картинки (отпечатки, по которым она нарисована) для адреса /image?v=; null — картинки нет. */
+  imageVersion?: string | null;
 }
 
 export interface CollisionPage {
@@ -1186,4 +1188,57 @@ export interface ClashAnalyticsView {
   period: { new: number; fixed: number; returned: number };
   series: { date: string; open: number }[];
   lagging: { key: string; open: number; growth: number; stuck: number; partId: string | null }[];
+}
+
+/** Прогон в шапке отчёта и в списке прогонов проверки. */
+export interface ReportRunView {
+  runId: string;
+  partId: string;
+  version: number;
+  finishedAt: string;
+  trigger: 'schedule' | 'manual';
+  startedBy: string | null;
+  searchSeconds: number;
+  summary?: ApprovedRunSummary | null;
+}
+
+export interface ReportModelView {
+  name: string;
+  discipline: string;
+  uploadedAt: string | null;
+  unchecked: boolean;
+}
+
+export interface ReportPairView {
+  pair: string;
+  open: number;
+  new: number;
+  returned: number;
+  fixed: number;
+  fake: number;
+}
+
+/** Отчёт утверждённого прогона. */
+export interface ReportView {
+  run: ReportRunView;
+  check: CheckView;
+  summary: ApprovedRunSummary;
+  models: ReportModelView[];
+  pairs: ReportPairView[];
+  newerRunId: string | null;
+  newerRunAt: string | null;
+}
+
+/** Строка отчёта: текущее состояние коллизии и её переход в этом прогоне. */
+export interface ReportRow {
+  collision: CollisionRow;
+  change: CollisionStatus | null;
+  lastNote: string | null;
+  lastNoteBy: string | null;
+  lastNoteAt: string | null;
+}
+
+export interface ReportPage {
+  total: number;
+  items: ReportRow[];
 }

@@ -9,6 +9,7 @@ import { CheckPage } from './pages/clash/checks/CheckPage';
 import { ChecksPage } from './pages/clash/checks/ChecksPage';
 import { ClashHome } from './pages/clash/home/ClashHome';
 import { MyPage } from './pages/clash/my/MyPage';
+import { ReportPage } from './pages/clash/reports/ReportPage';
 import { PartShell } from './pages/clash/part/PartShell';
 import { OverviewPage } from './pages/clash/setup/OverviewPage';
 import { SummaryPage } from './pages/clash/summary/SummaryPage';
@@ -50,6 +51,7 @@ export function App() {
         <Route path="clash/my" element={<MyPage />} />
         <Route path="clash/checks" element={<ChecksPage />} />
         <Route path="clash/checks/:id" element={<CheckPage />} />
+        <Route path="clash/reports/:runId" element={<ReportPage />} />
         <Route path="clash/summary" element={<SummaryPage />} />
         <Route path="clash/setup" element={<SetupOnly><OverviewPage /></SetupOnly>} />
         <Route path="clash/setup/parts" element={<SetupOnly><ClashHome tab="checks" /></SetupOnly>} />
