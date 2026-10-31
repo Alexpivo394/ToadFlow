@@ -4,6 +4,7 @@ using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Users;
 
 namespace ToadFlow.Server.Clash.Overview;
 
@@ -92,7 +93,8 @@ public static class OverviewEndpoints
         var stuck = parts.Where(p => stuckCounts.ContainsKey(p.Id))
             .Select(p => new OverviewPart(p.Id, p.Name, p.Object, stuckCounts[p.Id], $"висят {stuckCounts[p.Id]}")).ToList();
 
-        var pending = await db.Users.CountAsync(u => u.IsPending, ct);
+        var fresh = now - RegistrationEndpoints.PendingLifetime;
+        var pending = await db.Users.CountAsync(u => u.IsPending && u.CreatedAt >= fresh, ct);
         return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck, pending);
     }
 

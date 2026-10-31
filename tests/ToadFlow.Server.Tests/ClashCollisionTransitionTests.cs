@@ -72,6 +72,14 @@ public class ClashCollisionTransitionTests
     [Test]
     public void Gone_GoneByRulesStays() => CollisionTransitions.NotFound(GoneByRules, Moved with { A = InventoryOnly }).ShouldBe(GoneByRules);
 
+    /// <summary>«Не проверена» считается открытой: закрытую ушедшую из-за правил она бы открыла, а ручную отметку стёрла бы.</summary>
+    [Test]
+    public void Gone_ModelUnchecked_GoneByRulesAndFixedPendingStay()
+    {
+        CollisionTransitions.NotFound(GoneByRules, Moved with { ModelUnchecked = true }).ShouldBe(GoneByRules);
+        CollisionTransitions.NotFound(FixedPending, Moved with { ModelUnchecked = true }).ShouldBe(FixedPending);
+    }
+
     [Test]
     public void Manual_FakeWithoutNote_Rejected()
     {

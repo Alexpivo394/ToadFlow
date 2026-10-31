@@ -115,6 +115,16 @@ describe('My collisions', () => {
     await waitFor(() => expect(posts('/api/clash/collisions/c1/assignee')).toHaveLength(1));
     expect(JSON.parse(String(posts('/api/clash/collisions/c1/assignee')[0][1]!.body))).toEqual({ assignee: 'SideA', note: 'Стену двигает КР' });
   });
+
+  it('CollisionCard_OtherDiscipline_OnlyNote', async () => {
+    renderApp('/clash/my?collision=c1', responses(['АР']));
+
+    expect(await screen.findByLabelText('Примечание')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Передать…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Фиктивная…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Исправлена (ожидает подтверждения)' })).toBeNull();
+    expect(screen.getByText('Статус и «кто правит» меняет проектировщик раздела этой коллизии или координатор')).toBeTruthy();
+  });
 });
 
 vi.setConfig({ testTimeout: 15_000 });

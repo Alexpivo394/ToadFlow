@@ -40,14 +40,13 @@ describe('AnalyticsSettings', () => {
   });
 });
 
-describe('TokensSettings', () => {
-  it('lists tokens', async () => {
-    renderApp('/settings/tokens', {
-      '/api/auth/tokens': [{ id: 't1', name: 'ParamChecker', prefix: 'tf_abc123', createdAt: '2026-10-24T10:00:00Z', lastUsedAt: null }],
-    });
+describe('Tokens', () => {
+  // Токены плагинам выдаёт окно входа в плагине — страницы в вебе нет.
+  it('Settings_NoTokensPage', async () => {
+    renderApp('/settings/tokens', {});
 
-    expect(await screen.findByText('ParamChecker')).toBeTruthy();
-    expect(screen.getByText('ещё не использовался')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Создать токен' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Агенты' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Токены доступа' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Создать токен' })).toBeNull();
   });
 });

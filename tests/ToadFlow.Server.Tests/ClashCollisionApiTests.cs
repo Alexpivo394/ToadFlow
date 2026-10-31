@@ -70,6 +70,19 @@ public class ClashCollisionApiTests : ServerTest
         (run.Version, run.Run.State, run.Summary!.Found).ShouldBe((1, EngineRunState.Succeeded, 3));
     }
 
+    /// <summary>«Не проверена» — пересечение не подтверждено прогоном, поэтому считается открытой, как в «Моих».</summary>
+    [Test]
+    public async Task Summary_UncheckedIsOpen()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1)), Fp(Hit(2))], approve: true);
+        await DbAsync(db => db.Set<ClashCollision>().Where(c => c.Number == 2).ExecuteUpdateAsync(c => c.SetProperty(x => x.Status, CollisionStatus.Unchecked)));
+
+        (await admin.GetJsonAsync<CollisionSummary>($"/api/clash/parts/{partId}/approved/summary")).Total.ShouldBe(2);
+        (await ListAsync(admin, partId)).Select(c => c.Number).Order().ShouldBe([1, 2]);
+    }
+
     [Test]
     public async Task List_FilterByStatusAndCheck()
     {
@@ -206,7 +219,7 @@ public class ClashCollisionApiTests : ServerTest
         var hit = Fp(Hit(1)) with { ModelA = models[0], UniqueIdA = "wall-1", ModelB = models[1], UniqueIdB = "wall-1", X = 50, Y = 50, Z = 50 };
         var runId = await RunAsync(admin, engine, partId, [hit], approve: true);
         var id = (await ListAsync(admin, partId)).Single().Id;
-        var designer = await ClientAsync(UserRole.Designer);
+        var designer = await ClientAsync(UserRole.Designer, "ОВ");
 
         var wall = await designer.GetJsonAsync<ViewerElementProperties>($"/api/clash/collisions/{id}/elements/{models[0]}/wall-1");
 
@@ -295,7 +308,7 @@ public class ClashCollisionApiTests : ServerTest
         await using var _ = agent;
         await RunAsync(admin, engine, partId, [Fp(Hit(1)), Fp(Hit(2))], approve: true);
         var rows = await ListAsync(admin, partId);
-        var designer = await ClientAsync(UserRole.Designer);
+        var designer = await ClientAsync(UserRole.Designer, "ОВ");
 
         (await designer.PostJsonAsync($"/api/clash/collisions/{rows[0].Id}/status", new { status = "Fake", note = "Гильза есть" })).EnsureSuccessStatusCode();
         (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/status", new { status = "FixedPending" })).EnsureSuccessStatusCode();
@@ -316,7 +329,7 @@ public class ClashCollisionApiTests : ServerTest
         await using var _ = agent;
         await RunAsync(admin, engine, partId, [Fp(Hit(1)), Fp(Hit(2))], approve: true);
         var rows = await ListAsync(admin, partId);
-        var (designer, other) = (await ClientAsync(UserRole.Designer), await ClientAsync(UserRole.Designer));
+        var (designer, other) = (await ClientAsync(UserRole.Designer, "ОВ"), await ClientAsync(UserRole.Designer, "АР"));
         (await other.PostJsonAsync($"/api/clash/collisions/{rows[0].Id}/status", new { status = "Fake", note = "Не моё" })).EnsureSuccessStatusCode();
         (await designer.PostJsonAsync($"/api/clash/collisions/{rows[1].Id}/status", new { status = "Fake", note = "Гильза есть" })).EnsureSuccessStatusCode();
 
@@ -337,9 +350,33 @@ public class ClashCollisionApiTests : ServerTest
         await RunAsync(admin, engine, partId, [Fp(Hit(1)) with { UniqueIdA = "ua-1-new" }], [new EngineGonePair("a", "ua-1", "b", "ub-1", "Absent", "InGeometry", null)]);
         var all = await ListAsync(admin, partId, "?status=all");
         var (old, recreated) = (all.Single(c => c.UniqueIdA == "ua-1"), all.Single(c => c.UniqueIdA == "ua-1-new"));
-        var designer = await ClientAsync(UserRole.Designer);
+        var designer = await ClientAsync(UserRole.Designer, "ОВ");
 
         (await designer.PostJsonAsync($"/api/clash/collisions/{recreated.Id}/merge", new { predecessorId = old.Id })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await designer.PostAsync($"/api/clash/parts/{partId}/approved/run", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>Статус и «кто правит» проектировщик меняет только в коллизиях своего раздела; примечание пишет в любой.</summary>
+    [Test]
+    public async Task Designer_OtherDiscipline_StatusAndAssignee403_NoteOk()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1))], approve: true);
+        var id = (await ListAsync(admin, partId)).Single().Id;
+        var (kr, none) = (await ClientAsync(UserRole.Designer, "КР"), await ClientAsync(UserRole.Designer));
+
+        foreach (var designer in new[] { kr, none })
+        {
+            var status = await designer.PostJsonAsync($"/api/clash/collisions/{id}/status", new { status = "FixedPending" });
+            status.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await status.Content.ReadAsStringAsync()).ShouldContain("только в коллизиях своего раздела");
+            (await designer.PostJsonAsync($"/api/clash/collisions/{id}/status", new { status = "Fake", note = "x" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await designer.PostJsonAsync($"/api/clash/collisions/{id}/assignee", new { assignee = "SideA" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+            (await designer.PostJsonAsync($"/api/clash/collisions/{id}/notes", new { text = "Посмотрите отверстие" })).EnsureSuccessStatusCode();
+        }
+
+        (await admin.GetJsonAsync<CollisionCard>($"/api/clash/collisions/{id}")).Collision.Status.ShouldBe(CollisionStatus.New);
+        (await admin.PostJsonAsync($"/api/clash/collisions/{id}/assignee", new { assignee = "SideA" })).EnsureSuccessStatusCode();
     }
 }

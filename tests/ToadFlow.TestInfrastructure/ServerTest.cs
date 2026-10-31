@@ -51,13 +51,14 @@ public abstract class ServerTest
         return true;
     });
 
-    /// <summary>Создаёт пользователя с ролью и паролем <see cref="UserPassword" />, входит им и возвращает клиент с токеном.</summary>
-    protected async Task<HttpClient> ClientAsync(UserRole role)
+    /// <summary>Создаёт пользователя с ролью, разделами и паролем <see cref="UserPassword" />, входит им и возвращает клиент с токеном.</summary>
+    protected async Task<HttpClient> ClientAsync(UserRole role, params string[] disciplines)
     {
         var login = $"{role}-{Guid.NewGuid():N}"[..20];
         await DbAsync(async db =>
         {
             var user = User.Create(login, $"Тест {role}", role, "", DateTimeOffset.UtcNow);
+            user.Disciplines = disciplines;
             user.PasswordHash = new PasswordHasher<User>().HashPassword(user, UserPassword);
             db.Users.Add(user);
             await db.SaveChangesAsync();

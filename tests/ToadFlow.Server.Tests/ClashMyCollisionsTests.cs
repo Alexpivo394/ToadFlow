@@ -40,13 +40,7 @@ public class ClashMyCollisionsTests : ServerTest
     }
 
     /// <summary>Проектировщик с разделами; разделы задаёт координатор, поэтому — прямо в базе.</summary>
-    private async Task<HttpClient> DesignerAsync(params string[] disciplines)
-    {
-        var client = await ClientAsync(UserRole.Designer);
-        var me = await client.GetJsonAsync<UserView>("/api/auth/me");
-        await DbAsync(db => db.Users.Where(u => u.Id == me.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.Disciplines, disciplines)));
-        return client;
-    }
+    private Task<HttpClient> DesignerAsync(params string[] disciplines) => ClientAsync(UserRole.Designer, disciplines);
 
     private static async Task<MyCollisionRow[]> MyAsync(HttpClient client, string query = "") =>
         (await client.GetJsonAsync<MyCollisionPage>($"/api/clash/my{query}")).Items.ToArray();

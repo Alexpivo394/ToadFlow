@@ -1,10 +1,14 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data.Entities;
+using ToadFlow.Server.Maintenance;
 using ToadFlow.Server.Naming;
+using ToadFlow.Server.Users;
 using ToadFlow.Server.Tests.Infrastructure;
 using static ToadFlow.Server.Tests.Infrastructure.ClashDraftFixtures;
 
@@ -115,6 +119,49 @@ public class RegistrationTests : ServerTest
         (await coordinator.PostAsync($"/api/users/{me.Id}/reject", null)).StatusCode.ShouldBe(HttpStatusCode.BadRequest); // не заявка
         await EventuallyAsync(async () => (await DbAsync(db => db.SystemEvents.ToListAsync())).Any(e => e.Text.Contains("Отклонена заявка")));
     }
+
+    /// <summary>Заявка живёт 3 суток: потом её нет ни в списке, ни для входа, логин свободен.</summary>
+    [Test]
+    public async Task Pending_After3Days_Deleted()
+    {
+        (await RegisterAsync(Server.CreateClient(), "kovaleva", "ОВ")).EnsureSuccessStatusCode();
+        (await RegisterAsync(Server.CreateClient(), "petrov", "ВК")).EnsureSuccessStatusCode();
+        await ExpireAsync("kovaleva");
+        var coordinator = await ClientAsync(UserRole.Operator);
+
+        (await coordinator.GetJsonAsync<UserView[]>("/api/users/pending")).Select(u => u.Login).ShouldBe(["petrov"]);
+        (await DbAsync(db => db.Users.AnyAsync(u => u.Login == "kovaleva"))).ShouldBeFalse();
+        (await RegisterAsync(Server.CreateClient(), "kovaleva", "ОВ")).StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        await EventuallyAsync(async () =>
+            (await DbAsync(db => db.SystemEvents.ToListAsync())).Any(e => e.Text.Contains("Заявка удалена") && e.Text.Contains("kovaleva")));
+    }
+
+    /// <summary>Просроченная заявка не входит, даже если её ещё не удалили.</summary>
+    [Test]
+    public async Task Login_ExpiredPending_401()
+    {
+        (await RegisterAsync(Server.CreateClient(), "kovaleva", "ОВ")).EnsureSuccessStatusCode();
+        await ExpireAsync("kovaleva");
+
+        (await Server.CreateClient().PostJsonAsync("/api/auth/login", new { login = "kovaleva", password = "secret-123" })).StatusCode
+            .ShouldBe(HttpStatusCode.Unauthorized);
+        (await DbAsync(db => db.Users.AnyAsync(u => u.Login == "kovaleva"))).ShouldBeFalse();
+    }
+
+    /// <summary>Просроченную заявку удаляет и ежедневная уборка, даже если никто не заходил.</summary>
+    [Test]
+    public async Task Pending_Expired_RemovedByCleaner()
+    {
+        (await RegisterAsync(Server.CreateClient(), "kovaleva", "ОВ")).EnsureSuccessStatusCode();
+        await ExpireAsync("kovaleva");
+
+        await Server.Services.GetServices<IHostedService>().OfType<RetentionCleaner>().Single().CleanAsync(CancellationToken.None);
+
+        (await DbAsync(db => db.Users.AnyAsync(u => u.Login == "kovaleva"))).ShouldBeFalse();
+    }
+
+    private Task ExpireAsync(string login) => DbAsync(db => db.Users.Where(u => u.Login == login)
+        .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedAt, DateTimeOffset.UtcNow - RegistrationEndpoints.PendingLifetime - TimeSpan.FromMinutes(1))));
 
     /// <summary>Разделы — из разбора имён (значение, а без него — куски) и ручные разделы моделей частей коллизий.</summary>
     [Test]

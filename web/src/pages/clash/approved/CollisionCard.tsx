@@ -52,11 +52,12 @@ function FeedLine({ entry }: { entry: FeedEntry }) {
 /**
  * Карточка коллизии под 3D: статус и ручные переходы («фиктивная» — с примечанием), «кто правит», примечание, предложение
  * объединить с прежней коллизией и лента, новые сверху. «Беру» — «кто правит» становится моей стороной (оба элемента из
- * моих разделов — обе стороны); «Передать…» — выбрать сторону и, если нужно, примечание. Наблюдатель только читает.
+ * моих разделов — обе стороны); «Передать…» — выбрать сторону и, если нужно, примечание. Статус и «кто правит» проектировщик
+ * меняет только в коллизиях своего раздела, примечание пишет в любой. Наблюдатель только читает.
  */
 export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId: string; canEdit: boolean; canMerge: boolean }) {
   const readOnly = !canEdit;
-  const { disciplines } = useAuth();
+  const { disciplines, isStaff } = useAuth();
   const [handing, setHanding] = useState(false);
   const [side, setSide] = useState<CollisionAssignee | null>(null);
   const [handNote, setHandNote] = useState('');
@@ -88,6 +89,8 @@ export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId:
   const setStatus = (status: CollisionStatus, text?: string) => post('status', { status, note: text ?? null }, `Статус: ${statusLabel[status].label}`);
   const open = c.status === 'New' || c.status === 'Active' || c.status === 'Returned';
   const mine = disciplines.includes(c.disciplineA) || disciplines.includes(c.disciplineB);
+  // Статус и «кто правит» проектировщик меняет только в коллизиях своего раздела; примечание пишет в любой.
+  const canChange = !readOnly && (isStaff || mine);
 
   return (
     <Stack gap="xs" h="100%">
@@ -111,19 +114,22 @@ export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId:
           </Group>
         </Alert>
       )}
-      {!readOnly && (
+      {canChange && (
         <Group gap="xs">
           {open && <Button size="xs" variant="light" color="teal" loading={busy} onClick={() => setStatus('FixedPending')}>Исправлена (ожидает подтверждения)</Button>}
           {c.status !== 'Fake' && <Button size="xs" variant="light" color="gray" onClick={() => setFaking((f) => !f)}>Фиктивная…</Button>}
           {c.status === 'Fake' && <Button size="xs" variant="light" loading={busy} onClick={() => setStatus('Active')}>Снять «фиктивная»</Button>}
         </Group>
       )}
+      {!readOnly && !canChange && (
+        <Text size="xs" c="dimmed">Статус и «кто правит» меняет проектировщик раздела этой коллизии или координатор</Text>
+      )}
       <Group gap="xs">
         <Text size="xs" c="dimmed">Кто правит: {assigneeLabel[c.assignee]}</Text>
         {!readOnly && mine && <Button size="xs" variant="light" loading={busy} onClick={() => void post('take', undefined, 'Взято: правите вы')}>Беру</Button>}
-        {!readOnly && <Button size="xs" variant="subtle" onClick={() => setHanding((h) => !h)}>Передать…</Button>}
+        {canChange && <Button size="xs" variant="subtle" onClick={() => setHanding((h) => !h)}>Передать…</Button>}
       </Group>
-      {handing && !readOnly && (
+      {handing && canChange && (
         <Group align="flex-end" gap="xs">
           <Radio.Group label="Кто правит" size="xs" value={side} onChange={(v) => setSide(v as CollisionAssignee)}>
             <Group gap="xs" mt={4}>
@@ -145,7 +151,7 @@ export function CollisionCard({ collisionId, canEdit, canMerge }: { collisionId:
           </Button>
         </Group>
       )}
-      {faking && !readOnly && (
+      {faking && canChange && (
         <Group align="flex-end" gap="xs">
           <Textarea label="Почему фиктивная" size="xs" autosize minRows={1} style={{ flex: 1 }} value={reason} onChange={(e) => setReason(e.currentTarget.value)} />
           <Button size="xs" color="gray" disabled={!reason.trim()} loading={busy}

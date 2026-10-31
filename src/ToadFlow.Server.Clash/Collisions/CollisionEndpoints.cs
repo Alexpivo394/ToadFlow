@@ -99,12 +99,14 @@ public static class CollisionFeed
 
 /// <summary>
 ///     Коллизии утверждённой проверки: прогон, сводка, список, карточка с лентой, статусы, «кто правит», примечания,
-///     объединение с прежней коллизией и 3D. Читает любая роль; статусы, «кто правит» и примечания меняет проектировщик
-///     и старше, объединение и прогоны — координатор.
+///     объединение с прежней коллизией и 3D. Читает любая роль; примечания пишет проектировщик и старше, статусы и «кто правит»
+///     проектировщик меняет в коллизиях своего раздела, координатор — в любых; объединение и прогоны — координатор.
 /// </summary>
 public static class CollisionEndpoints
 {
-    internal static readonly CollisionStatus[] Open = [CollisionStatus.New, CollisionStatus.Active, CollisionStatus.Returned, CollisionStatus.FixedPending];
+    /// <summary>Открытые: пересечение не опровергнуто прогоном — «исправлена (ждёт)» и «не проверена» тоже.</summary>
+    internal static readonly CollisionStatus[] Open =
+        [CollisionStatus.New, CollisionStatus.Active, CollisionStatus.Returned, CollisionStatus.FixedPending, CollisionStatus.Unchecked];
 
     /// <param name="members">Группа участников: маршруты открыты и проектировщику.</param>
     public static void MapClashCollisions(this RouteGroupBuilder members)
@@ -268,10 +270,11 @@ public static class CollisionEndpoints
     private static Task<IResult> StatusAsync(Guid id, CollisionStatusRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct) =>
         ChangeAsync(id, db, http, time, events, ct, async collision =>
-            collision.Status == CollisionStatus.Fake && request.Status != CollisionStatus.Fake && !http.User.IsStaff()
-            && await FakeSetByAsync(db, collision.Id, ct) != http.User.UserId()
-                ? "Снять фиктивную, поставленную другим, может координатор"
-                : null,
+            await NotMineAsync(db, http, collision, ct)
+            ?? (collision.Status == CollisionStatus.Fake && request.Status != CollisionStatus.Fake && !http.User.IsStaff()
+                && await FakeSetByAsync(db, collision.Id, ct) != http.User.UserId()
+                    ? "Снять фиктивную, поставленную другим, может координатор"
+                    : null),
             (collision, now, user) =>
         {
             var next = CollisionTransitions.Manual(collision.Status, request.Status, collision.FoundNow, request.Note);
@@ -284,7 +287,7 @@ public static class CollisionEndpoints
 
     private static Task<IResult> AssigneeAsync(Guid id, CollisionAssigneeRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct) =>
-        ChangeAsync(id, db, http, time, events, ct, (collision, now, user) =>
+        ChangeAsync(id, db, http, time, events, ct, collision => NotMineAsync(db, http, collision, ct), (collision, now, user) =>
         {
             if (collision.Assignee == request.Assignee) throw new CollisionTransitionException("«Кто правит» уже такой");
             var note = request.Note?.Trim() ?? "";
@@ -383,6 +386,20 @@ public static class CollisionEndpoints
         await transaction.CommitAsync(ct);
         events.Publish(new ClashCollisionsChanged(http.User.Actor(), predecessor.PartId, predecessor.Id));
         return Results.Ok();
+    }
+
+    /// <summary>
+    ///     Статус и «кто правит» проектировщик меняет только в коллизиях своего раздела — хотя бы один элемент из модели его
+    ///     раздела, как в «Моих». Координатор — в любых.
+    /// </summary>
+    /// <returns>Почему нельзя; null — можно.</returns>
+    private static async Task<string?> NotMineAsync(ToadFlowDb db, HttpContext http, ClashCollision collision, CancellationToken ct)
+    {
+        if (http.User.IsStaff()) return null;
+        var disciplines = await db.Set<User>().AsNoTracking().Where(u => u.Id == http.User.UserId()).Select(u => u.Disciplines).SingleAsync(ct);
+        return MyCollisions.Side(collision, disciplines) is null
+            ? "Менять статус и «кто правит» можно только в коллизиях своего раздела: ни один её элемент не из ваших разделов"
+            : null;
     }
 
     /// <summary>Кто поставил «фиктивную» — по последней записи ленты; null — система.</summary>

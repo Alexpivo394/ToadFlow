@@ -13,7 +13,7 @@ export const statusLabel: Record<CollisionStatus, { label: string; color: string
 };
 
 /** Открытые статусы — фильтр по умолчанию. */
-export const openStatuses: CollisionStatus[] = ['New', 'Active', 'Returned', 'FixedPending'];
+export const openStatuses: CollisionStatus[] = ['New', 'Active', 'Returned', 'FixedPending', 'Unchecked'];
 
 export const assigneeLabel: Record<CollisionAssignee, string> = { Both: 'обе стороны', SideA: 'сторона A', SideB: 'сторона B' };
 

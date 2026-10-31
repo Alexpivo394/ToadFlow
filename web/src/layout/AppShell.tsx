@@ -16,7 +16,6 @@ const settingsLinks = [
   { to: '/settings/clash', label: t.nav.clashSettings },
   { to: '/settings/users', label: t.nav.users, operator: true },
   { to: '/settings/general', label: t.nav.general },
-  { to: '/settings/tokens', label: t.nav.tokens },
 ];
 
 export function AppShell() {

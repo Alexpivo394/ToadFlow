@@ -59,7 +59,7 @@ describe('Approved tab', () => {
 
     expect(await screen.findByRole('button', { name: 'Коллизия 1' })).toBeTruthy();
     const listCall = calls().find(([url]) => url.startsWith('/api/clash/parts/p1/approved/collisions'))!;
-    expect(new URL(listCall[0], 'http://x').searchParams.get('status')).toBe('New,Active,Returned,FixedPending');
+    expect(new URL(listCall[0], 'http://x').searchParams.get('status')).toBe('New,Active,Returned,FixedPending,Unchecked');
     expect(screen.getByText('v2')).toBeTruthy();
     expect(screen.getByText(/исправлено 4/)).toBeTruthy();
     expect(within(screen.getByRole('button', { name: 'Коллизия 3' })).getByText('активная')).toBeTruthy();

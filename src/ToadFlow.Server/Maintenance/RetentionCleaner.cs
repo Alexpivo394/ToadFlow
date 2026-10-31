@@ -1,13 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Events;
 using ToadFlow.Server.Settings;
+using ToadFlow.Server.Users;
 
 namespace ToadFlow.Server.Maintenance;
 
 /// <summary>
 ///     Раз в сутки (и при старте) удаляет законченные запуски старше срока хранения — вместе с заданиями и логами —
-///     и старые «События системы». Незаконченные запуски не трогает.
+///     и старые «События системы», а также просроченные заявки на регистрацию. Незаконченные запуски не трогает.
 /// </summary>
 public sealed class RetentionCleaner(IServiceScopeFactory scopes, TimeProvider time, ILogger<RetentionCleaner> logger) : BackgroundService
 {
@@ -40,5 +42,6 @@ public sealed class RetentionCleaner(IServiceScopeFactory scopes, TimeProvider t
             .ExecuteDeleteAsync(ct);
         var events = await db.SystemEvents.Where(e => e.At < cutoff).ExecuteDeleteAsync(ct);
         if (runs + events > 0) logger.LogInformation("Удалено старых запусков: {Runs}, событий: {Events}", runs, events);
+        await RegistrationEndpoints.DeleteExpiredAsync(db, time, scope.ServiceProvider.GetRequiredService<IDomainEvents>(), ct);
     }
 }

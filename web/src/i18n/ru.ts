@@ -24,7 +24,6 @@ export const t = {
     setupTemplates: 'Шаблоны',
     setupSnapshots: 'Выгрузки',
     profile: 'Профиль',
-    tokens: 'Токены доступа',
     users: 'Пользователи',
     general: 'Общие',
   },

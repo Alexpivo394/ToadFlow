@@ -38,7 +38,8 @@ public static class CollisionTransitions
     public static CollisionStatus NotFound(CollisionStatus current, GoneFacts facts)
     {
         if (current is CollisionStatus.Fake or CollisionStatus.Fixed) return current;
-        if (facts.ModelUnchecked) return CollisionStatus.Unchecked;
+        // «Не проверена» считается открытой: закрытую ушедшую из-за правил она открыла бы, а ручную отметку «исправлена» стёрла бы.
+        if (facts.ModelUnchecked) return current is CollisionStatus.GoneByRules or CollisionStatus.FixedPending ? current : CollisionStatus.Unchecked;
         if (facts.A == ElementPresence.Absent || facts.B == ElementPresence.Absent) return CollisionStatus.Fixed;
         // Ушедшую из-за правил пару прогон той же версии не проверяет: судить, исправлена ли она, не по чему.
         if (current == CollisionStatus.GoneByRules) return current;

@@ -32,10 +32,16 @@ public static class UserEndpoints
     {
         var users = api.MapGroup("/users").RequireAuthorization(Policies.Operator);
 
-        users.MapGet("/", async (ToadFlowDb db) =>
-            (await db.Users.OrderBy(u => u.DisplayName).ToListAsync()).Select(UserView.From));
-        users.MapGet("/pending", async (ToadFlowDb db, CancellationToken ct) =>
-            (await db.Users.Where(u => u.IsPending).OrderBy(u => u.CreatedAt).ToListAsync(ct)).Select(UserView.From));
+        users.MapGet("/", async (ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
+        {
+            await RegistrationEndpoints.DeleteExpiredAsync(db, time, events, ct);
+            return (await db.Users.OrderBy(u => u.DisplayName).ToListAsync(ct)).Select(UserView.From);
+        });
+        users.MapGet("/pending", async (ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
+        {
+            await RegistrationEndpoints.DeleteExpiredAsync(db, time, events, ct);
+            return (await db.Users.Where(u => u.IsPending).OrderBy(u => u.CreatedAt).ToListAsync(ct)).Select(UserView.From);
+        });
         users.MapPost("/{id:guid}/approve", ApproveAsync);
         users.MapPost("/{id:guid}/reject", RejectAsync);
         users.MapPut("/{id:guid}/disciplines", SetDisciplinesAsync);
@@ -48,8 +54,9 @@ public static class UserEndpoints
     }
 
     private static async Task<IResult> ApproveAsync(Guid id, ApproveUserRequest request, ToadFlowDb db, NamingStore naming,
-        IEnumerable<IDisciplineSource> sources, IMemoryCache cache, HttpContext http, IDomainEvents events, CancellationToken ct)
+        IEnumerable<IDisciplineSource> sources, IMemoryCache cache, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
+        await RegistrationEndpoints.DeleteExpiredAsync(db, time, events, ct);
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound();
         if (!user.IsPending) return Results.BadRequest(new { error = "Заявки нет: пользователь уже подтверждён" });

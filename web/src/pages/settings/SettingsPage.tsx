@@ -9,7 +9,6 @@ import { AnalyticsSettings } from './loi/AnalyticsSettings';
 import { LoiSettings } from './loi/LoiSettings';
 import { PresetsSettings } from './PresetsSettings';
 import { SourcesSettings } from './SourcesSettings';
-import { TokensSettings } from './TokensSettings';
 import { UsersSettings } from './UsersSettings';
 
 export function SettingsPage() {
@@ -23,7 +22,6 @@ export function SettingsPage() {
     loi: <LoiSettings />,
     analytics: <AnalyticsSettings />,
     clash: <ClashSettings />,
-    tokens: <TokensSettings />,
     users: can('Operator') ? <UsersSettings /> : null,
     general: <GeneralSettingsForm />,
   }[section ?? ''];

@@ -27,6 +27,9 @@ public static class RegistrationEndpoints
     /// <summary>Защита от мусора без капчи: сверх этого числа ждущих заявок регистрация отвечает 429.</summary>
     public const int MaxPending = 50;
 
+    /// <summary>Сколько живёт заявка: не подтверждённая за это время удаляется, логин освобождается.</summary>
+    public static readonly TimeSpan PendingLifetime = TimeSpan.FromDays(3);
+
     public static void MapRegistration(this RouteGroupBuilder members)
     {
         members.MapGet("/auth/disciplines", (NamingStore naming, IEnumerable<IDisciplineSource> sources, CancellationToken ct) =>
@@ -44,6 +47,7 @@ public static class RegistrationEndpoints
         if (unknown.Count > 0) return Results.BadRequest(new { error = $"Нет таких разделов: {string.Join(", ", unknown)}" });
 
         var login = User.NormalizeLogin(request.Login);
+        await DeleteExpiredAsync(db, time, events, ct);
         if (await db.Users.AnyAsync(u => u.Login == login, ct)) return Results.Conflict(new { error = $"Логин «{login}» уже занят" });
         if (await db.Users.CountAsync(u => u.IsPending, ct) >= MaxPending)
             return Results.Json(new { error = "Слишком много заявок ждут подтверждения — попробуйте позже" }, statusCode: StatusCodes.Status429TooManyRequests);
@@ -58,6 +62,22 @@ public static class RegistrationEndpoints
         events.Publish(new UserChanged(new Actor(ActorKind.User, user.DisplayName), user.Id,
             $"Заявка на регистрацию: {user.DisplayName} ({user.Login}), разделы: {DisciplineText(user.Disciplines)}"));
         return Results.Accepted();
+    }
+
+    /// <summary>
+    ///     Удаляет заявки старше <see cref="PendingLifetime" />. Зовётся там, где заявку видно (регистрация, вход, список
+    ///     заявок, подтверждение), и ежедневной уборкой — поэтому просроченная заявка нигде не показывается.
+    /// </summary>
+    public static async Task DeleteExpiredAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct)
+    {
+        var cutoff = time.GetUtcNow() - PendingLifetime;
+        var expired = await db.Users.Where(u => u.IsPending && u.CreatedAt < cutoff).ToListAsync(ct);
+        if (expired.Count == 0) return;
+        db.Users.RemoveRange(expired);
+        await db.SaveChangesAsync(ct);
+        foreach (var user in expired)
+            events.Publish(new UserChanged(Actor.System, user.Id,
+                $"Заявка удалена: не подтверждена за {PendingLifetime.TotalDays:0} суток — {user.DisplayName} ({user.Login})"));
     }
 
     public static string DisciplineText(string[] disciplines) => disciplines.Length == 0 ? "не указаны" : string.Join(", ", disciplines);

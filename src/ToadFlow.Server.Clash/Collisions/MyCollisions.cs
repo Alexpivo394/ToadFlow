@@ -47,10 +47,6 @@ public sealed record MyFilter(
 /// </summary>
 public static class MyCollisions
 {
-    /// <summary>Открытые для «Моих»: к открытым проверки добавляется «не проверена» — её тоже надо разобрать.</summary>
-    public static readonly CollisionStatus[] Open =
-        [CollisionStatus.New, CollisionStatus.Active, CollisionStatus.Returned, CollisionStatus.FixedPending, CollisionStatus.Unchecked];
-
     public sealed record ApprovedPart(Guid Id, string Name, string? Object, string? Part);
 
     public static Task<List<ApprovedPart>> PartsAsync(ToadFlowDb db, CancellationToken ct) =>
@@ -124,7 +120,7 @@ public static class MyCollisions
     /// <returns>null — без фильтра по статусу.</returns>
     private static CollisionStatus[]? Statuses(string? status) => status?.Trim().ToLowerInvariant() switch
     {
-        null or "" or "open" => Open,
+        null or "" or "open" => CollisionEndpoints.Open,
         "all" => null,
         "fake" => [CollisionStatus.Fake],
         "fixed" => [CollisionStatus.Fixed],
