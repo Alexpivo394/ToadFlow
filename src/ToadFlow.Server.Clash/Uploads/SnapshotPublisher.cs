@@ -81,13 +81,16 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
     /// <summary>
     ///     Оставляет у модели <paramref name="keep" /> последних по времени выгрузки слепков: сначала файлы, потом записи.
     ///     Слепки прогонов движка в очереди и в работе не удаляются, пока прогон не закончится, а слепки прогона — видимого
-    ///     результата части — пока у части не появится новый результат: на них открывается просмотрщик коллизий.
+    ///     результата части — пока у части не появится новый результат: на них открывается просмотрщик коллизий. Слепки прогона,
+    ///     предыдущего у утверждённого, тоже остаются: исправленные утверждённым прогоном коллизии рисуются по прогону, который
+    ///     нашёл их последним.
     /// </summary>
     public async Task PruneAsync(Guid modelId, int keep, CancellationToken ct)
     {
         var active = (await db.Set<EngineRun>().AsNoTracking()
                 .Where(r => r.State == EngineRunState.Queued || r.State == EngineRunState.Running
                             || db.Set<ClashPart>().Any(p => p.ResultRunId == r.Id || p.ApprovedRunId == r.Id)
+                            || db.Set<ClashPart>().Any(p => db.Set<EngineRun>().Any(approved => approved.Id == p.ApprovedRunId && approved.PreviousRunId == r.Id))
                             || db.Set<EngineRun>().Any(next => next.PreviousRunId == r.Id
                                                               && (next.State == EngineRunState.Queued || next.State == EngineRunState.Running)))
                 .Select(r => r.Models).ToListAsync(ct))

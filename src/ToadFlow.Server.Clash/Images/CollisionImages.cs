@@ -44,7 +44,10 @@ public sealed record ImageTarget(
 }
 
 /// <summary>Итог запроса картинки.</summary>
-/// <param name="Status">200 — <paramref name="Path" /> есть; 404 — элемента нет в выгрузке; 410 — выгрузка удалена и кеша нет.</param>
+/// <param name="Status">
+///     200 — <paramref name="Path" /> есть; 404 — элемента нет в выгрузке; 410 — выгрузка удалена и кеша нет; 500 — отрисовка не
+///     удалась (причина в журнале).
+/// </param>
 /// <param name="Error">Причина для ответа, если картинки нет.</param>
 public sealed record ImageResult(int Status, string? Path, string? Error);
 
@@ -59,7 +62,8 @@ public sealed class CollisionImageOptions
 /// <summary>
 ///     Картинки коллизий по запросу: файл версии из кеша (<see cref="ClashStorage.ImagePath(string, Guid, Guid, string)" />) или
 ///     отрисовка по слепкам прогона. Запросы одной картинки ждут одну отрисовку; она не зависит от отмены отдельного запроса.
-///     Одновременно рисуется не больше <see cref="CollisionImageOptions.Threads" /> картинок. Ошибка не кешируется. Отрисовка
+///     Одновременно рисуется не больше <see cref="CollisionImageOptions.Threads" /> картинок. Ошибка не кешируется, а пишется в журнал
+///     и отдаётся итогом 500 — исключение из отрисовки не выходит. Отрисовка
 ///     событий не публикует: картинка — не изменение коллизии.
 /// </summary>
 public sealed class CollisionImages
@@ -71,20 +75,29 @@ public sealed class CollisionImages
     private readonly PartElementsCache _cache;
     private readonly SemaphoreSlim _gate;
     private readonly string _root;
+    private readonly ILogger<CollisionImages> _logger;
     private int _renders;
+    private int _renderStarts;
     private int _active;
     private int _maxActive;
 
-    public CollisionImages(IOptions<ClashStorageOptions> storage, PartElementsCache cache, IOptions<CollisionImageOptions> options)
+    public CollisionImages(IOptions<ClashStorageOptions> storage, PartElementsCache cache, IOptions<CollisionImageOptions> options, ILogger<CollisionImages> logger)
     {
         _root = storage.Value.Root;
         _cache = cache;
-        var threads = options.Value.ResolvedThreads;
-        _gate = new SemaphoreSlim(threads, threads);
+        _logger = logger;
+        Threads = options.Value.ResolvedThreads;
+        _gate = new SemaphoreSlim(Threads, Threads);
     }
+
+    /// <summary>Сколько картинок рисуется одновременно.</summary>
+    public int Threads { get; }
 
     /// <summary>Сколько раз рисовал (для тестов).</summary>
     public int Renders => Volatile.Read(ref _renders);
+
+    /// <summary>Сколько общих отрисовок начиналось, включая неудачные (для тестов).</summary>
+    internal int RenderStarts => Volatile.Read(ref _renderStarts);
 
     /// <summary>Наибольшее число одновременных отрисовок (для тестов).</summary>
     internal int MaxConcurrentRenders => Volatile.Read(ref _maxActive);
@@ -103,9 +116,20 @@ public sealed class CollisionImages
     /// <summary>Общая отрисовка ключа; по завершении — и при ошибке — ключ снимается, следующий запрос начнёт заново или найдёт файл.</summary>
     private async Task<ImageResult> RenderOnceAsync((Guid, string) key, ImageTarget target, string path)
     {
+        Interlocked.Increment(ref _renderStarts);
         try
         {
             return await RenderAsync(target, path);
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // Слепок удалили, пока картинка рисовалась.
+            return Gone;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogError(exception, "Картинка коллизии {Collision} (прогон {Run}) не нарисована", target.CollisionId, target.RunId);
+            return new ImageResult(StatusCodes.Status500InternalServerError, null, "картинку не удалось нарисовать");
         }
         finally
         {
@@ -126,27 +150,37 @@ public sealed class CollisionImages
             {
                 var folder = Path.Combine(_root, model.ModelId.ToString("N"), model.SnapshotId.ToString("N"));
                 var geometry = Path.Combine(folder, "model.tcg");
-                if (!File.Exists(geometry))
-                    return new ImageResult(StatusCodes.Status410Gone, null, "выгрузка модели удалена: картинку этого прогона уже не нарисовать");
+                if (!File.Exists(geometry)) return Gone;
                 models.Add(new SceneModel(_cache.Get(model.SnapshotId, folder).Index, () => File.OpenRead(geometry)));
             }
 
-            var scene = new SceneTarget(target.ModelA, target.UniqueIdA, target.ModelB, target.UniqueIdB, target.X, target.Y, target.Z);
-            byte[] png;
+            var sceneTarget = new SceneTarget(target.ModelA, target.UniqueIdA, target.ModelB, target.UniqueIdB, target.X, target.Y, target.Z);
+            byte[]? png;
             var active = Interlocked.Increment(ref _active);
             try
             {
                 UpdateMax(active);
-                png = await Task.Run(() => CollisionRenderer.Render(CollisionScenes.Build(models, scene)).Png);
-            }
-            catch (KeyNotFoundException exception)
-            {
-                return new ImageResult(StatusCodes.Status404NotFound, null, exception.Message);
+                png = await Task.Run<byte[]?>(() =>
+                {
+                    RenderScene scene;
+                    try
+                    {
+                        scene = CollisionScenes.Build(models, sceneTarget);
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                        return null;
+                    }
+
+                    return CollisionRenderer.Render(scene).Png;
+                });
             }
             finally
             {
                 Interlocked.Decrement(ref _active);
             }
+
+            if (png is null) return new ImageResult(StatusCodes.Status404NotFound, null, MissingElement(models, target));
 
             Interlocked.Increment(ref _renders);
             await ClashStorage.WriteImageAsync(_root, target.PartId, target.CollisionId, target.Version, new MemoryStream(png), CancellationToken.None);
@@ -156,6 +190,15 @@ public sealed class CollisionImages
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>Какого элемента пары нет в выгрузке — человеческим текстом, с именем модели вместо её ключа.</summary>
+    private static string MissingElement(IReadOnlyList<SceneModel> models, ImageTarget target)
+    {
+        var a = models.Any(m => m.Index.Header.ModelKey == target.ModelA && m.Index.Elements.Any(e => e.Info.UniqueId == target.UniqueIdA));
+        var (modelKey, uniqueId) = a ? (target.ModelB, target.UniqueIdB) : (target.ModelA, target.UniqueIdA);
+        var name = target.Models.FirstOrDefault(m => m.ModelId.ToString("N") == modelKey)?.ModelName ?? modelKey;
+        return $"Элемент {uniqueId} не найден в выгрузке модели {name}";
     }
 
     private void UpdateMax(int active)
@@ -170,4 +213,6 @@ public sealed class CollisionImages
     }
 
     private static ImageResult Ok(string path) => new(StatusCodes.Status200OK, path, null);
+
+    private static ImageResult Gone => new(StatusCodes.Status410Gone, null, "выгрузка модели удалена: картинку этого прогона уже не нарисовать");
 }

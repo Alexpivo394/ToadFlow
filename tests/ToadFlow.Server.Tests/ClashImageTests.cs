@@ -41,21 +41,31 @@ public class ClashImageTests : ServerTest
         var admin = await AdminAsync();
         await using var agent = await FakeAgent.RegisterAsync(Server, admin);
         await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
-        ModelGeometry Geometry(string name, string key)
-        {
-            var header = new ModelHeader(key, name, 2022, DateTimeOffset.UtcNow, true, "Navisworks", 0, 0, 0);
-            var ar = name.Contains("_AR");
-            var elements = Enumerable.Range(1, Pairs)
-                .Select(i => ClashFixtures.Box(Info((ar ? "a" : "b") + i), (i - 1) * 1000 + (ar ? 0 : 50), 0, 0, 100))
-                .ToList();
-            if (ar) elements.Add(ClashFixtures.Box(Info("a1n"), 0, 0, 0, 100));
-            return new ModelGeometry(header, elements.ToArray(), elements.Select(e => e.Info.UniqueId).ToArray());
-        }
-
         var partId = await ClashDraftFixtures.PartAsync(Server, admin, agent, ["POL_K1_AR.rvt", "POL_K1_OV.rvt"], Geometry);
         var models = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models;
         return new Setup(admin, partId, models.Single(m => m.Discipline == "АР").ModelId.ToString("N"),
             models.Single(m => m.Discipline == "ОВ").ModelId.ToString("N"));
+    }
+
+    private static ModelGeometry Geometry(string name, string key)
+    {
+        var header = new ModelHeader(key, name, 2022, DateTimeOffset.UtcNow, true, "Navisworks", 0, 0, 0);
+        var ar = name.Contains("_AR");
+        var elements = Enumerable.Range(1, Pairs)
+            .Select(i => ClashFixtures.Box(Info((ar ? "a" : "b") + i), (i - 1) * 1000 + (ar ? 0 : 50), 0, 0, 100))
+            .ToList();
+        if (ar) elements.Add(ClashFixtures.Box(Info("a1n"), 0, 0, 0, 100));
+        return new ModelGeometry(header, elements.ToArray(), elements.Select(e => e.Info.UniqueId).ToArray());
+    }
+
+    /// <summary>Новая выгрузка модели АР той же геометрии.</summary>
+    private async Task RepublishArAsync(HttpClient admin)
+    {
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
+        const string name = "POL_K1_AR.rvt";
+        var published = await ClashFixtures.PublishAsync(Server, agent, name, custom: key => Geometry(name, key));
+        await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded, null, JsonSerializer.Serialize(published.Result, TestJson.Options));
     }
 
     private static EngineHit Pair(Setup setup, int i, string? uniqueIdA = null) =>
@@ -199,6 +209,7 @@ public class ClashImageTests : ServerTest
         (second.Status, second.Error).ShouldBe((200, null));
         PngSize(await File.ReadAllBytesAsync(second.Path!)).ShouldBe((640, 400));
         Images.Renders.ShouldBe(1);
+        Images.RenderStarts.ShouldBe(1);
         (await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image")).StatusCode.ShouldBe(HttpStatusCode.OK);
         Directory.GetFiles(ImageFolder(setup.PartId), "*.tmp").ShouldBeEmpty();
     }
@@ -316,8 +327,49 @@ public class ClashImageTests : ServerTest
         var response = await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await ErrorOf(response)).ShouldContain("missing-uid");
+        (await ErrorOf(response)).ShouldBe("Элемент missing-uid не найден в выгрузке модели POL_K1_AR.rvt");
         FilesOf(setup.PartId, collision.Id).ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Image_CorruptGeometry_500WithReason_NextRequestTriesAgain()
+    {
+        var (setup, collision) = await OneAsync();
+        var model = (await DbAsync(db => db.Set<EngineRun>().AsNoTracking().Where(r => r.Id == collision.LastFoundRunId).Select(r => r.Models).SingleAsync()))
+            .Single(m => m.ModelId.ToString("N") == setup.Ar);
+        var geometry = Path.Combine(Server.ClashStorageRoot, model.ModelId.ToString("N"), model.SnapshotId.ToString("N"), "model.tcg");
+        await using (var file = new FileStream(geometry, FileMode.Open, FileAccess.Write)) file.SetLength(16);
+
+        var response = await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        (await ErrorOf(response)).ShouldBe("картинку не удалось нарисовать");
+        FilesOf(setup.PartId, collision.Id).ShouldBeEmpty();
+        (await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image")).StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        Images.RenderStarts.ShouldBe(2);
+    }
+
+    /// <summary>
+    ///     «Исправлена» хранит прогон, который нашёл её последним, — прошлый утверждённый. Его слепки не удаляются при выгрузках,
+    ///     пока он предыдущий у утверждённого прогона части: картинка исправленной коллизии остаётся.
+    /// </summary>
+    [Test]
+    public async Task Image_FixedCollision_AfterSnapshotRotation_StillRendered()
+    {
+        var setup = await PartAsync();
+        (await setup.Admin.PutJsonAsync("/api/clash/settings", new { storage = new { keepSnapshots = 1 } })).EnsureSuccessStatusCode();
+        var first = await RunApprovedAsync(setup, [Pair(setup, 1)], approve: true);
+        await RepublishArAsync(setup.Admin);
+        await RunApprovedAsync(setup, [], gone: [new EngineGonePair(setup.Ar, "a1", setup.Ov, "b1", "Absent", "InGeometry", null)]);
+        var collision = (await CollisionsAsync(setup.PartId)).Single();
+        collision.Status.ShouldBe(CollisionStatus.Fixed);
+        collision.LastFoundRunId.ShouldBe(first);
+
+        await RepublishArAsync(setup.Admin);
+
+        var response = await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        PngSize(await response.Content.ReadAsByteArrayAsync()).ShouldBe((640, 400));
     }
 
     [Test]
