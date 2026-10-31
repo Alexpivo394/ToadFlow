@@ -17,9 +17,17 @@ public static class ReportEndpoints
         report.MapGet("/collisions", CollisionsAsync);
         report.MapGet("/chat", ChatAsync);
         report.MapGet("/export.xlsx", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
-            Data.ToadFlowDb db, Images.CollisionImages collisionImages, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "xlsx", http, reports, general, db, collisionImages, ct));
+                CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "xlsx", http, reports, general,
+                (export, body) => ReportXlsx.WriteAsync(body, export.View, Export(export.Rows, export.Context, ct), export.Web, export.Zone, ct), ct));
         report.MapGet("/export.html", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
-            Data.ToadFlowDb db, Images.CollisionImages collisionImages, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "html", http, reports, general, db, collisionImages, ct));
+            Data.ToadFlowDb db, Images.CollisionImages images, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "html", http, reports, general,
+            async (export, body) =>
+            {
+                var total = await export.Rows.CountAsync(ct);
+                var pictures = await ReportImages.LoadAsync(export.Rows, db, images, ct);
+                await ReportHtml.WriteAsync(body, export.View, pictures.AheadAsync(Export(export.Rows, export.Context, ct), ct), total, pictures.ImageAsync,
+                    export.Web, export.Zone, ct);
+            }, ct));
         members.MapGet("/clash/parts/{id:guid}/approved/runs", async (Guid id, RunReports reports, CancellationToken ct) =>
             Results.Ok(await reports.RunsAsync(id, ct)));
     }
@@ -45,11 +53,15 @@ public static class ReportEndpoints
         return Results.Ok(new ChatMessageView(ReportChatMessage.Compose(view, url, zone)));
     }
 
+    /// <summary>Что пишет выгрузка: отчёт, строки по фильтрам страницы, адрес веба и часовой пояс.</summary>
+    private sealed record ExportSource(ReportView View, ReportContext Context, IQueryable<ReportRowSource> Rows, string Web, TimeZoneInfo Zone);
+
     /// <summary>
     ///     Выгрузка отчёта с фильтрами страницы: строки читаются из базы потоком и пишутся в тело ответа, не собираясь в памяти.
     /// </summary>
+    /// <param name="write">Пишет файл формата в тело ответа.</param>
     private static async Task<IResult> ExportAsync(Guid runId, string? scope, string? sort, string? baseUrl, string format, HttpContext http,
-        RunReports reports, ISettingsStore general, Data.ToadFlowDb db, Images.CollisionImages collisionImages, CancellationToken ct)
+        RunReports reports, ISettingsStore general, Func<ExportSource, Stream, Task> write, CancellationToken ct)
     {
         if (WebBase(baseUrl) is not { } web) return BadBaseUrl();
         if (await reports.ContextAsync(runId, ct) is not { } context || await reports.ViewAsync(runId, ct) is not { } view) return Results.NotFound();
@@ -63,34 +75,8 @@ public static class ReportEndpoints
         http.Response.Headers.ContentDisposition =
             new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment") { FileName = $"\"report.{format}\"", FileNameStar = name }.ToString();
 
-        var body = http.Response.Body;
-        if (format == "xlsx") await ReportXlsx.WriteAsync(body, view, Export(rows, context, ct), web, zone, ct);
-        else
-        {
-            var total = await rows.CountAsync(ct);
-            var images = await RenderImagesAsync(rows, db, collisionImages, ct);
-            await ReportHtml.WriteAsync(body, view, Export(rows, context, ct), total,
-                (row, _) => Task.FromResult(images.GetValueOrDefault(row.Id)), web, zone, ct);
-        }
-
+        await write(new ExportSource(view, context, rows, web, zone), http.Response.Body);
         return Results.Empty;
-    }
-
-    /// <summary>
-    ///     Картинки первых <see cref="ReportHtml.MaxImages" /> строк выборки: готовые берутся из кеша, недостающие рисуются (число
-    ///     одновременных отрисовок ограничено в <see cref="Images.CollisionImages" />). Строки без картинки (404, 410) в словаре не появляются.
-    /// </summary>
-    private static async Task<Dictionary<Guid, byte[]>> RenderImagesAsync(IQueryable<ReportRowSource> rows, Data.ToadFlowDb db,
-        Images.CollisionImages images, CancellationToken ct)
-    {
-        var ids = await rows.Select(r => r.Collision.Id).Take(ReportHtml.MaxImages).ToListAsync(ct);
-        var targets = await Images.ImageTargets.LoadAsync(db, ids, ct);
-        var results = await Task.WhenAll(targets.Values.Select(async target => (target.CollisionId, Result: await images.GetAsync(target, ct))));
-        var bytes = new Dictionary<Guid, byte[]>(results.Length);
-        foreach (var (id, result) in results)
-            if (result.Status == StatusCodes.Status200OK)
-                bytes[id] = await File.ReadAllBytesAsync(result.Path!, ct);
-        return bytes;
     }
 
     private static async IAsyncEnumerable<ReportExportRow> Export(IQueryable<ReportRowSource> rows, ReportContext context,

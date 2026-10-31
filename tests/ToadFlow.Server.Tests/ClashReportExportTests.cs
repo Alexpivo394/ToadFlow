@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Xml;
 using Alexpivo394.Revit.Clash.Geometry;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -241,6 +242,63 @@ public class ClashReportExportTests : ServerTest
         var html = await response.Content.ReadAsStringAsync();
         Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(2);
         Regex.Matches(html, "нет картинки").Count.ShouldBe(1);
+    }
+
+    /// <summary>
+    ///     Картинки рисуются окном впереди записи: строк больше окна (2 × потоки), часть картинок в кеше, у одной строки элемента
+    ///     нет. Каждая картинка — у своей строки.
+    /// </summary>
+    [Test]
+    public async Task ExportHtml_MoreRowsThanRenderWindow_ImagesOnTheirRows()
+    {
+        const int count = 7;
+        var (admin, agent, partId, runId) = await RenderableRunAsync(count, i => i == 3 ? "missing" : null);
+        await using var _ = agent;
+        await using var limited = Server.WithWebHostBuilder(builder => builder.UseSetting("Clash:ImageThreads", "1"));
+        var client = limited.CreateClient();
+        client.DefaultRequestHeaders.Authorization = admin.DefaultRequestHeaders.Authorization;
+        var collisions = await DbAsync(db => db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == partId).ToListAsync());
+        byte[] Cached(int number) => [..TinyPng, (byte)number];
+        foreach (var c in collisions.Where(c => c.Number is 5 or 6))
+            await ClashStorage.WriteImageAsync(Server.ClashStorageRoot, partId, c.Id, ImageTarget.VersionOf(c), new MemoryStream(Cached(c.Number)), CancellationToken.None);
+
+        var response = await client.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var cards = Regex.Matches(await response.Content.ReadAsStringAsync(),
+            "<div class=\"card\">(?:<img [^>]*src=\"data:image/png;base64,(?<png>[^\"]+)\">|<div class=\"noimg\">).*?<b>№(?<number>\\d+)</b>", RegexOptions.Singleline);
+        cards.Select(m => int.Parse(m.Groups["number"].Value)).Order().ShouldBe(Enumerable.Range(1, count));
+        foreach (Match card in cards)
+        {
+            var number = int.Parse(card.Groups["number"].Value);
+            var png = card.Groups["png"].Success ? Convert.FromBase64String(card.Groups["png"].Value) : null;
+            if (number == 3) png.ShouldBeNull();
+            else if (number is 5 or 6) png.ShouldBe(Cached(number));
+            else png.ShouldNotBeNull($"№{number}").Length.ShouldBeGreaterThan(1000);
+        }
+
+        limited.Services.GetRequiredService<CollisionImages>().Renders.ShouldBe(count - 3);
+    }
+
+    [Test]
+    public async Task ExportHtml_CorruptGeometry_RowsWithoutImages()
+    {
+        var (admin, agent, _, runId) = await RenderableRunAsync(2);
+        await using var _ = agent;
+        var models = await DbAsync(db => db.Set<Clash.Engine.EngineRun>().AsNoTracking().Where(r => r.Id == runId).Select(r => r.Models).SingleAsync());
+        foreach (var model in models)
+        {
+            await using var file = new FileStream(Path.Combine(Server.ClashStorageRoot, model.ModelId.ToString("N"), model.SnapshotId.ToString("N"), "model.tcg"),
+                FileMode.Open, FileAccess.Write);
+            file.SetLength(16);
+        }
+
+        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var html = await response.Content.ReadAsStringAsync();
+        Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(0);
+        Regex.Matches(html, "нет картинки").Count.ShouldBe(2);
     }
 
     [Test]
