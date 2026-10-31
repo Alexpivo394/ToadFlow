@@ -76,7 +76,7 @@ public sealed class ImageWorker(EngineClient client, SnapshotCache cache, Worker
         }
     }
 
-    /// <summary>Рисует пачку параллельно; коллизия, элемента которой нет в слепке, сдаётся как «без картинки».</summary>
+    /// <summary>Рисует пачку параллельно; коллизия, которую нарисовать не вышло (элемента нет в слепке, битая геометрия), сдаётся как «без картинки», а пачка идёт дальше.</summary>
     private List<(EngineImageResult Result, byte[]? Png)> Render(CollisionSceneIndex index, IReadOnlyList<EngineImageRequest> items, CancellationToken ct)
     {
         var results = new (EngineImageResult Result, byte[]? Png)[items.Count];
@@ -91,9 +91,9 @@ public sealed class ImageWorker(EngineClient client, SnapshotCache cache, Worker
                 var scene = index.Collect(item.ModelA, item.UniqueIdA, item.ModelB, item.UniqueIdB, item.X, item.Y, item.Z);
                 png = CollisionRenderer.Render(scene).Png;
             }
-            catch (KeyNotFoundException exception)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures.Add(exception.Message);
+                failures.Add($"{item.CollisionId}: {exception.Message}");
             }
 
             results[i] = (new EngineImageResult(item.CollisionId, item.FingerprintA, item.FingerprintB, png is not null), png);

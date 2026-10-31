@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Buffers.Binary;
 using Alexpivo394.Revit.Clash.Geometry;
 using Microsoft.EntityFrameworkCore;
@@ -32,11 +33,18 @@ public class ImageWorkerTests : ServerTest
         public int Uploads;
         public Func<HttpRequestMessage, Task>? AfterBatch;
         public Func<HttpRequestMessage, Task>? AfterUpload;
+        public Func<EngineImageBatch, EngineImageBatch>? RewriteBatch;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var response = await base.SendAsync(request, ct);
             var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Get && path.EndsWith("/batch") && RewriteBatch is { } rewrite && response.IsSuccessStatusCode)
+            {
+                var batch = await response.Content.ReadFromJsonAsync<EngineImageBatch>(ct);
+                response.Content = JsonContent.Create(rewrite(batch!));
+            }
+
             if (request.Method == HttpMethod.Get && path.EndsWith("/batch") && AfterBatch is { } afterBatch) await afterBatch(request);
             if (request.Method == HttpMethod.Post && path.StartsWith("/api/engine/images/") && path.Count(c => c == '/') == 4 && !path.EndsWith("/claim"))
             {
@@ -122,6 +130,24 @@ public class ImageWorkerTests : ServerTest
 
         (await DbAsync(db => db.Set<ClashImageJob>().CountAsync())).ShouldBe(0);
         (await images.RunOnceAsync(CancellationToken.None)).ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Images_OneCollisionFailsToRender_OthersStillDrawn()
+    {
+        var (admin, agent, partId) = await PartAsync();
+        await using var _ = agent;
+        await ApproveAsync(admin, partId);
+        var (engine, images, hook) = Workers();
+        (await engine.RunOnceAsync(CancellationToken.None)).ShouldBe(RunOutcome.Succeeded);
+        // Точка первой коллизии вне диапазона float: рисование этой коллизии падает, остальные должны нарисоваться.
+        hook.RewriteBatch = batch => batch with { Items = batch.Items.Select((item, i) => i == 0 ? item with { X = 1e300 } : item).ToList() };
+
+        (await images.RunOnceAsync(CancellationToken.None)).ShouldBe(true);
+
+        var collisions = await CollisionsAsync(partId);
+        collisions.Count(c => c.HasImage).ShouldBe(1);
+        (await DbAsync(db => db.Set<ClashImageJob>().CountAsync())).ShouldBe(0);
     }
 
     [Test]
