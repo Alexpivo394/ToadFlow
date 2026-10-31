@@ -55,6 +55,7 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
             Kind = EngineRunKind.Approved,
             Version = version,
             TriggerRunId = triggerRunId,
+            StartedBy = actor.Kind == ToadFlow.Server.Data.Entities.ActorKind.User ? actor.Name : null,
             UncheckedModels = [.. uncheckedModels.Distinct()],
             PreviousRunId = part.ApprovedRunId,
             State = EngineRunState.Queued,

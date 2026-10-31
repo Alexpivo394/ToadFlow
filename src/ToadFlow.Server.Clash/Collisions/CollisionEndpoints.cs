@@ -202,51 +202,16 @@ public static class CollisionEndpoints
         return Results.Ok(new CollisionSummary(statuses.Where(s => Open.Contains(s.Status)).Sum(s => s.Count), statuses, checks));
     }
 
-    /// <param name="status">Статусы через запятую; <c>all</c> — все; не задано — открытые.</param>
-    /// <param name="q">Номер коллизии, UniqueId или ElementId элемента.</param>
+    /// <summary>Список коллизий части по <see cref="CollisionFilter" />.</summary>
     /// <param name="sort"><c>depth</c> — глубже сначала; иначе по номеру.</param>
-    /// <param name="stuckDays">Только висящие: открытые, без записей в ленте столько дней (из обзора координатора).</param>
-    private static async Task<IResult> ListAsync(Guid id, string? check, string? status, CollisionAssignee? assignee, string? level, string? model, string? q,
-        string? sort, int? page, int? pageSize, int? stuckDays, ToadFlowDb db, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> ListAsync(Guid id, string? sort, int? page, int? pageSize, HttpRequest request, ToadFlowDb db, TimeProvider time,
+        CancellationToken ct)
     {
-        var query = db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == id);
-        if (stuckDays is { } days and > 0) query = Overview.OverviewEndpoints.Stuck(db, query, time.GetUtcNow() - TimeSpan.FromDays(days));
-        if (string.IsNullOrWhiteSpace(status)) query = query.Where(c => Open.Contains(c.Status));
-        else if (!status.Equals("all", StringComparison.OrdinalIgnoreCase))
-        {
-            var wanted = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(s => Enum.TryParse<CollisionStatus>(s, true, out var parsed) ? parsed : (CollisionStatus?)null).OfType<CollisionStatus>().ToArray();
-            query = query.Where(c => wanted.Contains(c.Status));
-        }
-
-        if (!string.IsNullOrWhiteSpace(check)) query = query.Where(c => c.Checks.Contains(check));
-        if (assignee is { } who) query = query.Where(c => c.Assignee == who);
-        if (!string.IsNullOrWhiteSpace(level))
-        {
-            var wanted = level.Trim().ToLower();
-            query = query.Where(c => c.LevelA!.ToLower() == wanted || c.LevelB!.ToLower() == wanted);
-        }
-
         var names = await ModelNamesAsync(db, id, ct);
-        if (!string.IsNullOrWhiteSpace(model))
-        {
-            var key = names.FirstOrDefault(m => m.Value == model).Key ?? model;
-            query = query.Where(c => c.ModelA == key || c.ModelB == key);
-        }
-
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            var text = q.Trim();
-            var number = int.TryParse(text, out var n) ? n : -1;
-            var elementId = long.TryParse(text, out var e) ? e : -1;
-            query = query.Where(c => c.Number == number || c.ElementIdA == elementId || c.ElementIdB == elementId
-                                     || c.UniqueIdA.Contains(text) || c.UniqueIdB.Contains(text));
-        }
-
+        var query = CollisionFilter.From(request).Apply(db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == id), db, names, time.GetUtcNow());
         var total = await query.CountAsync(ct);
         var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
-        var ordered = sort == "depth" ? query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.Number) : query.OrderBy(c => c.Number);
-        var rows = await ordered.Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
+        var rows = await CollisionFilter.Sort(query, sort).Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
         var suggested = await NumbersAsync(db, rows.Select(r => r.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         return Results.Ok(new CollisionPage(total, rows.Select(r => Row(r, names, suggested)).ToList()));
     }
@@ -462,7 +427,7 @@ public static class CollisionEndpoints
         new() { Id = Guid.CreateVersion7(), CollisionId = collisionId, At = at, UserId = user, Kind = kind, Text = text };
 
     /// <summary>Имена моделей части по ключу (Id в форме N).</summary>
-    private static async Task<Dictionary<string, string>> ModelNamesAsync(ToadFlowDb db, Guid partId, CancellationToken ct) =>
+    internal static async Task<Dictionary<string, string>> ModelNamesAsync(ToadFlowDb db, Guid partId, CancellationToken ct) =>
         (await db.Set<ClashPartModel>().AsNoTracking().Where(m => m.PartId == partId)
             .Join(db.Set<ClashModel>().AsNoTracking(), pm => pm.ModelId, m => m.Id, (_, m) => new { m.Id, m.Name }).ToListAsync(ct))
         .ToDictionary(m => m.Id.ToString("N"), m => m.Name);

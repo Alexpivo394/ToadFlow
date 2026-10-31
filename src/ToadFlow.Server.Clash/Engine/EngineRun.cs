@@ -61,6 +61,9 @@ public sealed class EngineRun
     public EngineRunStats? Stats { get; set; }
     public int? HitCount { get; set; }
     public Guid CreatedByUserId { get; set; }
+
+    /// <summary>Кто поставил прогон вручную — имя пользователя; null — система или расписание.</summary>
+    public string? StartedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }

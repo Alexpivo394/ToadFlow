@@ -10,6 +10,7 @@ using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Overview;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Projects;
+using ToadFlow.Server.Clash.Reports;
 using ToadFlow.Server.Clash.Templates;
 using ToadFlow.Server.Clash.Uploads;
 using ToadFlow.Server.Clash.Viewer;
@@ -52,6 +53,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<DraftHits>();
         services.AddScoped<ApprovedRuns>();
         services.AddScoped<CollisionReconciler>();
+        services.AddScoped<RunReports>();
         services.AddHostedService<EngineLeaseSweeper>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
         services.AddAuthorization(options => options.AddPolicy(EngineAuthHandler.Policy,
@@ -238,6 +240,7 @@ public sealed class ClashServerModule : IServerModule
         members.MapClashMy();
         members.MapClashChecks();
         members.MapClashAnalytics();
+        members.MapClashReports();
     }
 
     /// <summary>

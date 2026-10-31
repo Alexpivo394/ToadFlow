@@ -913,6 +913,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
 
+                    b.Property<string>("StartedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("started_by");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(32)
