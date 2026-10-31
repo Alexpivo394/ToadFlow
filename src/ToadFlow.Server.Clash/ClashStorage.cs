@@ -25,32 +25,6 @@ public sealed class ClashStorage(ToadFlowDb db, IOptions<ClashStorageOptions> op
     /// <summary>Картинки коллизий части: <c>{Root}/images/{часть}/{коллизия}-{версия}.png</c>.</summary>
     public string ImageFolder(Guid partId) => Path.Combine(Root, "images", partId.ToString("N"));
 
-    public string ImagePath(Guid partId, Guid collisionId) => Path.Combine(ImageFolder(partId), collisionId.ToString("N") + ".png");
-
-    /// <summary>Пишет картинку во временный файл той же папки и переносит на место: читатель не увидит половину файла.</summary>
-    public async Task WriteImageAsync(Guid partId, Guid collisionId, Stream content, CancellationToken ct)
-    {
-        var path = ImagePath(partId, collisionId);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            await using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
-                await content.CopyToAsync(file, ct);
-            File.Move(temporary, path, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
-        }
-    }
-
-    public void DeleteImage(Guid partId, Guid collisionId)
-    {
-        var path = ImagePath(partId, collisionId);
-        if (File.Exists(path)) File.Delete(path);
-    }
-
     /// <summary>Картинка версии <paramref name="version" />: <c>{root}/images/{часть}/{коллизия}-{версия}.png</c>.</summary>
     public static string ImagePath(string root, Guid partId, Guid collisionId, string version) =>
         Path.Combine(root, "images", partId.ToString("N"), $"{collisionId:N}-{version}.png");

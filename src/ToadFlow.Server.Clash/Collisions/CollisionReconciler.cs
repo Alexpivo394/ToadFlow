@@ -4,7 +4,6 @@ using NpgsqlTypes;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash.Analytics;
 using ToadFlow.Server.Clash.Engine;
-using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
 
@@ -20,7 +19,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         "id, part_id, number, status, assignee, found_now, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
         "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, discipline_pair, checks, x, y, z, depth_mm, " +
         "fingerprint_a, fingerprint_b, first_version, last_found_version, last_found_run_id, suggested_predecessor_id, created_at, updated_at, " +
-        "first_run_id, image_fingerprint_a, image_fingerprint_b, has_image";
+        "first_run_id";
 
     /// <summary>
     ///     Последняя часть утверждённого прогона пришла: сверяет коллизии, закрывает прогон, делает его основой следующего.
@@ -156,7 +155,6 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
 
             await CopyEventsAsync(connection, feed, ct);
             await CopySamplesAsync(connection, samples, ct);
-            await ImageJobs.QueueAsync(db, run.PartId, run.Id, ct);
 
             var counts = await db.Set<ClashCollision>().Where(c => c.PartId == run.PartId).GroupBy(c => c.Status)
                 .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
@@ -329,9 +327,6 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             await importer.WriteAsync(c.UpdatedAt, NpgsqlDbType.TimestampTz, ct);
             if (c.FirstRunId is { } firstRun) await importer.WriteAsync(firstRun, NpgsqlDbType.Uuid, ct);
             else await importer.WriteNullAsync(ct);
-            await WriteNullableAsync(importer, c.ImageFingerprintA, ct);
-            await WriteNullableAsync(importer, c.ImageFingerprintB, ct);
-            await importer.WriteAsync(c.HasImage, NpgsqlDbType.Boolean, ct);
         }
 
         await importer.CompleteAsync(ct);

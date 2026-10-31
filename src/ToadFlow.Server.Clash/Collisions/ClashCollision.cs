@@ -92,13 +92,6 @@ public sealed class ClashCollision
     /// <summary>Прогон, которым пара найдена впервые; пусто у коллизий, найденных до этапа 6.</summary>
     public Guid? FirstRunId { get; set; }
 
-    /// <summary>Отпечатки, по которым нарисована (или не смогла нарисоваться) картинка; null — картинки ещё не было.</summary>
-    public long? ImageFingerprintA { get; set; }
-
-    public long? ImageFingerprintB { get; set; }
-
-    /// <summary>Картинка есть в хранилище (<c>ClashStorage.ImagePath</c>).</summary>
-    public bool HasImage { get; set; }
 
     /// <summary>Возможно, это прежняя коллизия с пересозданным элементом; объединяет человек.</summary>
     public Guid? SuggestedPredecessorId { get; set; }

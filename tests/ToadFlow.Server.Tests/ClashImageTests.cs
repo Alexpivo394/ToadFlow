@@ -140,6 +140,16 @@ public class ClashImageTests : ServerTest
     }
 
     [Test]
+    public async Task ApprovedRun_NoImageWorkQueued()
+    {
+        await OneAsync();
+
+        var claim = await EngineClient(Server).PostAsync("/api/engine/images/claim", null);
+
+        claim.IsSuccessStatusCode.ShouldBeFalse();
+    }
+
+    [Test]
     public async Task Image_FirstRequest_RendersPng640x400_ThenServedFromCache()
     {
         var (setup, collision) = await OneAsync();

@@ -190,13 +190,6 @@ public sealed class ClashServerModule : IServerModule
             entity.HasOne<ClashCollision>().WithMany().HasForeignKey(e => e.CollisionId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        model.Entity<ClashImageJob>(entity =>
-        {
-            entity.ToTable("clash_image_jobs");
-            entity.HasKey(j => j.PartId);
-            entity.HasOne<ClashPart>().WithMany().HasForeignKey(j => j.PartId).OnDelete(DeleteBehavior.Cascade);
-        });
-
         model.Entity<ClashUserState>(entity =>
         {
             entity.ToTable("clash_user_states");
@@ -216,7 +209,6 @@ public sealed class ClashServerModule : IServerModule
     public void MapExternalEndpoints(IEndpointRouteBuilder app)
     {
         app.MapClashEngine();
-        app.MapClashImages();
     }
 
     public void MapEndpoints(RouteGroupBuilder api)
