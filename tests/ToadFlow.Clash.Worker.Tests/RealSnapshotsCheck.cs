@@ -290,8 +290,9 @@ public class RealSnapshotsCheck : ServerTest
     }
 
     /// <summary>
-    ///     Картинки по запросу после первого прогона: 200 коллизий части (по номеру, каждая 300-я). Первые 20 — по одной (у первой
-    ///     холодный кеш оглавлений), остальные 180 — параллельно по 50, как страница отчёта. Пишет время первой картинки, p50 и p95
+    ///     Картинки по запросу после первого прогона: до 200 коллизий части (по номеру; шаг выборки не больше 300,
+    ///     при малом числе коллизий меньше). Первые 20 — по одной (у первой холодный кеш оглавлений), затем те же 20 повторно (из кеша),
+    ///     остальные — параллельно по 50 (последняя пачка меньше), как страница отчёта; картинки пачек рисуются с нуля. Пишет время первой картинки, p50 и p95
     ///     по одной, время пачки из 50 и пик рабочего набора процесса (выборка раз в 200 мс). Цели (в отчёт, не в утверждения):
     ///     p95 тёплой картинки не больше 300 мс, пачка из 50 не больше 3 с. Пять картинок — в <c>%TEMP%\toadclash-images-sample</c>.
     /// </summary>
@@ -330,7 +331,7 @@ public class RealSnapshotsCheck : ServerTest
         var failures = new List<string>();
         long bytes = 0, images = 0;
 
-        async Task<TimeSpan> RequestAsync(CollisionRow row)
+        async Task<(TimeSpan Elapsed, bool Ok)> RequestAsync(CollisionRow row)
         {
             var watch = Stopwatch.StartNew();
             using var response = await admin.GetAsync($"/api/clash/collisions/{row.Id}/image?v={row.ImageVersion}");
@@ -347,15 +348,23 @@ public class RealSnapshotsCheck : ServerTest
                 lock (failures) failures.Add($"№ {row.Number}: {(int)response.StatusCode}");
             }
 
-            return elapsed;
+            return (elapsed, response.IsSuccessStatusCode);
         }
 
         var cold = new List<double>();
-        foreach (var row in picked.Take(single)) cold.Add((await RequestAsync(row)).TotalMilliseconds);
+        foreach (var row in picked.Take(single))
+        {
+            var (elapsed, ok) = await RequestAsync(row);
+            if (ok) cold.Add(elapsed.TotalMilliseconds);
+        }
 
         // Тёплые: повтор тех же адресов, когда файлы уже в кеше.
         var warm = new List<double>();
-        foreach (var row in picked.Take(single)) warm.Add((await RequestAsync(row)).TotalMilliseconds);
+        foreach (var row in picked.Take(single))
+        {
+            var (elapsed, ok) = await RequestAsync(row);
+            if (ok) warm.Add(elapsed.TotalMilliseconds);
+        }
 
         var batches = new List<double>();
         foreach (var chunk in picked.Skip(single).Chunk(batch))
@@ -372,8 +381,8 @@ public class RealSnapshotsCheck : ServerTest
             values.Count == 0 ? 0 : values.Order().ElementAt(Math.Min(values.Count - 1, (int)Math.Ceiling(values.Count * p) - 1));
 
         report.AppendLine($"Картинки по запросу v1: {picked.Count} из {total:N0} коллизий (каждая {stride}-я); первая (холодный кеш оглавлений) {(cold.Count > 0 ? cold[0] / 1000 : 0):0.00} с; " +
-                          $"по одной ({cold.Count}) p50 {Percentile(cold, 0.5):0} мс, p95 {Percentile(cold, 0.95):0} мс; повтор из кеша p95 {Percentile(warm, 0.95):0} мс (цель ≤ 300); " +
-                          $"пачки до {batch}: {string.Join(", ", batches.Select(b => $"{b:0.0} с"))} (цель ≤ 3 с); PNG в среднем {bytes / 1024.0 / Math.Max(1, images):0.0} КБ; " +
+                          $"по одной (успешных {cold.Count}) p50 {Percentile(cold, 0.5):0} мс, p95 {Percentile(cold, 0.95):0} мс; повтор из кеша p95 {Percentile(warm, 0.95):0} мс (цель ≤ 300); " +
+                          $"пачки до {batch} (рисуются с нуля, последняя меньше):{string.Join(", ", batches.Select(b => $"{b:0.0} с"))} (цель ≤ 3 с); PNG в среднем {bytes / 1024.0 / Math.Max(1, images):0.0} КБ; " +
                           $"пик рабочего набора процесса {peak / 1024.0 / 1024 / 1024:0.00} ГБ; ошибок {failures.Count}{(failures.Count > 0 ? " (" + string.Join(", ", failures.Take(5)) + ")" : "")}");
     }
 
