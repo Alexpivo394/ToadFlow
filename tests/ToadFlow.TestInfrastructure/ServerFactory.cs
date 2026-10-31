@@ -7,7 +7,9 @@ namespace ToadFlow.Server.Tests.Infrastructure;
 
 /// <summary>Сервер ToadFlow в памяти поверх отдельной базы встроенного Postgres.</summary>
 /// <param name="time">Подменное время для фоновых служб; null — настоящее.</param>
-public sealed class ServerFactory(string connectionString, TimeProvider? time = null) : WebApplicationFactory<Program>
+/// <param name="services">Последняя правка служб сервера для теста; null — без правок.</param>
+public sealed class ServerFactory(string connectionString, TimeProvider? time = null, Action<IServiceCollection>? services = null)
+    : WebApplicationFactory<Program>
 {
     public const string AdminLogin = "admin";
     public const string AdminPassword = "admin-pass";
@@ -28,6 +30,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         builder.UseSetting("Admin:Password", AdminPassword);
         builder.UseSetting("Clash:StorageRoot", ClashStorageRoot);
         builder.UseSetting("Clash:EngineKey", EngineKey);
-        if (time is not null) builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Singleton(time)));
+        if (time is not null) builder.ConfigureServices(collection => collection.Replace(ServiceDescriptor.Singleton(time)));
+        if (services is not null) builder.ConfigureServices(services);
     }
 }

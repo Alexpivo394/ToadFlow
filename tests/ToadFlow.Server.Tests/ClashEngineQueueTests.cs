@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using ToadFlow.Contracts;
@@ -19,7 +20,15 @@ public class ClashEngineQueueTests : ServerTest
 {
     private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
 
-    public ClashEngineQueueTests() => Time = _time;
+    /// <remarks>
+    ///     Фоновый уборщик аренды тикает на том же подменном времени: сдвиг времени запускал его одновременно с ручной уборкой
+    ///     теста, и под нагрузкой прогон возвращался в очередь дважды. Здесь уборка только ручная.
+    /// </remarks>
+    public ClashEngineQueueTests()
+    {
+        Time = _time;
+        Services = services => services.Remove(services.Single(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(EngineLeaseSweeper)));
+    }
 
     private async Task<(HttpClient Admin, FakeAgent Agent)> SetupAsync()
     {

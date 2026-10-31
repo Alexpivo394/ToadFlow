@@ -21,11 +21,14 @@ public abstract class ServerTest
     /// <summary>Подменное время для теста; задаётся до старта сервера (в конструкторе наследника).</summary>
     protected TimeProvider? Time { get; init; }
 
+    /// <summary>Правка служб сервера для теста (например, убрать фоновую службу); задаётся в конструкторе наследника.</summary>
+    protected Action<IServiceCollection>? Services { get; init; }
+
     [Before(Test)]
     public async Task StartServerAsync()
     {
         _connectionString = await Postgres.CreateDatabaseAsync();
-        Server = new ServerFactory(_connectionString, Time);
+        Server = new ServerFactory(_connectionString, Time, Services);
         _ = Server.Server; // старт хоста и миграции — до первого запроса
     }
 
