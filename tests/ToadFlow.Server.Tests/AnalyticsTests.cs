@@ -107,7 +107,7 @@ public class AnalyticsTests : ServerTest
     public async Task ManualCheck_RecordedOnce_Classified()
     {
         await SetNamingAsync();
-        var token = await TokenClientAsync(await ClientAsync(UserRole.Viewer));
+        var token = await TokenClientAsync(await ClientAsync(UserRole.Operator));
         var request = new { id = Guid.NewGuid(), summary = Summary() };
 
         var first = await (await token.PostJsonAsync("/api/loi/checks", request)).EnsureSuccessStatusCode().ReadJsonAsync<ManualResultView>();
@@ -123,18 +123,18 @@ public class AnalyticsTests : ServerTest
         check.Rules.ShouldHaveSingleItem().Parameters.Select(p => p.Name).ShouldBe(["Марка", "Код"], ignoreOrder: true);
     }
 
-    /// <summary>ParamChecker запускают и проектировщики: их итог принимается тем же личным токеном ToadTools.</summary>
+    /// <summary>Статистику LOI из ParamChecker отправляют только координаторы и администраторы: проектировщику и наблюдателю — 403.</summary>
     [Test]
-    public async Task ManualCheck_ByDesignerToken_Recorded()
+    public async Task ManualCheck_DesignerAndViewer_Forbidden()
     {
         await SetNamingAsync();
-        var token = await TokenClientAsync(await ClientAsync(UserRole.Designer, "АР"));
+        foreach (var user in new[] { await ClientAsync(UserRole.Designer, "АР"), await ClientAsync(UserRole.Viewer) })
+        {
+            var token = await TokenClientAsync(user);
+            (await token.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary() })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        }
 
-        var result = await (await token.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary() }))
-            .EnsureSuccessStatusCode().ReadJsonAsync<ManualResultView>();
-
-        result.Recorded.ShouldBeTrue();
-        (await ChecksAsync()).ShouldHaveSingleItem().UserId.ShouldNotBeNull();
+        (await ChecksAsync()).ShouldBeEmpty();
     }
 
     [Test]

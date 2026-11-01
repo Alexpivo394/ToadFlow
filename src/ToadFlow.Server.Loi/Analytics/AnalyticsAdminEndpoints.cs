@@ -37,8 +37,8 @@ internal static class AnalyticsAdminEndpoints
     public const string Entity = "loi-analytics";
 
     /// <summary>
-    ///     Ручная проверка из плагина ParamChecker — любой пользователь со своим токеном, включая проектировщика (группа
-    ///     участников), проверка записывается на него.
+    ///     Ручная проверка из плагина ParamChecker — статистику LOI отправляют только координаторы и администраторы, проверка
+    ///     записывается на отправившего. Проектировщику и наблюдателю — 403: ParamChecker показывает «недостаточно прав».
     /// </summary>
     public static void MapLoiChecks(this RouteGroupBuilder members) =>
         members.MapPost("/loi/checks", async (ManualCheckRequest request, CheckRecorder recorder, HttpContext http, IDomainEvents events, CancellationToken ct) =>
@@ -50,7 +50,7 @@ internal static class AnalyticsAdminEndpoints
             var recorded = await recorder.RecordAsync(request.Id, summary, new CheckOrigin(LoiCheckSource.Manual, UserId: http.User.UserId()), ct);
             if (recorded) events.Publish(new LoiCheckRecorded(http.User.Actor(), request.Id));
             return Results.Ok(new ManualCheckResult(recorded, recorded ? null : "Аналитика на сервере выключена или проверка уже записана"));
-        });
+        }).RequireAuthorization(Policies.Operator);
 
     public static void MapLoiAnalyticsAdmin(this RouteGroupBuilder loi)
     {

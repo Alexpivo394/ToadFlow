@@ -16,12 +16,12 @@ public class AuthorizationMatrixTests : ServerTest
     private static readonly string[] Open = ["/api/auth/login", "/api/auth/register", "/api/agents/register"];
 
     /// <summary>
-    ///     Доступно и наблюдателю: свой профиль, своя отметка захода в «Мои коллизии», свои токены доступа, своя ручная проверка из ParamChecker и предпросмотры разбора имён и
+    ///     Доступно и наблюдателю: свой профиль, своя отметка захода в «Мои коллизии», свои токены доступа и предпросмотры разбора имён и
     ///     профилей моделей — они ничего не сохраняют, POST только из-за тела запроса. Свой архив выгрузки отчёта: выгрузка
     ///     открыта любой роли.
     /// </summary>
     private static readonly string[] Personal =
-        ["/api/auth/tokens", "/api/auth/tokens/current", "/api/auth/tokens/{id:guid}", "/api/profile", "/api/profile/password", "/api/loi/checks", "/api/loi/naming/preview", "/api/loi/routing/preview",
+        ["/api/auth/tokens", "/api/auth/tokens/current", "/api/auth/tokens/{id:guid}", "/api/profile", "/api/profile/password", "/api/loi/naming/preview", "/api/loi/routing/preview",
          "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned",
          "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit", "/api/clash/reports/{runId:guid}/archive", "/api/clash/report-archives/{id:guid}"];
 
@@ -90,9 +90,9 @@ public class AuthorizationMatrixTests : ServerTest
         members.ShouldContain("POST /api/clash/collisions/{id:guid}/notes");
         members.ShouldNotContain("POST /api/clash/collisions/{id:guid}/merge");
         members.ShouldNotContain("GET /api/clash/parts/{id:guid}");
-        members.ShouldContain("POST /api/loi/checks"); // итог ParamChecker — и от проектировщика
+        members.ShouldNotContain("POST /api/loi/checks"); // статистику LOI отправляют только координаторы и администраторы
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
-                               && !route.Contains(" /api/profile") && !route.EndsWith("/card") && route != "POST /api/loi/checks")
+                               && !route.Contains(" /api/profile") && !route.EndsWith("/card"))
             .ShouldBeEmpty();
 
         var wrong = new List<string>();
