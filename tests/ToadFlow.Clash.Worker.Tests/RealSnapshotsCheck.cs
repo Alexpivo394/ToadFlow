@@ -219,6 +219,9 @@ public class RealSnapshotsCheck : ServerTest
             }
 
             if (context.Request.Headers.Authorization.ToString() is { Length: > 0 } auth) request.Headers.TryAddWithoutValidation("Authorization", auth);
+            // Личный токен ToadTools (плагины Revit) — свой заголовок.
+            if (context.Request.Headers[ToadFlow.Server.Auth.ApiTokenAuthHandler.Header].ToString() is { Length: > 0 } token)
+                request.Headers.TryAddWithoutValidation(ToadFlow.Server.Auth.ApiTokenAuthHandler.Header, token);
             using var response = await inner.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
             context.Response.StatusCode = (int)response.StatusCode;
             if (response.Content.Headers.ContentType is { } contentType) context.Response.ContentType = contentType.ToString();
