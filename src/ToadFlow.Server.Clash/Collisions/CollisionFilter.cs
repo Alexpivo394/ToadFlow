@@ -9,7 +9,7 @@ namespace ToadFlow.Server.Clash.Collisions;
 /// <param name="Check">Ключ проверки (клетки матрицы).</param>
 /// <param name="Discipline">Раздел любой из сторон.</param>
 /// <param name="Pair">Пара разделов, как в <see cref="ClashCollision.DisciplinePair" />.</param>
-/// <param name="Level">Уровень любой из сторон, без учёта регистра.</param>
+/// <param name="Level">Уровень любой из сторон или ключ группы «A / B», без учёта регистра; <c>-</c> — без уровня.</param>
 /// <param name="Model">Модель любой из сторон: имя или ключ (Id в форме N).</param>
 /// <param name="Q">Номер коллизии, UniqueId или ElementId элемента.</param>
 /// <param name="StuckDays">Только висящие: открытые, без записей в ленте столько дней (из обзора координатора).</param>
@@ -60,10 +60,13 @@ public sealed record CollisionFilter(
         if (Discipline is { } discipline) query = query.Where(c => c.DisciplineA == discipline || c.DisciplineB == discipline);
         if (Pair is { } pair) query = query.Where(c => c.DisciplinePair == pair);
         if (Assignee is { } who) query = query.Where(c => c.Assignee == who);
-        if (!string.IsNullOrWhiteSpace(Level))
+        if (Level?.Trim() == CollisionLevel.None)
+            query = query.Where(c => (c.LevelA == null || c.LevelA == "") && (c.LevelB == null || c.LevelB == ""));
+        else if (!string.IsNullOrWhiteSpace(Level))
         {
+            // Уровень любой из сторон или ключ группы отчёта «A / B» (CollisionLevel.Key).
             var wanted = Level.Trim().ToLower();
-            query = query.Where(c => c.LevelA!.ToLower() == wanted || c.LevelB!.ToLower() == wanted);
+            query = query.Where(c => c.LevelA!.ToLower() == wanted || c.LevelB!.ToLower() == wanted || (c.LevelA + " / " + c.LevelB).ToLower() == wanted);
         }
 
         if (!string.IsNullOrWhiteSpace(Model))

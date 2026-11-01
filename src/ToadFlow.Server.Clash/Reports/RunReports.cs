@@ -54,7 +54,20 @@ public sealed record ReportView(
 
 /// <summary>Строка отчёта: текущее состояние коллизии и её переход в этом прогоне.</summary>
 /// <param name="Change">Статус, в который коллизия перешла в этом прогоне; <c>New</c> — найдена им впервые; null — не менялась.</param>
-public sealed record ReportRow(CollisionRow Collision, CollisionStatus? Change, string? LastNote, string? LastNoteBy, DateTimeOffset? LastNoteAt);
+/// <param name="Level">Уровень строки для группировки (<see cref="CollisionLevel.Key" />); пусто — без уровня.</param>
+public sealed record ReportRow(CollisionRow Collision, CollisionStatus? Change, string? LastNote, string? LastNoteBy, DateTimeOffset? LastNoteAt, string Level);
+
+/// <summary>Уровень в паре: заголовок группы строк отчёта и пункт фильтра уровня.</summary>
+/// <param name="Pair">Ключ пары.</param>
+/// <param name="Level">Уровень (<see cref="CollisionLevel.Key" />); пусто — без уровня.</param>
+/// <param name="Count">Строк уровня в выборке.</param>
+public sealed record ReportLevelView(string Pair, string Level, int Count);
+
+/// <summary>Выборка отчёта: строки в порядке и порядок, по которому они идут.</summary>
+public sealed record ReportSelection(IQueryable<ReportRowSource> Rows, ReportOrder Order, DisciplineRanks Ranks);
+
+/// <summary>Порядок выборки отчёта: ключи пар и «пара␟уровень» по порядку, и уровни с числами.</summary>
+public sealed record ReportOrder(string[] Pairs, string[] Levels, IReadOnlyList<ReportLevelView> LevelViews);
 
 public sealed record ReportPage(int Total, IReadOnlyList<ReportRow> Items);
 
@@ -82,6 +95,9 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, DisciplineOrder
 {
     public const string Changes = "changes";
     public const string Open = "open";
+    public const string Level = "level";
+    public const string Depth = "depth";
+    public const string Number = "number";
     public const int MaxRuns = 100;
 
     /// <summary>Удачный утверждённый прогон и имена моделей части; null — прогона нет, он черновика или не закончился удачно.</summary>
@@ -184,19 +200,97 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, DisciplineOrder
     }
 
     /// <summary>
-    ///     Строки отчёта по фильтру и сортировке — один источник для страницы и выгрузок. В «изменениях» без фильтра статуса
-    ///     видны все статусы (исправленные тоже), в «открытых» — открытые.
+    ///     Коллизии области по фильтру, без порядка. В «изменениях» без фильтра статуса видны все статусы (исправленные тоже), в
+    ///     «открытых» — открытые.
     /// </summary>
-    public IQueryable<ReportRowSource> Rows(ReportContext context, string scope, CollisionFilter filter, string? sort)
+    private IQueryable<ClashCollision> Filtered(ReportContext context, string scope, CollisionFilter filter)
     {
-        var run = context.Run;
         if (scope == Changes && string.IsNullOrWhiteSpace(filter.Status)) filter = filter with { Status = "all" };
-        var filtered = filter.Apply(Scope(run, scope), db, context.ModelNames, time.GetUtcNow());
-        var runId = run.Id;
+        return filter.Apply(Scope(context.Run, scope), db, context.ModelNames, time.GetUtcNow());
+    }
+
+    /// <summary>
+    ///     Порядок пар и уровней выборки: пары — по справочнику разделов, уровни внутри пары — снизу вверх по наименьшему Z
+    ///     коллизий уровня, без уровня — последним. Один групповой запрос; страница и выгрузки сортируют по нему.
+    /// </summary>
+    public async Task<ReportOrder> OrderAsync(ReportContext context, string scope, CollisionFilter filter, DisciplineRanks ranks, CancellationToken ct)
+    {
+        var groups = await Filtered(context, scope, filter)
+            .Select(c => new
+            {
+                c.DisciplinePair,
+                c.Z,
+                Level = c.LevelA == c.LevelB || c.LevelB == null ? c.LevelA ?? "" : c.LevelA == null ? c.LevelB : c.LevelA + " / " + c.LevelB
+            })
+            .GroupBy(x => new { x.DisciplinePair, x.Level })
+            .Select(g => new { g.Key.DisciplinePair, g.Key.Level, MinZ = g.Min(x => x.Z), Count = g.Count() })
+            .ToListAsync(ct);
+
+        var pairs = groups.Select(g => g.DisciplinePair).Distinct()
+            .Select(pair =>
+            {
+                var (a, b) = DisciplineRanks.Split(pair);
+                return (Pair: pair, Rank: ranks.PairRank(a, b), Label: ranks.Label(a, b));
+            })
+            .OrderBy(p => p.Rank.First).ThenBy(p => p.Rank.Second).ThenBy(p => p.Label, StringComparer.CurrentCultureIgnoreCase)
+            .Select(p => p.Pair).ToArray();
+        var pairIndex = pairs.Select((p, i) => (p, i)).ToDictionary(x => x.p, x => x.i);
+        var levels = groups
+            .OrderBy(g => pairIndex[g.DisciplinePair]).ThenBy(g => g.Level.Length == 0).ThenBy(g => g.MinZ)
+            .ThenBy(g => g.Level, StringComparer.CurrentCultureIgnoreCase)
+            .Select(g => new ReportLevelView(g.DisciplinePair, g.Level, g.Count)).ToList();
+        return new ReportOrder(pairs, levels.Select(l => CollisionLevel.Composite(l.Pair, l.Level)).ToArray(), levels);
+    }
+
+    /// <summary>Строки выборки в порядке отчёта вместе с самим порядком (ранги разделов, пары, уровни).</summary>
+    public async Task<ReportSelection> SelectAsync(ReportContext context, string scope, CollisionFilter filter, string? sort, CancellationToken ct)
+    {
+        var ranks = await RanksAsync(context.Run.PartId, ct);
+        var order = await OrderAsync(context, scope, filter, ranks, ct);
+        return new ReportSelection(Rows(context, scope, filter, sort, order), order, ranks);
+    }
+
+    /// <summary>
+    ///     Строки отчёта по фильтру и сортировке — один источник для страницы и выгрузок. Всегда сначала по паре в порядке
+    ///     <paramref name="order" />; внутри пары <c>level</c> (по умолчанию) — уровень снизу вверх, потом №; <c>depth</c> — глубже
+    ///     сначала; <c>number</c> — по №.
+    /// </summary>
+    public IQueryable<ReportRowSource> Rows(ReportContext context, string scope, CollisionFilter filter, string? sort, ReportOrder order) =>
+        Source(context, Sorted(Filtered(context, scope, filter), sort, order));
+
+    /// <summary>
+    ///     Страница строк в порядке отчёта. Сначала Id страницы по голым коллизиям, потом переход и примечания только для них:
+    ///     подзапросы строки иначе считаются и для всех пропущенных строк глубокой страницы.
+    /// </summary>
+    public async Task<(int Total, IReadOnlyList<ReportRowSource> Items)> PageAsync(ReportContext context, string scope, CollisionFilter filter, string? sort,
+        ReportOrder order, int page, int size, CancellationToken ct)
+    {
+        var filtered = Filtered(context, scope, filter);
+        var total = await filtered.CountAsync(ct);
+        var ids = await Sorted(filtered, sort, order).Skip((page - 1) * size).Take(size).Select(c => c.Id).ToListAsync(ct);
+        var rows = await Source(context, filtered.Where(c => ids.Contains(c.Id))).ToListAsync(ct);
+        var index = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+        return (total, rows.OrderBy(r => index[r.Collision.Id]).ToList());
+    }
+
+    private static IOrderedQueryable<ClashCollision> Sorted(IQueryable<ClashCollision> filtered, string? sort, ReportOrder order)
+    {
+        var byPair = filtered.OrderBy(CollisionLevel.PairPosition(order.Pairs));
+        return sort switch
+        {
+            Depth => byPair.ThenByDescending(c => c.DepthMm).ThenBy(c => c.Number),
+            Number => byPair.ThenBy(c => c.Number),
+            _ => byPair.ThenBy(CollisionLevel.Position(order.Levels)).ThenBy(c => c.Number)
+        };
+    }
+
+    private IQueryable<ReportRowSource> Source(ReportContext context, IQueryable<ClashCollision> collisions)
+    {
+        var runId = context.Run.Id;
         var notable = Notable(runId);
         var notes = db.Set<ClashCollisionEvent>().AsNoTracking().Where(e => e.Kind == CollisionEventKind.Note);
         var users = db.Users.AsNoTracking();
-        return CollisionFilter.Sort(filtered, sort).Select(c => new ReportRowSource
+        return collisions.Select(c => new ReportRowSource
         {
             Collision = c,
             Change = c.FirstRunId == runId
@@ -209,8 +303,11 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, DisciplineOrder
         });
     }
 
+    private static readonly Func<ClashCollision, string> LevelOf = CollisionLevel.Key.Compile();
+
     public static ReportRow Row(ReportRowSource source, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<Guid, int> suggested) =>
-        new(CollisionEndpoints.Row(source.Collision, names, suggested), source.Change, source.LastNote, source.LastNoteBy, source.LastNoteAt);
+        new(CollisionEndpoints.Row(source.Collision, names, suggested), source.Change, source.LastNote, source.LastNoteBy, source.LastNoteAt,
+            LevelOf(source.Collision));
 
     /// <summary>Пары разделов: открытые и фиктивные — сейчас, новые, вернувшиеся и исправленные — в этом прогоне.</summary>
     private async Task<IReadOnlyList<ReportPairView>> PairsAsync(EngineRun run, DisciplineRanks ranks, CancellationToken ct)
@@ -221,7 +318,7 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, DisciplineOrder
             .Select(g => new { Pair = g.Key, Open = g.Count(c => open.Contains(c.Status)), Fake = g.Count(c => c.Status == CollisionStatus.Fake) })
             .ToListAsync(ct);
         var context = new ReportContext(run, new Dictionary<string, string>());
-        var changes = await Rows(context, Changes, new CollisionFilter(null, null, null, null, null, null, null, null, null), null)
+        var changes = await Source(context, Filtered(context, Changes, new CollisionFilter(null, null, null, null, null, null, null, null, null)))
             .Select(r => new { r.Collision.DisciplinePair, r.Change }).ToListAsync(ct);
 
         return current.Select(c => c.Pair).Concat(changes.Select(c => c.DisciplinePair)).Distinct()

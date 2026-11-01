@@ -145,6 +145,28 @@ public class ClashReportExportTests : ServerTest
 
     [Test]
     [Explicit]
+    public async Task Rows_60k_PageUnder300ms()
+    {
+        var hits = Hits(60_000).Select(h => h with { LevelA = $"Этаж {h.ElementIdA % 25}", LevelB = $"Этаж {h.ElementIdA % 25}", Z = h.ElementIdA % 25 * 3000 })
+            .ToList();
+        var (admin, agent, _, runId) = await RunAsync(hits);
+        await using var __ = agent;
+        var query = $"/api/clash/reports/{runId}/collisions?scope=open&page=300&pageSize=100";
+        await admin.GetJsonAsync<ReportPage>(query);
+
+        var watch = Stopwatch.StartNew();
+        var page = await admin.GetJsonAsync<ReportPage>(query);
+        var pageTime = watch.Elapsed;
+        var levels = await admin.GetJsonAsync<List<ReportLevelView>>($"/api/clash/reports/{runId}/levels?scope=open");
+
+        Console.WriteLine($"page: {pageTime.TotalMilliseconds:0} ms, page + levels: {watch.ElapsedMilliseconds} ms");
+        page.Items.Count.ShouldBe(100);
+        levels.Count.ShouldBe(25);
+        pageTime.ShouldBeLessThan(TimeSpan.FromMilliseconds(300));
+    }
+
+    [Test]
+    [Explicit]
     public async Task ExportXlsx_60kRows_StreamedAllRows()
     {
         var (admin, agent, _, runId) = await RunAsync(Hits(60_000));

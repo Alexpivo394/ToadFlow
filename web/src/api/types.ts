@@ -1254,9 +1254,18 @@ export interface ReportRow {
   lastNote: string | null;
   lastNoteBy: string | null;
   lastNoteAt: string | null;
+  /** Уровень строки для группировки: один, «A / B» или пусто — без уровня. */
+  level: string;
 }
 
 export interface ReportPage {
   total: number;
   items: ReportRow[];
+}
+
+/** Уровень в паре: заголовок группы строк отчёта и пункт фильтра уровня. `level` пусто — без уровня. */
+export interface ReportLevelView {
+  pair: string;
+  level: string;
+  count: number;
 }

@@ -111,6 +111,98 @@ public class ClashReportTests : ServerTest
         (ov.Open, ov.New).ShouldBe((6, 6));
     }
 
+    /// <summary>
+    ///     Пара ОВ × ВК (ключ «ВК × ОВ») по уровням вразнобой и одна коллизия пары АР × ОВ, которая раньше по справочнику.
+    /// </summary>
+    internal static IReadOnlyList<EngineHit> LevelHits()
+    {
+        EngineHit Level(int i, string? level, double z, string a = "ОВ", string b = "ВК") =>
+            Fp(Hit(i, disciplineA: a, disciplineB: b, depth: 20 + i) with { LevelA = level, LevelB = level, Z = z });
+        return
+        [
+            Level(1, "Этаж 2", 6000), Level(2, "Этаж 1", 3000), Level(3, "Кровля", 30000), Level(4, "Этаж 10", 33000), Level(5, null, 0),
+            Level(6, "Этаж 1", 3100), Level(7, "Этаж 2", 6000, "АР", "ОВ")
+        ];
+    }
+
+    [Test]
+    public async Task Rows_DefaultSort_PairThenLevelByHeightThenNumber()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var runId = await RunAsync(admin, engine, partId, LevelHits(), approve: true);
+
+        var rows = await RowsAsync(admin, runId);
+
+        rows.Items.Select(r => r.Collision.Number).ShouldBe([7, 2, 6, 1, 3, 4, 5]);
+        rows.Items.Select(r => r.Level).ShouldBe(["Этаж 2", "Этаж 1", "Этаж 1", "Этаж 2", "Кровля", "Этаж 10", ""]);
+    }
+
+    [Test]
+    public async Task Rows_SortDepth_PairFirstThenDepth()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var runId = await RunAsync(admin, engine, partId, LevelHits(), approve: true);
+
+        (await RowsAsync(admin, runId, "scope=changes&sort=depth")).Items.Select(r => r.Collision.Number).ShouldBe([7, 6, 5, 4, 3, 2, 1]);
+    }
+
+    [Test]
+    public async Task Rows_SortNumber_PairFirstThenNumber()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var runId = await RunAsync(admin, engine, partId, LevelHits(), approve: true);
+
+        (await RowsAsync(admin, runId, "scope=changes&sort=number")).Items.Select(r => r.Collision.Number).ShouldBe([7, 1, 2, 3, 4, 5, 6]);
+    }
+
+    [Test]
+    public async Task Levels_CountsInOrder()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var runId = await RunAsync(admin, engine, partId, LevelHits(), approve: true);
+
+        var levels = await admin.GetJsonAsync<List<ReportLevelView>>($"/api/clash/reports/{runId}/levels?scope=changes");
+
+        levels.Select(l => (l.Pair, l.Level, l.Count)).ShouldBe([
+            ("АР × ОВ", "Этаж 2", 1), ("ВК × ОВ", "Этаж 1", 2), ("ВК × ОВ", "Этаж 2", 1), ("ВК × ОВ", "Кровля", 1), ("ВК × ОВ", "Этаж 10", 1),
+            ("ВК × ОВ", "", 1)
+        ]);
+        (await admin.GetJsonAsync<List<ReportLevelView>>($"/api/clash/reports/{runId}/levels?scope=changes&pair=АР × ОВ"))
+            .Select(l => l.Level).ShouldBe(["Этаж 2"]);
+    }
+
+    [Test]
+    public async Task Rows_LevelKeyFilter_MatchesCombinedKey()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var runId = await RunAsync(admin, engine, partId,
+            [Fp(Hit(1) with { LevelA = "Этаж 1", LevelB = "Этаж 2" }), Fp(Hit(2) with { LevelA = null, LevelB = null }), Fp(Hit(3))], approve: true);
+
+        var combined = await RowsAsync(admin, runId, $"scope=changes&level={Uri.EscapeDataString("Этаж 1 / Этаж 2")}");
+        combined.Items.Select(r => (r.Collision.Number, r.Level)).ShouldBe([(1, "Этаж 1 / Этаж 2")]);
+        (await RowsAsync(admin, runId, "scope=changes&level=этаж 1")).Items.Select(r => r.Collision.Number).Order().ShouldBe([1, 3]);
+        (await RowsAsync(admin, runId, "scope=changes&level=-")).Items.Select(r => (r.Collision.Number, r.Level)).ShouldBe([(2, "")]);
+    }
+
+    [Test]
+    public void LevelKey_SameAsExportColumn()
+    {
+        (string? A, string? B)[] cases = [("Этаж 1", "Этаж 1"), ("Этаж 1", null), (null, "Этаж 2"), ("Этаж 1", "Этаж 2"), (null, null), ("", "")];
+        var key = CollisionLevel.Key.Compile();
+        foreach (var (a, b) in cases)
+        {
+            var collision = new ClashCollision { LevelA = a, LevelB = b };
+            var row = new ReportExportRow(new ReportRow(CollisionEndpoints.Row(collision, new Dictionary<string, string>(), new Dictionary<Guid, int>()), null, null,
+                null, null, ""), DateTimeOffset.UnixEpoch);
+            key(collision).ShouldBe(ReportColumns.Level(row), $"{a} | {b}");
+        }
+    }
+
     [Test]
     public async Task Report_StartedBy_UserOrSchedule()
     {

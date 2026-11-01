@@ -15,6 +15,7 @@ public static class ReportEndpoints
         report.MapGet("", async (Guid runId, RunReports reports, CancellationToken ct) =>
             await reports.ViewAsync(runId, ct) is { } view ? Results.Ok(view) : Results.NotFound());
         report.MapGet("/collisions", CollisionsAsync);
+        report.MapGet("/levels", LevelsAsync);
         report.MapGet("/chat", ChatAsync);
         report.MapGet("/export.xlsx", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
                 CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "xlsx", http, reports, general,
@@ -37,12 +38,21 @@ public static class ReportEndpoints
         RunReports reports, Data.ToadFlowDb db, CancellationToken ct)
     {
         if (await reports.ContextAsync(runId, ct) is not { } context) return Results.NotFound();
-        var rows = reports.Rows(context, Scope(scope), CollisionFilter.From(request), sort);
-        var total = await rows.CountAsync(ct);
+        var filter = CollisionFilter.From(request);
+        var ranks = await reports.RanksAsync(context.Run.PartId, ct);
+        var order = await reports.OrderAsync(context, Scope(scope), filter, ranks, ct);
         var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
-        var items = await rows.Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
+        var (total, items) = await reports.PageAsync(context, Scope(scope), filter, sort, order, Math.Max(1, page ?? 1), size, ct);
         var suggested = await CollisionEndpoints.NumbersAsync(db, items.Select(r => r.Collision.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         return Results.Ok(new ReportPage(total, items.Select(r => RunReports.Row(r, context.ModelNames, suggested)).ToList()));
+    }
+
+    /// <summary>Уровни выборки по парам, в порядке строк, с числами — заголовки групп и фильтр уровня.</summary>
+    private static async Task<IResult> LevelsAsync(Guid runId, string? scope, HttpRequest request, RunReports reports, CancellationToken ct)
+    {
+        if (await reports.ContextAsync(runId, ct) is not { } context) return Results.NotFound();
+        var ranks = await reports.RanksAsync(context.Run.PartId, ct);
+        return Results.Ok((await reports.OrderAsync(context, Scope(scope), CollisionFilter.From(request), ranks, ct)).LevelViews);
     }
 
     private static async Task<IResult> ChatAsync(Guid runId, string? baseUrl, RunReports reports, ISettingsStore general, CancellationToken ct)
@@ -66,7 +76,7 @@ public static class ReportEndpoints
         if (WebBase(baseUrl) is not { } web) return BadBaseUrl();
         if (await reports.ContextAsync(runId, ct) is not { } context || await reports.ViewAsync(runId, ct) is not { } view) return Results.NotFound();
         var zone = (await general.GetAsync(ct)).TimeZone;
-        var rows = reports.Rows(context, Scope(scope), CollisionFilter.From(http.Request), sort);
+        var rows = (await reports.SelectAsync(context, Scope(scope), CollisionFilter.From(http.Request), sort, ct)).Rows;
 
         var day = TimeZoneInfo.ConvertTime(view.Run.FinishedAt, zone).ToString("dd.MM.yyyy");
         var title = string.Join(' ', new[] { "Коллизии", view.Check.Object, view.Check.Name, day }.Where(p => !string.IsNullOrWhiteSpace(p)));
