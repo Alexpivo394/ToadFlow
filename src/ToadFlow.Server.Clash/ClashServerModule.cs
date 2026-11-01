@@ -48,6 +48,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddHostedService<ClashUploadCleaner>();
         services.AddScoped<PartModels>();
         services.AddScoped<ModelResolver>();
+        services.AddScoped<ModelCollisions>();
         services.AddScoped<PartElements>();
         services.AddScoped<IDisciplineSource, PartDisciplines>();
         services.AddSingleton<PartElementsCache>();

@@ -85,7 +85,7 @@ public static class MyEndpoints
     }
 
     /// <summary>Имена моделей строк по ключу (Id в форме N).</summary>
-    private static async Task<Dictionary<string, string>> ModelNamesAsync(ToadFlowDb db, IReadOnlyList<ClashCollision> rows, CancellationToken ct)
+    internal static async Task<Dictionary<string, string>> ModelNamesAsync(ToadFlowDb db, IReadOnlyList<ClashCollision> rows, CancellationToken ct)
     {
         var ids = rows.SelectMany(r => new[] { r.ModelA, r.ModelB }).Distinct()
             .Select(k => Guid.TryParse(k, out var id) ? id : (Guid?)null).OfType<Guid>().ToList();
@@ -93,10 +93,10 @@ public static class MyEndpoints
             .ToDictionary(m => m.Id.ToString("N"), m => m.Name);
     }
 
-    private sealed record Taker(string Name, DateTimeOffset At);
+    internal sealed record Taker(string Name, DateTimeOffset At);
 
     /// <summary>Кто последним сменил «кто правит» — только для строк страницы.</summary>
-    private static async Task<Dictionary<Guid, Taker>> TakenAsync(ToadFlowDb db, IReadOnlyList<Guid> ids, CancellationToken ct)
+    internal static async Task<Dictionary<Guid, Taker>> TakenAsync(ToadFlowDb db, IReadOnlyList<Guid> ids, CancellationToken ct)
     {
         if (ids.Count == 0) return [];
         var events = await db.Set<ClashCollisionEvent>().AsNoTracking()

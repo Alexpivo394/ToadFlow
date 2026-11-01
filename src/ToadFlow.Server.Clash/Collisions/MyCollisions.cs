@@ -118,7 +118,7 @@ public static class MyCollisions
         || (c.Assignee == CollisionAssignee.SideB && disciplines.Contains(c.DisciplineB, StringComparer.Ordinal));
 
     /// <returns>null — без фильтра по статусу.</returns>
-    private static CollisionStatus[]? Statuses(string? status) => status?.Trim().ToLowerInvariant() switch
+    internal static CollisionStatus[]? Statuses(string? status) => status?.Trim().ToLowerInvariant() switch
     {
         null or "" or "open" => CollisionEndpoints.Open,
         "all" => null,
