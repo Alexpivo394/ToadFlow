@@ -252,6 +252,71 @@ describe('Report page', () => {
     expect(screen.queryByText('картинка ещё рисуется')).toBeNull();
   });
 
+  it('Drawer_CardFillsHeight', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&collision=c1', responses());
+
+    const drawer = await screen.findByRole('dialog');
+    await within(drawer).findByText('Переносим трубу');
+    const body = document.querySelector('.mantine-Drawer-body') as HTMLElement;
+    expect(body.style.display).toBe('flex');
+    expect(body.style.flexDirection).toBe('column');
+    const card = within(drawer).getByTestId('drawer-card');
+    expect(card.style.height).not.toBe('420px');
+    expect(card.style.flex).toMatch(/^1/);
+    expect(card.style.minHeight).toBe('0px');
+  });
+
+  it('Drawer_ArrowDown_OpensNextRow', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&collision=c1', responses());
+    await within(await screen.findByRole('dialog')).findByText('Переносим трубу');
+
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+
+    expect(await screen.findByText('Коллизия № 2')).toBeTruthy();
+  });
+
+  it('Drawer_NextPrevButtons_StepThroughRows', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&collision=c1', responses());
+    const drawer = await screen.findByRole('dialog');
+    await within(drawer).findByText('Переносим трубу');
+    expect((within(drawer).getByRole('button', { name: 'Предыдущая коллизия' }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Следующая коллизия' }));
+
+    expect(await screen.findByText('Коллизия № 2')).toBeTruthy();
+    expect((within(drawer).getByRole('button', { name: 'Следующая коллизия' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Drawer_ArrowUp_OnFirst_GoesToPreviousPageLast', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&page=2&collision=c101', responses({
+      '/api/clash/reports/r2/collisions': (url: string) => (new URL(url, 'http://x').searchParams.get('page') === '2'
+        ? { total: 150, items: [row(101), row(102)] }
+        : { total: 150, items: [row(1), row(2)] }),
+      '/api/clash/collisions/c101': { collision: { ...row(101).collision }, feed: [] },
+    }));
+    expect(await screen.findByText('Коллизия № 101')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'ArrowUp' });
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('page') === '1')).toBe(true));
+    expect(await screen.findByText('Коллизия № 2')).toBeTruthy();
+    expect(calls().some(([url]) => url.startsWith('/api/clash/collisions/last') || url.startsWith('/api/clash/collisions/first'))).toBe(false);
+  });
+
+  it('Drawer_ArrowInTextarea_Ignored', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&collision=c1', responses());
+    const drawer = await screen.findByRole('dialog');
+    await within(drawer).findByText('Переносим трубу');
+    const note = within(drawer).getByLabelText('Примечание');
+    note.focus();
+
+    fireEvent.keyDown(note, { key: 'ArrowDown' });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls().some(([url]) => url.split('?')[0] === '/api/clash/collisions/c2')).toBe(false);
+    expect(screen.queryByText('Коллизия № 2')).toBeNull();
+  });
+
   it('Row_CompactWithModelNameAndNote', async () => {
     renderApp(pairUrl('АР × ОВ'), responses());
 

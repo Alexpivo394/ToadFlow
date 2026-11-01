@@ -118,6 +118,40 @@ export function ReportPage() {
   const options = useApi<ReportLevelView[]>(['clash-collisions', 'report-levels', runId, optionsQuery.toString()],
     listing ? `/api/clash/reports/${runId}/levels?${optionsQuery}` : null);
 
+  // Листание в панели: соседняя строка страницы, на краю — соседняя страница. Адрес получает `collision=first|last`,
+  // после загрузки той страницы маркер заменяется id её первой или последней строки.
+  const items = rows.data?.items;
+  const pageCount = Math.max(1, Math.ceil((rows.data?.total ?? 0) / PageSize));
+  const marker = collisionId === 'first' || collisionId === 'last';
+  const index = items && collisionId ? items.findIndex((r) => r.collision.id === collisionId) : -1;
+  useEffect(() => {
+    if (!marker || !items) return;
+    const target = collisionId === 'first' ? items[0] : items[items.length - 1];
+    update({ collision: target?.collision.id ?? null }, false);
+  }, [marker, collisionId, items, update]);
+  const prev = index > 0
+    ? () => update({ collision: items![index - 1].collision.id }, false)
+    : index === 0 && page > 1 ? () => update({ page: String(page - 1), collision: 'last' }, false) : undefined;
+  const next = index >= 0 && index < items!.length - 1
+    ? () => update({ collision: items![index + 1].collision.id }, false)
+    : index >= 0 && page < pageCount ? () => update({ page: String(page + 1), collision: 'first' }, false) : undefined;
+  const step = useRef({ prev, next });
+  step.current = { prev, next };
+  const drawerOpen = collisionId !== null;
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      const go = e.key === 'ArrowDown' ? step.current.next : e.key === 'ArrowUp' ? step.current.prev : undefined;
+      if (!go) return;
+      e.preventDefault();
+      go();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
   if (report.error) return <Alert color="red" title="Отчёт недоступен">{report.error.message}</Alert>;
   if (!view) return null;
 
@@ -253,8 +287,8 @@ export function ReportPage() {
         </Grid.Col>
       </Grid>
 
-      <ReportCollisionDrawer partId={run.partId} collisionId={collisionId} canEdit={canWork} canMerge={can('Operator')}
-        onClose={() => update({ collision: null }, false)} />
+      <ReportCollisionDrawer partId={run.partId} opened={drawerOpen} collisionId={marker ? null : collisionId} canEdit={canWork}
+        canMerge={can('Operator')} onClose={() => update({ collision: null }, false)} onPrev={prev} onNext={next} />
     </Stack>
   );
 }
