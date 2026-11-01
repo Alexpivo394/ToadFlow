@@ -175,6 +175,38 @@ public class ClashEngineQueueTests : ServerTest
         failed.Error.ShouldNotBeNull().ShouldContain("перестал отвечать");
     }
 
+    /// <summary>
+    ///     Сверка последней части держит прогон под блокировкой и аренду не продлевает: если она дольше аренды, уборщик не
+    ///     должен вернуть в очередь прогон, который сверка тем временем закрыла (иначе его берут второй раз и сверка падает).
+    /// </summary>
+    [Test]
+    public async Task EngineRun_LeaseExpiredDuringReconcile_NotRequeued()
+    {
+        var (admin, agent) = await SetupAsync();
+        await using var _ = agent;
+        var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt");
+        var run = await StartAsync(admin, partId);
+        var engine = EngineClient(Server);
+        var sweeper = ActivatorUtilities.CreateInstance<EngineLeaseSweeper>(Server.Services);
+        await ClaimAsync(engine);
+        _time.Advance(TimeSpan.FromMinutes(3));
+
+        await using (var scope = Server.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ToadFlow.Server.Data.ToadFlowDb>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM clash_engine_runs WHERE id = {run.RunId} FOR UPDATE");
+            var sweep = sweeper.SweepAsync(CancellationToken.None);
+            await Task.Delay(500);
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE clash_engine_runs SET state = {nameof(EngineRunState.Succeeded)}, lease_until = NULL WHERE id = {run.RunId}");
+            await transaction.CommitAsync();
+            await sweep;
+        }
+
+        (await RunAsync(run.RunId)).State.ShouldBe(EngineRunState.Succeeded);
+    }
+
     [Test]
     public async Task Fail_KeepsPreviousResult()
     {

@@ -31,7 +31,13 @@ public sealed class EngineLeaseSweeper(IServiceScopeFactory scopes, TimeProvider
         var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
         var hits = scope.ServiceProvider.GetRequiredService<DraftHits>();
         var now = time.GetUtcNow();
-        var expired = await db.Set<EngineRun>().Where(r => r.State == EngineRunState.Running && r.LeaseUntil < now).ToListAsync(ct);
+        var running = nameof(EngineRunState.Running);
+        // Сверка последней части держит прогон под блокировкой и аренду не продлевает: такой прогон пропускаем — иначе после её
+        // коммита уборщик вернул бы в очередь уже закрытый прогон, и его сверили бы второй раз.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var expired = await db.Set<EngineRun>()
+            .FromSqlInterpolated($"SELECT * FROM clash_engine_runs WHERE state = {running} AND lease_until < {now} FOR UPDATE SKIP LOCKED")
+            .ToListAsync(ct);
         foreach (var run in expired)
         {
             await hits.DiscardAsync(run.Id, ct);
@@ -41,5 +47,6 @@ public sealed class EngineLeaseSweeper(IServiceScopeFactory scopes, TimeProvider
         }
 
         if (expired.Count > 0) await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 }
