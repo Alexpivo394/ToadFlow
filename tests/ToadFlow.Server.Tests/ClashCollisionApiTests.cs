@@ -356,6 +356,28 @@ public class ClashCollisionApiTests : ServerTest
         (await designer.PostAsync($"/api/clash/parts/{partId}/approved/run", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    /// <summary>Прогоны руками запускают и отменяют только координатор и администратор (замечание после показа этапа 6).</summary>
+    [Test]
+    public async Task Runs_DesignerAndViewer_Forbidden()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Fp(Hit(1))], approve: true);
+        string[] routes =
+        [
+            $"/api/clash/parts/{partId}/draft/run", $"/api/clash/parts/{partId}/draft/run/cancel", $"/api/clash/parts/{partId}/approved/run",
+            $"/api/clash/parts/{partId}/approved/run/cancel", $"/api/schedules/{Guid.NewGuid()}/run", $"/api/runs/{Guid.NewGuid()}/cancel",
+            $"/api/runs/{Guid.NewGuid()}/retry-failed"
+        ];
+
+        foreach (var client in new[] { await ClientAsync(UserRole.Designer, "ОВ"), await ClientAsync(UserRole.Viewer) })
+        foreach (var route in routes)
+            (await client.PostAsync(route, null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden, route);
+
+        var coordinator = await ClientAsync(UserRole.Operator);
+        (await coordinator.PostAsync($"/api/clash/parts/{partId}/draft/run", null)).StatusCode.ShouldNotBe(HttpStatusCode.Forbidden);
+    }
+
     /// <summary>Статус и «кто правит» проектировщик меняет только в коллизиях своего раздела; примечание пишет в любой.</summary>
     [Test]
     public async Task Designer_OtherDiscipline_StatusAndAssignee403_NoteOk()

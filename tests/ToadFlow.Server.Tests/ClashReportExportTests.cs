@@ -442,10 +442,17 @@ public class ClashReportExportTests : ServerTest
     [Test]
     public async Task Export_Designer_Ok()
     {
-        var (_, agent, _, runId) = await RunAsync(Hits(1));
+        var (_, agent, partId, runId) = await RunAsync(Hits(1));
         await using var __ = agent;
         var designer = await ClientAsync(UserRole.Designer, "ВК");
 
+        // Проектировщик смотрит отчёт, старые прогоны и выгружает; запускать прогоны не может (Runs_DesignerAndViewer_Forbidden).
+        foreach (var path in new[]
+                 {
+                     $"/api/clash/reports/{runId}", $"/api/clash/reports/{runId}/collisions", $"/api/clash/reports/{runId}/levels",
+                     $"/api/clash/parts/{partId}/approved/runs"
+                 })
+            (await designer.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.OK, path);
         (await designer.GetAsync($"/api/clash/reports/{runId}/export.xlsx?baseUrl={Base}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await designer.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
