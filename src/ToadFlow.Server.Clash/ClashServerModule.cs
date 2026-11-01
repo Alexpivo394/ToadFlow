@@ -56,6 +56,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<DraftHits>();
         services.AddScoped<ApprovedRuns>();
         services.AddScoped<CollisionReconciler>();
+        services.AddScoped<DisciplineOrder>();
         services.AddScoped<RunReports>();
         services.AddHostedService<EngineLeaseSweeper>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);

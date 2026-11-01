@@ -86,8 +86,29 @@ public class ClashReportTests : ServerTest
         report.Summary.ShouldBe(run.Summary);
         report.Models.Select(m => (m.Name, m.Unchecked)).OrderBy(m => m.Name).ShouldBe([("POL_K1_AR.rvt", true), ("POL_K1_OV.rvt", false)]);
         report.Models.ShouldAllBe(m => m.UploadedAt != null && m.Discipline.Length > 0);
-        report.Pairs.OrderBy(p => p.Pair).ShouldBe(new[] { new ReportPairView("ВК × КР", 0, 0, 0, 0, 1), new ReportPairView("АР × ОВ", 2, 1, 0, 1, 0) }.OrderBy(p => p.Pair));
+        report.Pairs.Select(p => (p.Label, p.Open, p.New, p.Returned, p.Fixed, p.Fake)).ShouldBe([("АР × ОВ", 2, 1, 0, 1, 0), ("КР × ВК", 0, 0, 0, 0, 1)]);
         (report.NewerRunId, report.NewerRunAt).ShouldBe((null, null));
+    }
+
+    [Test]
+    public async Task Report_PairsAndDisciplines_InNamingOrder()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var hits = Enumerable.Range(1, 5).Select(i => Fp(Hit(i, disciplineA: "ВК", disciplineB: "ОВ")))
+            .Append(Fp(Hit(6, disciplineA: "АР", disciplineB: "ОВ")))
+            .Concat(Enumerable.Range(7, 2).Select(i => Fp(Hit(i, disciplineA: "АР", disciplineB: "ВК"))))
+            .ToList();
+        var runId = await RunAsync(admin, engine, partId, hits, approve: true);
+
+        var report = await admin.GetJsonAsync<ReportView>($"/api/clash/reports/{runId}");
+
+        report.Pairs.Select(p => p.Label).ShouldBe(["АР × ОВ", "АР × ВК", "ОВ × ВК"]);
+        report.Pairs.Select(p => (p.DisciplineA, p.DisciplineB)).ShouldBe([("АР", "ОВ"), ("АР", "ВК"), ("ОВ", "ВК")]);
+        report.Disciplines.Select(d => d.Name).ShouldBe(["АР", "ОВ", "ВК"]);
+        var ov = report.Disciplines.Single(d => d.Name == "ОВ");
+        ov.Pairs.ShouldBe(["АР × ОВ", "ВК × ОВ"]);
+        (ov.Open, ov.New).ShouldBe((6, 6));
     }
 
     [Test]

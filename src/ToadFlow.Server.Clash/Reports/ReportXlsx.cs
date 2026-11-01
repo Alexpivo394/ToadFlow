@@ -32,7 +32,7 @@ public static class ReportXlsx
         await summary.WriteRowAsync([XlsxCell.Text("Пара разделов"), XlsxCell.Text("Открытых сейчас"), XlsxCell.Text("Новых"), XlsxCell.Text("Вернулись"),
             XlsxCell.Text("Исправлено"), XlsxCell.Text("Фиктивных")], ct);
         foreach (var pair in report.Pairs)
-            await summary.WriteRowAsync([XlsxCell.Text(pair.Pair), XlsxCell.Number(pair.Open), XlsxCell.Number(pair.New), XlsxCell.Number(pair.Returned),
+            await summary.WriteRowAsync([XlsxCell.Text(pair.Label), XlsxCell.Number(pair.Open), XlsxCell.Number(pair.New), XlsxCell.Number(pair.Returned),
                 XlsxCell.Number(pair.Fixed), XlsxCell.Number(pair.Fake)], ct);
     }
 }

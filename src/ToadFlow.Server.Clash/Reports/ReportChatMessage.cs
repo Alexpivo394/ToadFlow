@@ -22,9 +22,9 @@ public static class ReportChatMessage
         text.Append($"Коллизии: {title} (v{report.Run.Version}), прогон {at.ToString("dd.MM.yyyy HH:mm", Russian)}\n");
         text.Append($"Новых {N(summary.New)}, вернулись {N(summary.Returned)}, активных {N(summary.Active)}, исправлено {N(summary.Fixed)}\n");
 
-        var pairs = report.Pairs.Where(p => p.New > 0).OrderByDescending(p => p.New).ThenBy(p => p.Pair, StringComparer.CurrentCultureIgnoreCase)
+        var pairs = report.Pairs.Where(p => p.New > 0).OrderByDescending(p => p.New).ThenBy(p => p.Label, StringComparer.CurrentCultureIgnoreCase)
             .Take(TopPairs).ToList();
-        if (pairs.Count > 0) text.Append($"Новые по разделам: {string.Join(", ", pairs.Select(p => $"{p.Pair} — {N(p.New)}"))}\n");
+        if (pairs.Count > 0) text.Append($"Новые по разделам: {string.Join(", ", pairs.Select(p => $"{p.Label} — {N(p.New)}"))}\n");
 
         if (summary.Unchecked > 0)
         {

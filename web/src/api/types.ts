@@ -1210,12 +1210,27 @@ export interface ReportModelView {
 }
 
 export interface ReportPairView {
+  /** Ключ пары — для фильтра и адреса. */
   pair: string;
+  /** Подпись в порядке справочника разделов: «ОВ × ВК». */
+  label: string;
+  disciplineA: string;
+  disciplineB: string;
   open: number;
   new: number;
   returned: number;
   fixed: number;
   fake: number;
+}
+
+/** Раздел в дереве отчёта: суммы по его парам. */
+export interface ReportDisciplineView {
+  name: string;
+  open: number;
+  new: number;
+  returned: number;
+  fixed: number;
+  pairs: string[];
 }
 
 /** Отчёт утверждённого прогона. */
@@ -1224,7 +1239,10 @@ export interface ReportView {
   check: CheckView;
   summary: ApprovedRunSummary;
   models: ReportModelView[];
+  /** Пары в порядке справочника разделов. */
   pairs: ReportPairView[];
+  /** Разделы в порядке справочника, у каждого — ключи его пар. */
+  disciplines: ReportDisciplineView[];
   newerRunId: string | null;
   newerRunAt: string | null;
 }

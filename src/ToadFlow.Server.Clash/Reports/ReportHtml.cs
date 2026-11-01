@@ -83,7 +83,7 @@ public static class ReportHtml
         await writer.WriteAsync("<h2>По парам разделов</h2><table><tr><th>Пара</th><th class=\"num\">Открытых сейчас</th><th class=\"num\">Новых</th>" +
                                 "<th class=\"num\">Вернулись</th><th class=\"num\">Исправлено</th><th class=\"num\">Фиктивных</th></tr>");
         foreach (var pair in report.Pairs)
-            await writer.WriteAsync($"<tr><td>{E(pair.Pair)}</td><td class=\"num\">{N(pair.Open)}</td><td class=\"num\">{N(pair.New)}</td>" +
+            await writer.WriteAsync($"<tr><td>{E(pair.Label)}</td><td class=\"num\">{N(pair.Open)}</td><td class=\"num\">{N(pair.New)}</td>" +
                                     $"<td class=\"num\">{N(pair.Returned)}</td><td class=\"num\">{N(pair.Fixed)}</td><td class=\"num\">{N(pair.Fake)}</td></tr>");
         await writer.WriteAsync("</table>");
 

@@ -15,12 +15,20 @@ public class ClashReportChatTests : ServerTest
     private static readonly TimeZoneInfo Moscow = TimeZoneInfo.CreateCustomTimeZone("test+3", TimeSpan.FromHours(3), "UTC+3", "UTC+3");
     private static readonly Guid RunId = Guid.Parse("0199a3f0-0000-7000-8000-000000000001");
 
+    /// <summary>Пара, подпись которой совпадает с ключом.</summary>
+    private static ReportPairView P(string pair, int open, int @new, int returned, int @fixed, int fake)
+    {
+        var (a, b) = DisciplineRanks.Split(pair);
+        return new ReportPairView(pair, pair, a, b, open, @new, returned, @fixed, fake);
+    }
+
     private static ReportView Report(ApprovedRunSummary summary, IReadOnlyList<ReportPairView> pairs, params (string Name, bool Unchecked)[] models) => new(
         new ReportRunView(RunId, Guid.NewGuid(), 2, new DateTimeOffset(2026, 10, 31, 9, 5, 0, TimeSpan.Zero), "schedule", "Ночное", 12.5),
         new CheckView(Guid.NewGuid(), "Часть АР-ОВ", "DON", "СОБ", 2, null, summary, 0, []),
         summary,
         models.Select(m => new ReportModelView(m.Name, "АР", DateTimeOffset.UnixEpoch, m.Unchecked)).ToList(),
         pairs,
+        [],
         null,
         null);
 
@@ -28,7 +36,7 @@ public class ClashReportChatTests : ServerTest
     public void Compose_FullText_MatchesFormat()
     {
         var summary = new ApprovedRunSummary(2000, 1234, 300, 5, 7, 0, 3, 0, 0);
-        var report = Report(summary, [new ReportPairView("ВК × АР", 20, 20, 0, 0, 0), new ReportPairView("ОВК × КР", 50, 50, 0, 0, 0)],
+        var report = Report(summary, [P("ВК × АР", 20, 20, 0, 0, 0), P("ОВК × КР", 50, 50, 0, 0, 0)],
             ("DON_AR.rvt", true), ("DON_OV.rvt", false), ("DON_KR.rvt", true));
 
         var text = ReportChatMessage.Compose(report, "https://toadflow.local/clash/reports/x", Moscow);
@@ -44,7 +52,7 @@ public class ClashReportChatTests : ServerTest
     [Test]
     public void Compose_NoNewNoUnchecked_LinesOmitted()
     {
-        var report = Report(new ApprovedRunSummary(10, 0, 10, 0, 2, 0, 0, 0, 0), [new ReportPairView("ВК × АР", 10, 0, 0, 2, 0)], ("DON_AR.rvt", true));
+        var report = Report(new ApprovedRunSummary(10, 0, 10, 0, 2, 0, 0, 0, 0), [P("ВК × АР", 10, 0, 0, 2, 0)], ("DON_AR.rvt", true));
 
         var text = ReportChatMessage.Compose(report, "https://x/r", Moscow);
 
@@ -58,7 +66,7 @@ public class ClashReportChatTests : ServerTest
     [Test]
     public void Compose_TopFivePairs()
     {
-        var pairs = Enumerable.Range(1, 7).Select(i => new ReportPairView($"П{i} × Р", i * 10, i * 10, 0, 0, 0)).ToList();
+        var pairs = Enumerable.Range(1, 7).Select(i => P($"П{i} × Р", i * 10, i * 10, 0, 0, 0)).ToList();
         var report = Report(new ApprovedRunSummary(280, 280, 0, 0, 0, 0, 0, 0, 0), pairs);
 
         var line = ReportChatMessage.Compose(report, "https://x/r", Moscow).Split('\n')[2];

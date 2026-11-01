@@ -25,20 +25,30 @@ public sealed record ReportRunView(
 /// <param name="Unchecked">Модель в этом цикле не выгрузилась: её пары «не проверены».</param>
 public sealed record ReportModelView(string Name, string Discipline, DateTimeOffset? UploadedAt, bool Unchecked);
 
+/// <param name="Pair">Ключ пары (<see cref="ClashCollision.DisciplinePair" />) — для фильтра и адреса.</param>
+/// <param name="Label">Подпись пары в порядке справочника разделов: <c>ОВ × ВК</c>.</param>
+/// <param name="DisciplineA">Первый раздел пары в порядке справочника.</param>
 /// <param name="Open">Открытых сейчас.</param>
 /// <param name="New">Новых в этом прогоне.</param>
 /// <param name="Returned">Вернулись в этом прогоне.</param>
 /// <param name="Fixed">Исправлены в этом прогоне.</param>
 /// <param name="Fake">Фиктивных сейчас.</param>
-public sealed record ReportPairView(string Pair, int Open, int New, int Returned, int Fixed, int Fake);
+public sealed record ReportPairView(string Pair, string Label, string DisciplineA, string DisciplineB, int Open, int New, int Returned, int Fixed, int Fake);
+
+/// <summary>Раздел в дереве отчёта: суммы по его парам.</summary>
+/// <param name="Pairs">Ключи пар раздела в порядке отчёта.</param>
+public sealed record ReportDisciplineView(string Name, int Open, int New, int Returned, int Fixed, IReadOnlyList<string> Pairs);
 
 /// <summary>Отчёт утверждённого прогона: шапка, сводка, пары разделов и ссылка на более новый прогон, если он есть.</summary>
+/// <param name="Pairs">Пары в порядке справочника разделов.</param>
+/// <param name="Disciplines">Разделы пар в порядке справочника, у каждого — его пары.</param>
 public sealed record ReportView(
     ReportRunView Run,
     CheckView Check,
     ApprovedRunSummary Summary,
     IReadOnlyList<ReportModelView> Models,
     IReadOnlyList<ReportPairView> Pairs,
+    IReadOnlyList<ReportDisciplineView> Disciplines,
     Guid? NewerRunId,
     DateTimeOffset? NewerRunAt);
 
@@ -68,7 +78,7 @@ public sealed record ReportContext(EngineRun Run, IReadOnlyDictionary<string, st
 ///     впервые (<see cref="ClashCollision.FirstRunId" />), и коллизии с заметным переходом статуса в его сверке (запись ленты с
 ///     <see cref="ClashCollisionEvent.RunId" />); «открытые сейчас» — открытые коллизии части. Статусы в строках — текущие.
 /// </summary>
-public sealed class RunReports(ToadFlowDb db, PartModels models, TimeProvider time)
+public sealed class RunReports(ToadFlowDb db, PartModels models, DisciplineOrder order, TimeProvider time)
 {
     public const string Changes = "changes";
     public const string Open = "open";
@@ -100,9 +110,33 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, TimeProvider ti
             .OrderByDescending(r => r.FinishedAt).Select(r => new { r.Id, r.FinishedAt }).FirstOrDefaultAsync(ct);
 
         var views = await RunViewsAsync([run], ct);
+        var ranks = await RanksAsync(run.PartId, ct);
+        var pairs = await PairsAsync(run, ranks, ct);
         return new ReportView(views[0] with { Summary = null }, check, run.Summary ?? new ApprovedRunSummary(0, 0, 0, 0, 0, 0, 0, 0, 0), reportModels,
-            await PairsAsync(run, ct), newer?.Id, newer?.FinishedAt);
+            pairs, Disciplines(pairs, ranks), newer?.Id, newer?.FinishedAt);
     }
+
+    /// <summary>Ранги разделов части: справочник именования и разделы, которые встречаются в коллизиях части.</summary>
+    public async Task<DisciplineRanks> RanksAsync(Guid partId, CancellationToken ct)
+    {
+        var present = await db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == partId)
+            .Select(c => c.DisciplinePair).Distinct().ToListAsync(ct);
+        return await order.LoadAsync(present.SelectMany(p =>
+        {
+            var (a, b) = DisciplineRanks.Split(p);
+            return new[] { a, b };
+        }), ct);
+    }
+
+    private static IReadOnlyList<ReportDisciplineView> Disciplines(IReadOnlyList<ReportPairView> pairs, DisciplineRanks ranks) =>
+        pairs.SelectMany(p => new[] { p.DisciplineA, p.DisciplineB }).Distinct().OrderBy(ranks.Of)
+            .Select(name =>
+            {
+                var own = pairs.Where(p => p.DisciplineA == name || p.DisciplineB == name).ToList();
+                return new ReportDisciplineView(name, own.Sum(p => p.Open), own.Sum(p => p.New), own.Sum(p => p.Returned), own.Sum(p => p.Fixed),
+                    own.Select(p => p.Pair).ToList());
+            })
+            .ToList();
 
     /// <summary>Удачные утверждённые прогоны части, новые сверху, с итогом сверки.</summary>
     public async Task<IReadOnlyList<ReportRunView>> RunsAsync(Guid partId, CancellationToken ct)
@@ -179,7 +213,7 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, TimeProvider ti
         new(CollisionEndpoints.Row(source.Collision, names, suggested), source.Change, source.LastNote, source.LastNoteBy, source.LastNoteAt);
 
     /// <summary>Пары разделов: открытые и фиктивные — сейчас, новые, вернувшиеся и исправленные — в этом прогоне.</summary>
-    private async Task<IReadOnlyList<ReportPairView>> PairsAsync(EngineRun run, CancellationToken ct)
+    private async Task<IReadOnlyList<ReportPairView>> PairsAsync(EngineRun run, DisciplineRanks ranks, CancellationToken ct)
     {
         var open = CollisionEndpoints.Open;
         var current = await db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == run.PartId)
@@ -195,10 +229,13 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, TimeProvider ti
             {
                 int Moved(CollisionStatus status) => changes.Count(c => c.DisciplinePair == pair && c.Change == status);
                 var now = current.FirstOrDefault(c => c.Pair == pair);
-                return new ReportPairView(pair, now?.Open ?? 0, Moved(CollisionStatus.New), Moved(CollisionStatus.Returned), Moved(CollisionStatus.Fixed), now?.Fake ?? 0);
+                var (a, b) = DisciplineRanks.Split(pair);
+                var (first, second) = ranks.Ordered(a, b);
+                return new ReportPairView(pair, $"{first} × {second}", first, second, now?.Open ?? 0, Moved(CollisionStatus.New),
+                    Moved(CollisionStatus.Returned), Moved(CollisionStatus.Fixed), now?.Fake ?? 0);
             })
             .Where(p => p.Open + p.New + p.Returned + p.Fixed + p.Fake > 0)
-            .OrderByDescending(p => p.Open).ThenBy(p => p.Pair, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(p => ranks.Of(p.DisciplineA)).ThenBy(p => ranks.Of(p.DisciplineB)).ThenBy(p => p.Label, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }
 }
