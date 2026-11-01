@@ -198,7 +198,7 @@ public class ClashReportTests : ServerTest
         {
             var collision = new ClashCollision { LevelA = a, LevelB = b };
             var row = new ReportExportRow(new ReportRow(CollisionEndpoints.Row(collision, new Dictionary<string, string>(), new Dictionary<Guid, int>()), null, null,
-                null, null, ""), DateTimeOffset.UnixEpoch);
+                null, null, ""), DateTimeOffset.UnixEpoch, "");
             key(collision).ShouldBe(ReportColumns.Level(row), $"{a} | {b}");
         }
     }

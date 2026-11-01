@@ -4,8 +4,8 @@ using ToadFlow.Server.Files;
 
 namespace ToadFlow.Server.Clash.Reports;
 
-/// <summary>Строка выгрузки: строка отчёта и когда коллизия найдена впервые.</summary>
-public sealed record ReportExportRow(ReportRow Row, DateTimeOffset FirstFoundAt);
+/// <summary>Строка выгрузки: строка отчёта, когда коллизия найдена впервые, и подпись её пары в порядке справочника.</summary>
+public sealed record ReportExportRow(ReportRow Row, DateTimeOffset FirstFoundAt, string PairLabel);
 
 /// <summary>Русские подписи статусов и сторон — как в вебе.</summary>
 public static class ReportLabels
@@ -94,7 +94,7 @@ public static class ReportColumns
         _ => ""
     };
 
-    public static string Pair(ReportExportRow row) => Engine.ClashDraftHit.PairOf(row.Row.Collision.DisciplineA, row.Row.Collision.DisciplineB);
+    public static string Pair(ReportExportRow row) => row.PairLabel;
 
     public static string Level(ReportExportRow row) =>
         row.Row.Collision.LevelA == row.Row.Collision.LevelB || row.Row.Collision.LevelB is null

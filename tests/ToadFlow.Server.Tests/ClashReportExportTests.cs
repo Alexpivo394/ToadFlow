@@ -24,6 +24,10 @@ namespace ToadFlow.Server.Tests;
 public class ClashReportExportTests : ServerTest
 {
     private const string Base = "http://toadflow.local";
+    private const string Nbsp = " ";
+
+    /// <summary>Пара коллизий <see cref="ClashDraftFixtures.Hit" /> по умолчанию — HTML выгружается по паре.</summary>
+    private static readonly string Pair = "&pair=" + Uri.EscapeDataString("АР × ОВ");
     private static readonly byte[] TinyPng = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
 
     private async Task<(HttpClient Admin, FakeAgent Agent, Guid PartId, Guid RunId)> RunAsync(IReadOnlyList<EngineHit> hits)
@@ -210,32 +214,110 @@ public class ClashReportExportTests : ServerTest
         await using var _ = agent;
         await ImagesAsync(partId);
 
-        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         response.Content.Headers.ContentType!.MediaType.ShouldBe("text/html");
         var html = await response.Content.ReadAsStringAsync();
         Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(2);
-        html.ShouldNotContain("<script");
+        // Скрипт в файле — только свой, фильтры; текст из модели экранирован.
+        Regex.Matches(html, "<script").Count.ShouldBe(1);
+        html.ShouldNotContain("<script>alert");
         html.ShouldContain("&lt;script&gt;alert(1)&lt;/script&gt;");
         foreach (Match link in Regex.Matches(html, "(?:src|href)=\"([^\"]*)\""))
-            (link.Groups[1].Value.StartsWith("data:") || link.Groups[1].Value.StartsWith(Base + "/")).ShouldBeTrue(link.Value);
+            (link.Groups[1].Value.StartsWith("data:") || link.Groups[1].Value.StartsWith(Base + "/") || link.Groups[1].Value.StartsWith('#')).ShouldBeTrue(link.Value);
         html.ShouldContain("@media print");
         html.ShouldNotContain("картинки — у первых");
     }
 
     [Test]
-    public async Task ExportHtml_Over500_ImagesCappedWithNote()
+    public async Task ExportHtml_NoPair_400()
     {
-        var (admin, agent, partId, runId) = await RunAsync(Hits(520));
+        var (admin, agent, _, runId) = await RunAsync(Hits(2));
+        await using var _ = agent;
+
+        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("архивом");
+    }
+
+    [Test]
+    public async Task ExportHtml_1001Rows_1000CardsAndOneTableRow()
+    {
+        var (admin, agent, partId, runId) = await RunAsync(Hits(1001));
         await using var _ = agent;
         await ImagesAsync(partId);
 
-        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
 
-        Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(ReportHtml.MaxImages);
-        html.ShouldContain("картинки — у первых 500 из 520");
-        Regex.Matches(html, "<tr class=\"row\"").Count.ShouldBe(20);
+        ReportHtml.MaxImages.ShouldBe(1000);
+        Regex.Matches(html, "<div class=\"card\"").Count.ShouldBe(1000);
+        Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(1000);
+        Regex.Matches(html, "<tr class=\"row\"").Count.ShouldBe(1);
+        html.ShouldContain($"картинки — у первых 1{Nbsp}000 из 1{Nbsp}001");
+    }
+
+    [Test]
+    public async Task ExportHtml_Exactly1000_NoTable()
+    {
+        var (admin, agent, partId, runId) = await RunAsync(Hits(1000));
+        await using var _ = agent;
+        await ImagesAsync(partId);
+
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
+
+        Regex.Matches(html, "<div class=\"card\"").Count.ShouldBe(1000);
+        html.ShouldNotContain("<tr class=\"row\"");
+        html.ShouldNotContain("картинки — у первых");
+    }
+
+    [Test]
+    public async Task ExportHtml_LevelsTocAndGroupsInOrder()
+    {
+        var (admin, agent, _, runId) = await RunAsync(ClashReportTests.LevelHits());
+        await using var _ = agent;
+
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}&pair={Uri.EscapeDataString("ВК × ОВ")}");
+        // Образец для ручной проверки фильтров в браузере.
+        var sample = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "toadclash-report-sample")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(sample, "pair-levels.html"), html);
+
+        html.ShouldContain("ОВ × ВК");
+        Regex.Matches(html, "<a href=\"#level-(\\d+)\">([^<]*)</a> <span class=\"count\">(\\d+)</span>").Select(m => (m.Groups[2].Value, m.Groups[3].Value))
+            .ShouldBe([("Этаж 1", "2"), ("Этаж 2", "1"), ("Кровля", "1"), ("Этаж 10", "1"), ("Без уровня", "1")]);
+        Regex.Matches(html, "<h3 class=\"level\" id=\"level-\\d+\" data-level=\"([^\"]*)\"").Select(m => m.Groups[1].Value)
+            .ShouldBe(["Этаж 1", "Этаж 2", "Кровля", "Этаж 10", ""]);
+        Regex.Matches(html, "<div class=\"card\" data-status=\"(\\w+)\" data-level=\"([^\"]*)\" data-q=\"([^\"]*)\"")
+            .Select(m => m.Groups[3].Value.Split(' ')[0]).ShouldBe(["2", "6", "1", "3", "4", "5"]);
+        html.ShouldContain("data-status=\"New\" data-level=\"Этаж 1\"");
+    }
+
+    [Test]
+    public async Task ExportHtml_FilterScript_Inline()
+    {
+        var (admin, agent, _, runId) = await RunAsync(Hits(2));
+        await using var _ = agent;
+
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
+
+        Regex.Matches(html, "<script>").Count.ShouldBe(1);
+        html.ShouldNotContain("<script src");
+        foreach (var id in new[] { "f-q", "f-level", "f-status", "shown" }) html.ShouldContain($"id=\"{id}\"");
+        html.ShouldContain("Показано 2 из 2");
+    }
+
+    [Test]
+    public async Task ExportXlsx_RowsInReportOrder_PairLabel()
+    {
+        var (admin, agent, _, runId) = await RunAsync(ClashReportTests.LevelHits());
+        await using var _ = agent;
+
+        var rows = SheetRows(await (await admin.GetAsync($"/api/clash/reports/{runId}/export.xlsx?scope=changes&baseUrl={Base}")).Content.ReadAsByteArrayAsync());
+
+        var headers = ReportColumns.Headers.ToList();
+        rows.Skip(1).Select(r => r[headers.IndexOf("№")]).ShouldBe(["7", "2", "6", "1", "3", "4", "5"]);
+        rows[2][headers.IndexOf("Пара разделов")].ShouldBe("ОВ × ВК");
     }
 
     [Test]
@@ -246,7 +328,7 @@ public class ClashReportExportTests : ServerTest
         var images = Server.Services.GetRequiredService<CollisionImages>();
         var before = images.Renders;
 
-        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
 
         Regex.Matches(html, "data:image/png;base64,").Count.ShouldBe(3);
         (images.Renders - before).ShouldBe(3);
@@ -258,7 +340,7 @@ public class ClashReportExportTests : ServerTest
         var (admin, agent, _, runId) = await RenderableRunAsync(3, i => i == 2 ? "missing" : null);
         await using var _ = agent;
 
-        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var html = await response.Content.ReadAsStringAsync();
@@ -284,11 +366,11 @@ public class ClashReportExportTests : ServerTest
         foreach (var c in collisions.Where(c => c.Number is 5 or 6))
             await ClashStorage.WriteImageAsync(Server.ClashStorageRoot, partId, c.Id, ImageTarget.VersionOf(c), new MemoryStream(Cached(c.Number)), CancellationToken.None);
 
-        var response = await client.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+        var response = await client.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var cards = Regex.Matches(await response.Content.ReadAsStringAsync(),
-            "<div class=\"card\">(?:<img [^>]*src=\"data:image/png;base64,(?<png>[^\"]+)\">|<div class=\"noimg\">).*?<b>№(?<number>\\d+)</b>", RegexOptions.Singleline);
+            "<div class=\"card\"[^>]*>(?:<img [^>]*src=\"data:image/png;base64,(?<png>[^\"]+)\">|<div class=\"noimg\">).*?<b>№(?<number>\\d+)</b>", RegexOptions.Singleline);
         cards.Select(m => int.Parse(m.Groups["number"].Value)).Order().ShouldBe(Enumerable.Range(1, count));
         foreach (Match card in cards)
         {
@@ -315,7 +397,7 @@ public class ClashReportExportTests : ServerTest
             file.SetLength(16);
         }
 
-        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}");
+        var response = await admin.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var html = await response.Content.ReadAsStringAsync();
@@ -365,7 +447,7 @@ public class ClashReportExportTests : ServerTest
         var designer = await ClientAsync(UserRole.Designer, "ВК");
 
         (await designer.GetAsync($"/api/clash/reports/{runId}/export.xlsx?baseUrl={Base}")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await designer.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await designer.GetAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Test]

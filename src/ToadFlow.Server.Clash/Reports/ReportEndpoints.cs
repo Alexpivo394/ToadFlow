@@ -19,16 +19,17 @@ public static class ReportEndpoints
         report.MapGet("/chat", ChatAsync);
         report.MapGet("/export.xlsx", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
                 CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "xlsx", http, reports, general,
-                (export, body) => ReportXlsx.WriteAsync(body, export.View, Export(export.Rows, export.Context, ct), export.Web, export.Zone, ct), ct));
+                (export, body) => ReportXlsx.WriteAsync(body, export.View, ReportPairFile.Rows(export.Selection, export.Context, ct), export.Web, export.Zone, ct),
+                ct));
         report.MapGet("/export.html", (Guid runId, string? scope, string? sort, string? baseUrl, HttpContext http, RunReports reports, ISettingsStore general,
-            Data.ToadFlowDb db, Images.CollisionImages images, CancellationToken ct) => ExportAsync(runId, scope, sort, baseUrl, "html", http, reports, general,
-            async (export, body) =>
-            {
-                var total = await export.Rows.CountAsync(ct);
-                var pictures = await ReportImages.LoadAsync(export.Rows, db, images, ct);
-                await ReportHtml.WriteAsync(body, export.View, pictures.AheadAsync(Export(export.Rows, export.Context, ct), ct), total, pictures.ImageAsync,
-                    export.Web, export.Zone, ct);
-            }, ct));
+            Data.ToadFlowDb db, Images.CollisionImages images, CancellationToken ct) =>
+        {
+            if (CollisionFilter.From(http.Request).Pair is null)
+                return Task.FromResult(Results.BadRequest(new { error = "HTML выгружается по паре; раздел или всё — архивом" }));
+            return ExportAsync(runId, scope, sort, baseUrl, "html", http, reports, general,
+                (export, body) => ReportPairFile.WriteAsync(body, export.View, export.Context, export.Selection, export.Filter.Pair!, db, images, export.Web,
+                    export.Zone, ct), ct);
+        });
         members.MapGet("/clash/parts/{id:guid}/approved/runs", async (Guid id, RunReports reports, CancellationToken ct) =>
             Results.Ok(await reports.RunsAsync(id, ct)));
     }
@@ -64,7 +65,7 @@ public static class ReportEndpoints
     }
 
     /// <summary>Что пишет выгрузка: отчёт, строки по фильтрам страницы, адрес веба и часовой пояс.</summary>
-    private sealed record ExportSource(ReportView View, ReportContext Context, IQueryable<ReportRowSource> Rows, string Web, TimeZoneInfo Zone);
+    private sealed record ExportSource(ReportView View, ReportContext Context, ReportSelection Selection, CollisionFilter Filter, string Web, TimeZoneInfo Zone);
 
     /// <summary>
     ///     Выгрузка отчёта с фильтрами страницы: строки читаются из базы потоком и пишутся в тело ответа, не собираясь в памяти.
@@ -76,25 +77,18 @@ public static class ReportEndpoints
         if (WebBase(baseUrl) is not { } web) return BadBaseUrl();
         if (await reports.ContextAsync(runId, ct) is not { } context || await reports.ViewAsync(runId, ct) is not { } view) return Results.NotFound();
         var zone = (await general.GetAsync(ct)).TimeZone;
-        var rows = (await reports.SelectAsync(context, Scope(scope), CollisionFilter.From(http.Request), sort, ct)).Rows;
+        var filter = CollisionFilter.From(http.Request);
+        var selection = await reports.SelectAsync(context, Scope(scope), filter, sort, ct);
 
         var day = TimeZoneInfo.ConvertTime(view.Run.FinishedAt, zone).ToString("dd.MM.yyyy");
-        var title = string.Join(' ', new[] { "Коллизии", view.Check.Object, view.Check.Name, day }.Where(p => !string.IsNullOrWhiteSpace(p)));
-        var name = string.Concat(title.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + "." + format;
+        var pair = filter.Pair is { } key ? ReportPairFile.Pair(view, selection.Ranks, key).Label : null;
+        var name = ReportPairFile.FileName(new[] { "Коллизии", view.Check.Object, view.Check.Name, pair, day }) + "." + format;
         http.Response.ContentType = format == "xlsx" ? ReportXlsx.ContentType : ReportHtml.ContentType;
         http.Response.Headers.ContentDisposition =
             new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment") { FileName = $"\"report.{format}\"", FileNameStar = name }.ToString();
 
-        await write(new ExportSource(view, context, rows, web, zone), http.Response.Body);
+        await write(new ExportSource(view, context, selection, filter, web, zone), http.Response.Body);
         return Results.Empty;
-    }
-
-    private static async IAsyncEnumerable<ReportExportRow> Export(IQueryable<ReportRowSource> rows, ReportContext context,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
-    {
-        var none = new Dictionary<Guid, int>();
-        await foreach (var source in rows.AsAsyncEnumerable().WithCancellation(ct))
-            yield return new ReportExportRow(RunReports.Row(source, context.ModelNames, none), source.Collision.CreatedAt);
     }
 
     internal static string Scope(string? scope) => scope == RunReports.Open ? RunReports.Open : RunReports.Changes;
