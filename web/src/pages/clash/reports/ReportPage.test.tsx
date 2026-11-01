@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { navigateTo, renderApp } from '../../../test/renderApp';
+import { designer, pairUrl, report, responses, row } from './reportFixtures';
 
 vi.mock('../../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
 vi.mock('../../../api/client', async (original) => ({ ...(await original<typeof import('../../../api/client')>()), downloadFile: vi.fn(async () => {}) }));
@@ -11,50 +12,24 @@ const { downloadFile } = await import('../../../api/client');
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const calls = () => (fetch as unknown as FetchMock).mock.calls;
 const rowCalls = () => calls().filter(([url]) => url.startsWith('/api/clash/reports/r2/collisions')).map(([url]) => new URL(url, 'http://x').searchParams);
-
-const collision = (n: number, extra: object = {}) => ({
-  id: `c${n}`, number: n, status: 'Returned', assignee: 'Both', foundNow: true, depthMm: 40 + n, x: 0, y: 0, z: 0,
-  modelA: 'm1', modelNameA: 'POL_K1_AR.rvt', uniqueIdA: `ua${n}`, elementIdA: 1000 + n, disciplineA: 'АР', categoryA: 'OST_Walls', familyA: 'Стена', typeA: '200', levelA: 'Этаж 1',
-  modelB: 'm2', modelNameB: 'POL_K1_OV.rvt', uniqueIdB: `ub${n}`, elementIdB: 2000 + n, disciplineB: 'ОВ', categoryB: 'OST_DuctCurves', familyB: 'Воздуховод', typeB: '500x300', levelB: 'Этаж 1',
-  checks: ['k-arov'], firstVersion: 1, lastFoundVersion: 2, suggestedPredecessorId: null, suggestedPredecessorNumber: null, imageVersion: 'v1', ...extra,
-});
-
-const summary = { found: 30, new: 12, active: 15, returned: 3, fixed: 4, goneByRules: 1, unchecked: 2, fake: 5, reusedPairs: 0 };
-
-const report = (extra: object = {}) => ({
-  run: { runId: 'r2', partId: 'p1', version: 2, finishedAt: '2026-10-31T09:05:00Z', trigger: 'manual', startedBy: 'Иванов', searchSeconds: 12.5 },
-  check: { partId: 'p1', name: 'Корпус 1', object: 'Полковая', part: 'корпус 1', version: 2, lastRunAt: null, lastRun: null, open: 30, models: [] },
-  summary,
-  models: [
-    { name: 'POL_K1_AR.rvt', discipline: 'АР', uploadedAt: '2026-10-31T08:00:00Z', unchecked: true },
-    { name: 'POL_K1_OV.rvt', discipline: 'ОВ', uploadedAt: '2026-10-31T08:10:00Z', unchecked: false },
-  ],
-  pairs: [{ pair: 'АР × ОВ', open: 30, new: 12, returned: 3, fixed: 4, fake: 5 }],
-  newerRunId: null,
-  newerRunAt: null,
-  ...extra,
-});
-
-const responses = (extra: Record<string, unknown> = {}) => ({
-  '/api/clash/reports/r2': report(),
-  '/api/clash/reports/r2/collisions': {
-    total: 2,
-    items: [
-      { collision: collision(1), change: 'Returned', lastNote: 'Переносим трубу', lastNoteBy: 'Петров', lastNoteAt: '2026-10-31T10:00:00Z' },
-      { collision: collision(2, { status: 'New' }), change: 'New', lastNote: null, lastNoteBy: null, lastNoteAt: null },
-    ],
-  },
-  '/api/clash/reports/r2/chat': { text: 'Коллизии: Полковая · Корпус 1 (v2)' },
-  '/api/clash/collisions/c1': { collision: collision(1), feed: [{ at: '2026-10-31T10:00:00Z', kind: 'Note', userName: 'Петров', text: 'Переносим трубу', fromStatus: null, toStatus: null, version: null, depthMm: null }] },
-  ...extra,
-});
-
-const designer = { '/api/auth/me': { id: 'u2', login: 'ov', displayName: 'Проектировщик', role: 'Designer', isDisabled: false, lastLoginAt: null, disciplines: ['ОВ'] } };
+const tree = () => screen.getByTestId('report-tree');
 
 describe('Report page', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
 
-  it('ReportPage_HeaderTilesPairsAndRows', async () => {
+  it('Tree_DisciplinesInServerOrder_PairsUnderEach', async () => {
+    renderApp('/clash/reports/r2', responses());
+
+    await screen.findByRole('heading', { name: /Отчёт от 31\.10\.2026/ });
+    expect(within(tree()).getAllByTestId('tree-discipline').map((d) => d.getAttribute('data-name'))).toEqual(['АР', 'ОВ', 'ВК']);
+    expect(within(tree()).getAllByRole('button', { name: 'Пара АР × ОВ' })).toHaveLength(2);
+    expect(within(tree()).getAllByRole('button', { name: 'Пара ОВ × ВК' })).toHaveLength(2);
+  });
+
+  it('NoSelection_Coordinator_ShowsSummary', async () => {
     renderApp('/clash/reports/r2', responses());
 
     expect(await screen.findByRole('heading', { name: /Отчёт от 31\.10\.2026/ })).toBeTruthy();
@@ -63,12 +38,115 @@ describe('Report page', () => {
     const tiles = screen.getByTestId('report-tiles');
     expect(within(tiles).getByText('Новых').parentElement!.textContent).toContain('12');
     expect(within(tiles).getByText('Фиктивных').parentElement!.textContent).toContain('5');
-    expect(screen.getByRole('button', { name: 'Пара АР × ОВ' })).toBeTruthy();
-    expect(await screen.findByText('№ 1')).toBeTruthy();
-    expect(screen.getAllByText('вернулась').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Переносим трубу/)).toBeTruthy();
-    expect(rowCalls()[0].get('scope')).toBe('changes');
-    expect(rowCalls()[0].get('pageSize')).toBe('50');
+    const summaryPairs = screen.getByTestId('report-pairs');
+    expect(within(summaryPairs).getAllByRole('button').map((b) => b.textContent)).toEqual(['АР × ОВ', 'АР × ВК', 'ОВ × ВК']);
+    expect(rowCalls()).toHaveLength(0);
+  });
+
+  it('NoSelection_Designer_OpensOwnDiscipline', async () => {
+    renderApp('/clash/reports/r2', responses(designer));
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('discipline') === 'ОВ')).toBe(true));
+    expect(screen.queryByTestId('report-tiles')).toBeNull();
+    expect(rowCalls().every((p) => p.get('pageSize') === '100')).toBe(true);
+  });
+
+  it('Designer_NoOwnDisciplineInReport_ShowsSummary', async () => {
+    renderApp('/clash/reports/r2', responses({ '/api/auth/me': { ...designer['/api/auth/me'], disciplines: ['ЭОМ'] } }));
+
+    expect(await screen.findByTestId('report-tiles')).toBeTruthy();
+    expect(rowCalls()).toHaveLength(0);
+  });
+
+  it('Designer_SummaryClick_StaysOnSummary', async () => {
+    renderApp('/clash/reports/r2', responses(designer));
+    await waitFor(() => expect(rowCalls().length).toBeGreaterThan(0));
+
+    fireEvent.click(within(tree()).getByRole('button', { name: 'Сводка' }));
+
+    expect(await screen.findByTestId('report-tiles')).toBeTruthy();
+  });
+
+  it('MineToggle_HidesOtherDisciplines', async () => {
+    renderApp('/clash/reports/r2', responses(designer));
+    await waitFor(() => expect(rowCalls().length).toBeGreaterThan(0));
+    expect(within(tree()).getAllByTestId('tree-discipline')).toHaveLength(1);
+
+    fireEvent.click(within(tree()).getByText('Все'));
+
+    await waitFor(() => expect(within(tree()).getAllByTestId('tree-discipline')).toHaveLength(3));
+    expect(localStorage.getItem('clash.report.mine')).toBe('0');
+  });
+
+  it('Rows_LevelHeadersWithTotals', async () => {
+    renderApp(pairUrl('АР × ОВ'), responses({
+      '/api/clash/reports/r2/collisions': { total: 3, items: [row(1), row(2), row(3, '')] },
+      '/api/clash/reports/r2/levels': [{ pair: 'АР × ОВ', level: 'Этаж 1', count: 2 }, { pair: 'АР × ОВ', level: '', count: 1 }],
+    }));
+
+    await screen.findByText('№ 3');
+    await waitFor(() => expect(screen.getAllByTestId('level-header').map((h) => h.textContent)).toEqual(['Этаж 1 · 2', 'Без уровня · 1']));
+    expect(rowCalls()[0].get('pair')).toBe('АР × ОВ');
+
+    fireEvent.click(screen.getByText('По глубине'));
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('sort') === 'depth')).toBe(true));
+    await waitFor(() => expect(screen.queryAllByTestId('level-header')).toHaveLength(0));
+  });
+
+  it('Rows_LevelContinuesFromPreviousPage_HeaderMarked', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&page=2', responses({
+      '/api/clash/reports/r2/collisions': { total: 150, items: [row(101), row(102)] },
+      '/api/clash/reports/r2/levels': [{ pair: 'АР × ОВ', level: 'Этаж 1', count: 150 }],
+    }));
+
+    await screen.findByText('№ 101');
+    expect(rowCalls()[0].get('page')).toBe('2');
+    await waitFor(() => expect(screen.getAllByTestId('level-header')[0].textContent).toBe('Этаж 1 · 150 (продолжение)'));
+  });
+
+  it('Discipline_RowsGroupedByPairThenLevel', async () => {
+    renderApp('/clash/reports/r2?discipline=' + encodeURIComponent('ОВ'), responses({
+      '/api/clash/reports/r2/collisions': {
+        total: 3, items: [row(1), row(2, 'Этаж 2', { levelA: 'Этаж 2', levelB: 'Этаж 2' }), row(3, 'Этаж 1', { disciplineA: 'ВК' })],
+      },
+      '/api/clash/reports/r2/levels': [
+        { pair: 'АР × ОВ', level: 'Этаж 1', count: 1 }, { pair: 'АР × ОВ', level: 'Этаж 2', count: 1 }, { pair: 'ВК × ОВ', level: 'Этаж 1', count: 1 },
+      ],
+    }));
+
+    await screen.findByText('№ 3');
+    await waitFor(() => expect(screen.getAllByTestId(/^(pair|level)-header$/).map((h) => h.textContent))
+      .toEqual(['АР × ОВ', 'Этаж 1 · 1', 'Этаж 2 · 1', 'ОВ × ВК', 'Этаж 1 · 1']));
+  });
+
+  it('Summary_PairClick_SelectsPair', async () => {
+    renderApp('/clash/reports/r2', responses());
+
+    fireEvent.click(within(await screen.findByTestId('report-pairs')).getByRole('button', { name: 'ОВ × ВК' }));
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('pair') === 'ВК × ОВ')).toBe(true));
+  });
+
+  it('Filters_LevelSelectFromLevels_DisciplineAndPairNotInRow', async () => {
+    const all = [{ pair: 'АР × ОВ', level: 'Этаж 1', count: 2 }, { pair: 'АР × ОВ', level: '', count: 1 }];
+    renderApp(pairUrl('АР × ОВ'), responses({
+      '/api/clash/reports/r2/collisions': (url: string) =>
+        (new URL(url, 'http://x').searchParams.get('level') === '-' ? { total: 1, items: [row(3, '')] } : { total: 2, items: [row(1), row(2)] }),
+      '/api/clash/reports/r2/levels': (url: string) => (new URL(url, 'http://x').searchParams.get('level') === '-' ? [all[1]] : all),
+    }));
+    await screen.findByText('№ 1');
+    expect(screen.queryByPlaceholderText('Раздел')).toBeNull();
+    expect(screen.queryByPlaceholderText('Пара разделов')).toBeNull();
+
+    fireEvent.click(screen.getByPlaceholderText('Уровень'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Без уровня · 1' }));
+
+    await waitFor(() => expect(rowCalls().some((p) => p.get('level') === '-')).toBe(true));
+    await screen.findByText('№ 3');
+    await waitFor(() => expect(screen.getAllByTestId('level-header').map((h) => h.textContent)).toEqual(['Без уровня · 1']));
+    fireEvent.click(screen.getByPlaceholderText('Уровень'));
+    expect(await screen.findByRole('option', { name: 'Этаж 1 · 2' })).toBeTruthy();
   });
 
   it('ReportPage_OldRun_ShowsNewerBanner', async () => {
@@ -79,10 +157,11 @@ describe('Report page', () => {
   });
 
   it('ReportPage_NewerReportLink_KeepsFilters', async () => {
-    renderApp('/clash/reports/r2?level=Этаж 1&q=17', responses({
+    renderApp(pairUrl('АР × ОВ') + '&level=' + encodeURIComponent('Этаж 1') + '&q=17', responses({
       '/api/clash/reports/r2': report({ newerRunId: 'r3', newerRunAt: '2026-11-01T09:00:00Z' }),
       '/api/clash/reports/r3': report({ run: { ...report().run, runId: 'r3' } }),
       '/api/clash/reports/r3/collisions': { total: 0, items: [] },
+      '/api/clash/reports/r3/levels': [{ pair: 'АР × ОВ', level: 'Этаж 1', count: 2 }],
     }));
 
     const link = await screen.findByRole('link', { name: /Открыть новый отчёт/ });
@@ -90,69 +169,42 @@ describe('Report page', () => {
     expect(path).toBe('/clash/reports/r3');
     expect(new URLSearchParams(query).get('level')).toBe('Этаж 1');
     expect(new URLSearchParams(query).get('q')).toBe('17');
+    expect(new URLSearchParams(query).get('pair')).toBe('АР × ОВ');
     fireEvent.click(link);
 
     await waitFor(() => expect(calls().some(([url]) => url.startsWith('/api/clash/reports/r3/collisions'))).toBe(true));
-    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe('Этаж 1'));
+    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe('Этаж 1 · 2'));
     expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('17');
   });
 
-  it('ReportPage_NavigateWithoutParams_ClearsFilterFields', async () => {
-    renderApp('/clash/reports/r2?level=Этаж 1&q=17', responses({
+  it('ReportPage_NavigateWithoutParams_ClearsSearchField', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&q=17', responses({
       '/api/clash/reports/r3': report({ run: { ...report().run, runId: 'r3' } }),
       '/api/clash/reports/r3/collisions': { total: 0, items: [] },
+      '/api/clash/reports/r3/levels': [],
     }));
-    expect(((await screen.findByPlaceholderText('Уровень')) as HTMLInputElement).value).toBe('Этаж 1');
+    expect(((await screen.findByPlaceholderText('№, ID или UniqueId')) as HTMLInputElement).value).toBe('17');
 
-    navigateTo('/clash/reports/r3');
+    navigateTo(pairUrl('АР × ОВ').replace('r2', 'r3'));
 
     await waitFor(() => expect(calls().some(([url]) => url.startsWith('/api/clash/reports/r3/collisions'))).toBe(true));
-    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe(''));
-    expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('');
+    await waitFor(() => expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe(''));
   });
 
-  it('ReportPage_NavigateSameReportWithoutParams_ClearsFilterFields', async () => {
-    renderApp('/clash/reports/r2?level=Этаж 1&q=17', responses());
-    expect(((await screen.findByPlaceholderText('Уровень')) as HTMLInputElement).value).toBe('Этаж 1');
-
-    navigateTo('/clash/reports/r2');
-
-    await waitFor(() => expect((screen.getByPlaceholderText('Уровень') as HTMLInputElement).value).toBe(''));
-    expect((screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement).value).toBe('');
-  });
-
-  it('ReportPage_FilterEnter_AppliesAndKeepsFocus', async () => {
-    renderApp('/clash/reports/r2', responses());
-    const level = (await screen.findByPlaceholderText('Уровень')) as HTMLInputElement;
-    level.focus();
-    fireEvent.change(level, { target: { value: 'Этаж 2' } });
-
-    fireEvent.keyDown(level, { key: 'Enter' });
-
-    await waitFor(() => expect(rowCalls().some((p) => p.get('level') === 'Этаж 2')).toBe(true));
-    const after = screen.getByPlaceholderText('Уровень') as HTMLInputElement;
-    expect(after.value).toBe('Этаж 2');
-    expect(document.activeElement).toBe(after);
-
-    const q = screen.getByPlaceholderText('№, ID или UniqueId') as HTMLInputElement;
+  it('ReportPage_SearchEnter_AppliesAndKeepsFocus', async () => {
+    renderApp(pairUrl('АР × ОВ'), responses());
+    const q = (await screen.findByPlaceholderText('№, ID или UniqueId')) as HTMLInputElement;
     q.focus();
     fireEvent.change(q, { target: { value: '17' } });
+
     fireEvent.keyDown(q, { key: 'Enter' });
 
     await waitFor(() => expect(rowCalls().some((p) => p.get('q') === '17')).toBe(true));
     expect(document.activeElement).toBe(screen.getByPlaceholderText('№, ID или UniqueId'));
   });
 
-  it('ReportPage_PairClick_FiltersRows', async () => {
-    renderApp('/clash/reports/r2', responses());
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Пара АР × ОВ' }));
-
-    await waitFor(() => expect(rowCalls().some((p) => p.get('pair') === 'АР × ОВ')).toBe(true));
-  });
-
   it('ReportPage_ScopeSwitch_RequestsOpen', async () => {
-    renderApp('/clash/reports/r2', responses());
+    renderApp(pairUrl('АР × ОВ'), responses());
 
     fireEvent.click(await screen.findByText('Открытые сейчас'));
 
@@ -160,7 +212,7 @@ describe('Report page', () => {
   });
 
   it('ReportPage_Excel_DownloadsWithFiltersAndBaseUrl', async () => {
-    renderApp('/clash/reports/r2?pair=' + encodeURIComponent('АР × ОВ'), responses());
+    renderApp(pairUrl('АР × ОВ'), responses());
 
     fireEvent.click(await screen.findByRole('button', { name: 'Excel' }));
 
@@ -176,7 +228,7 @@ describe('Report page', () => {
 
   it('ReportPage_CopyChat_OperatorOnly', async () => {
     const view = renderApp('/clash/reports/r2', responses(designer));
-    expect(await screen.findByText('№ 1')).toBeTruthy();
+    await waitFor(() => expect(rowCalls().length).toBeGreaterThan(0));
     expect(screen.queryByRole('button', { name: 'Скопировать сообщение для чата' })).toBeNull();
     view.unmount();
 
@@ -190,7 +242,7 @@ describe('Report page', () => {
   });
 
   it('ReportPage_RowOpensDrawerWithCardAndLink3D', async () => {
-    renderApp('/clash/reports/r2', responses());
+    renderApp(pairUrl('АР × ОВ'), responses());
 
     fireEvent.click(await screen.findByRole('button', { name: 'Коллизия 1' }));
 
@@ -198,5 +250,14 @@ describe('Report page', () => {
     expect(await within(drawer).findByText('Переносим трубу')).toBeTruthy();
     expect(within(drawer).getByRole('link', { name: 'Открыть в 3D' }).getAttribute('href')).toBe('/clash/checks/p1?collision=c1');
     expect(screen.queryByText('картинка ещё рисуется')).toBeNull();
+  });
+
+  it('Row_CompactWithModelNameAndNote', async () => {
+    renderApp(pairUrl('АР × ОВ'), responses());
+
+    const first = await screen.findByRole('button', { name: 'Коллизия 1' });
+    expect(first.textContent).toContain('POL_K1_AR.rvt');
+    expect(first.textContent).toContain('Переносим трубу');
+    expect(first.textContent).toContain('вернулась');
   });
 });
