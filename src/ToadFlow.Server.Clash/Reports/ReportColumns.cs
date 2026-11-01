@@ -45,7 +45,7 @@ public static class ReportColumns
         new("№", 7, (r, _) => XlsxCell.Number(r.Row.Collision.Number)),
         new("Статус", 16, (r, _) => Text(ReportLabels.Status(r.Row.Collision.Status))),
         new("Переход в прогоне", 16, (r, _) => Text(ReportLabels.Change(r.Row.Change))),
-        new("Кто правит", 13, (r, _) => Text(CollisionFeed.AssigneeText(r.Row.Collision.Assignee))),
+        new("Кто правит", 13, (r, _) => Text(CollisionFeed.AssigneeText(r.Row.Collision.Assignee, r.Row.Collision.DisciplineA, r.Row.Collision.DisciplineB))),
         new("Пара разделов", 14, (r, _) => Text(Pair(r))),
         new("Глубина, мм", 10, (r, _) => XlsxCell.Number(Math.Round(r.Row.Collision.DepthMm))),
         new("Уровень", 14, (r, _) => Text(Level(r))),

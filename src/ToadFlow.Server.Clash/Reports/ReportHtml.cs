@@ -206,7 +206,7 @@ public static class ReportHtml
         await writer.WriteAsync($"""
             <div class="card" {Data(row)}>{picture}<div class="body">
             <div><b>№{c.Number}</b> <span class="badge">{E(ReportLabels.Status(c.Status))}</span>{change}
-            · глубина {N((int)Math.Round(c.DepthMm))} мм · {E(LevelLabel(row.Row.Level))} · правит {E(CollisionFeed.AssigneeText(c.Assignee))}
+            · глубина {N((int)Math.Round(c.DepthMm))} мм · {E(LevelLabel(row.Row.Level))} · правит {E(CollisionFeed.AssigneeText(c.Assignee, c.DisciplineA, c.DisciplineB))}
             · <a href="{E(ReportLabels.CollisionUrl(webBase, partId, c.Id))}">открыть</a></div>
             {Side("a", "A", c.ModelNameA, c.CategoryA, c.FamilyA, c.TypeA, c.ElementIdA)}
             {Side("b", "B", c.ModelNameB, c.CategoryB, c.FamilyB, c.TypeB, c.ElementIdB)}

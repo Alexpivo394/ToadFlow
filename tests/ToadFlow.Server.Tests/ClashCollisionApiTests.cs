@@ -145,7 +145,8 @@ public class ClashCollisionApiTests : ServerTest
 
         var card = await admin.GetJsonAsync<CollisionCard>($"/api/clash/collisions/{id}");
         card.Collision.Assignee.ShouldBe(CollisionAssignee.SideB);
-        card.Feed.Single(e => e.Kind == nameof(CollisionEventKind.Assignee)).Text.ShouldContain("сторона B");
+        // Стороны — разделами пары (АР × ОВ), а не «сторона A / B».
+        card.Feed.Single(e => e.Kind == nameof(CollisionEventKind.Assignee)).Text.ShouldBe("Кто правит: АР и ОВ → ОВ");
         card.Feed[0].Text.ShouldBe("Переносим трубу"); // новые сверху
         (await ListAsync(admin, partId, "?assignee=SideB")).ShouldHaveSingleItem();
         (await admin.PostJsonAsync($"/api/clash/collisions/{id}/notes", new { text = " " })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);

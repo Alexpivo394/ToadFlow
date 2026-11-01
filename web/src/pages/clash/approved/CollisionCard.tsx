@@ -9,7 +9,7 @@ import { useAuth } from '../../../auth/AuthContext';
 import { CollisionImage } from '../../../components/CollisionImage';
 import { askConfirm } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
-import { assigneeLabel, statusLabel, StatusBadge } from './StatusBadge';
+import { assigneeText, statusLabel, StatusBadge } from './StatusBadge';
 
 /** Имя автора записи ленты: по нажатию — должность и контакты, чтобы связаться. */
 function Author({ userId, name }: { userId: string; name: string }) {
@@ -132,7 +132,7 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true }: 
         <Text size="xs" c="dimmed">Статус и «кто правит» меняет проектировщик раздела этой коллизии или координатор</Text>
       )}
       <Group gap="xs">
-        <Text size="xs" c="dimmed">Кто правит: {assigneeLabel[c.assignee]}</Text>
+        <Text size="xs" c="dimmed">Кто правит: {assigneeText(c.assignee, c)}</Text>
         {!readOnly && mine && <Button size="xs" variant="light" loading={busy} onClick={() => void post('take', undefined, 'Взято: правите вы')}>Беру</Button>}
         {canChange && <Button size="xs" variant="subtle" onClick={() => setHanding((h) => !h)}>Передать…</Button>}
       </Group>
@@ -141,14 +141,14 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true }: 
           <Radio.Group label="Кто правит" size="xs" value={side} onChange={(v) => setSide(v as CollisionAssignee)}>
             <Group gap="xs" mt={4}>
               {(['Both', 'SideA', 'SideB'] as CollisionAssignee[]).filter((a) => a !== c.assignee)
-                .map((a) => <Radio key={a} value={a} label={assigneeLabel[a]} />)}
+                .map((a) => <Radio key={a} value={a} label={assigneeText(a, c)} />)}
             </Group>
           </Radio.Group>
           <Textarea label="Примечание к передаче" size="xs" autosize minRows={1} style={{ flex: 1 }} value={handNote}
             onChange={(e) => setHandNote(e.currentTarget.value)} />
           <Button size="xs" disabled={!side} loading={busy}
             onClick={async () => {
-              if (side && await post('assignee', { assignee: side, note: handNote.trim() || null }, `Кто правит: ${assigneeLabel[side]}`)) {
+              if (side && await post('assignee', { assignee: side, note: handNote.trim() || null }, `Кто правит: ${assigneeText(side, c)}`)) {
                 setHanding(false);
                 setSide(null);
                 setHandNote('');

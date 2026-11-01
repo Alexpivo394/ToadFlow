@@ -13,7 +13,7 @@ import { stateLabel } from '../DraftRunPanel';
 import { HitScene } from '../viewer/HitScene';
 import { RunsDrawer } from '../reports/RunsDrawer';
 import { CollisionCard } from './CollisionCard';
-import { assigneeLabel, openStatuses, statusLabel, StatusBadge } from './StatusBadge';
+import { assigneeText, openStatuses, statusLabel, StatusBadge } from './StatusBadge';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 const PageSize = 50;
@@ -204,7 +204,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
                   </Stack>
                   <Stack gap={0} align="flex-end">
                     <Text size="xs">{Math.round(r.depthMm)} мм</Text>
-                    <Text size="xs" c="dimmed">{r.assignee === 'Both' ? '' : assigneeLabel[r.assignee]}</Text>
+                    <Text size="xs" c="dimmed">{r.assignee === 'Both' ? '' : assigneeText(r.assignee, r)}</Text>
                   </Stack>
                 </Group>
               </UnstyledButton>

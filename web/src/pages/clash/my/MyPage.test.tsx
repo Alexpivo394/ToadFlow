@@ -107,7 +107,9 @@ describe('My collisions', () => {
 
     const send = screen.getByRole('button', { name: 'Передать' }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('radio', { name: 'сторона A' }));
+    // Стороны — разделами пары КР × ОВК, а не «сторона A / B».
+    expect(screen.getByRole('radio', { name: 'ОВК' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'КР' }));
     expect(send.disabled).toBe(false);
     fireEvent.change(screen.getByLabelText('Примечание к передаче'), { target: { value: 'Стену двигает КР' } });
     fireEvent.click(send);

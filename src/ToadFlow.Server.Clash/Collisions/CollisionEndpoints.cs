@@ -92,12 +92,24 @@ public static class CollisionFeed
 
     public const int MaxNoteLength = 4000;
 
-    public static string AssigneeText(CollisionAssignee assignee) => assignee switch
+    /// <summary>
+    ///     «Кто правит» для человека — разделами пары: АР × ОВ — «АР», «ОВ», «АР и ОВ». Коллизию внутри раздела разделом не
+    ///     различить — «сторона A / B», «обе стороны».
+    /// </summary>
+    public static string AssigneeText(CollisionAssignee assignee, string? disciplineA, string? disciplineB)
     {
-        CollisionAssignee.SideA => "сторона A",
-        CollisionAssignee.SideB => "сторона B",
-        _ => "обе стороны"
-    };
+        var named = !string.IsNullOrWhiteSpace(disciplineA) && !string.IsNullOrWhiteSpace(disciplineB)
+                    && !string.Equals(disciplineA.Trim(), disciplineB.Trim(), StringComparison.OrdinalIgnoreCase);
+        return assignee switch
+        {
+            CollisionAssignee.SideA => named ? disciplineA!.Trim() : "сторона A",
+            CollisionAssignee.SideB => named ? disciplineB!.Trim() : "сторона B",
+            _ => named ? $"{disciplineA!.Trim()} и {disciplineB!.Trim()}" : "обе стороны"
+        };
+    }
+
+    public static string AssigneeText(ClashCollision collision, CollisionAssignee assignee) =>
+        AssigneeText(assignee, collision.DisciplineA, collision.DisciplineB);
 }
 
 /// <summary>
@@ -262,7 +274,7 @@ public static class CollisionEndpoints
             var note = request.Note?.Trim() ?? "";
             if (note.Length > CollisionFeed.MaxNoteLength) throw new CollisionTransitionException($"Примечание — до {CollisionFeed.MaxNoteLength} символов");
             var entry = Event(collision.Id, now, user, CollisionEventKind.Assignee,
-                $"Кто правит: {CollisionFeed.AssigneeText(collision.Assignee)} → {CollisionFeed.AssigneeText(request.Assignee)}");
+                $"Кто правит: {CollisionFeed.AssigneeText(collision, collision.Assignee)} → {CollisionFeed.AssigneeText(collision, request.Assignee)}");
             collision.Assignee = request.Assignee;
             // На микросекунду позже — лента по времени показывает примечание после смены (точность времени в базе — микросекунды).
             if (note.Length > 0) db.Set<ClashCollisionEvent>().Add(Event(collision.Id, now.AddMicroseconds(1), user, CollisionEventKind.Note, note));
@@ -278,8 +290,8 @@ public static class CollisionEndpoints
             var side = MyCollisions.Side(collision, me.Disciplines)
                        ?? throw new CollisionTransitionException("Взять можно только коллизию своего раздела: ни один её элемент не из ваших разделов");
             var text = collision.Assignee == side
-                ? $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(side)}"
-                : $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(collision.Assignee)} → {CollisionFeed.AssigneeText(side)}";
+                ? $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(collision, side)}"
+                : $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(collision, collision.Assignee)} → {CollisionFeed.AssigneeText(collision, side)}";
             collision.Assignee = side;
             return Event(collision.Id, now, user, CollisionEventKind.Assignee, text);
         });

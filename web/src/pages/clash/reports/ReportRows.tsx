@@ -3,7 +3,7 @@ import { Badge, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import type { CollisionRow, ReportLevelView, ReportPairView, ReportRow } from '../../../api/types';
 import { CollisionImage } from '../../../components/CollisionImage';
 import { categoryLabel } from '../../../lib/categories';
-import { assigneeLabel, statusLabel, StatusBadge } from '../approved/StatusBadge';
+import { assigneeText, statusLabel, StatusBadge } from '../approved/StatusBadge';
 
 /** Подпись строки без уровня — в заголовке и в фильтре. */
 export const NoLevel = 'Без уровня';
@@ -57,7 +57,7 @@ function Row({ row, selected, onOpen }: { row: ReportRow; selected: boolean; onO
             <Text size="sm" fw={600}>№ {c.number}</Text>
             <StatusBadge status={c.status} />
             {row.change && row.change !== c.status && <ChangeBadge change={row.change} />}
-            <Text size="xs" c="dimmed">{Math.round(c.depthMm)} мм · правит {assigneeLabel[c.assignee]}</Text>
+            <Text size="xs" c="dimmed">{Math.round(c.depthMm)} мм · правит {assigneeText(c.assignee, c)}</Text>
           </Group>
           <ReportSide row={c} side="A" />
           <ReportSide row={c} side="B" />
