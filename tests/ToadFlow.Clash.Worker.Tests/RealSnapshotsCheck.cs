@@ -287,6 +287,65 @@ public class RealSnapshotsCheck : ServerTest
         var chat = await admin.GetJsonAsync<ToadFlow.Server.Clash.Reports.ChatMessageView>($"/api/clash/reports/{runId}/chat?baseUrl={web}");
         report.AppendLine("  Текст для чата:");
         foreach (var line in chat.Text.Split('\n')) report.AppendLine($"    {line}");
+
+        await ReportLayoutAsync(admin, runId, view, report, DownloadAsync);
+    }
+
+    /// <summary>
+    ///     Отчёт после показа: страница по умолчанию (100 строк — вся часть и раздел ОВК), уровни, HTML самой большой пары в
+    ///     «Открытых сейчас» (время, размер, картинок в файле), архив «всё» в «Открытых сейчас» (время, размер, пар, сумма
+    ///     <c>min(1000, n)</c> картинок) и его повтор — картинки уже в кеше. Файлы — в <c>%TEMP%\toadclash-report-sample</c>.
+    /// </summary>
+    private static async Task ReportLayoutAsync(HttpClient admin, Guid runId, ToadFlow.Server.Clash.Reports.ReportView view, StringBuilder report,
+        Func<string, string, Task<(TimeSpan Elapsed, long Bytes)>> download)
+    {
+        const string web = "http://toadflow.local";
+        async Task<(T Value, TimeSpan Elapsed)> TimedAsync<T>(string url)
+        {
+            var timer = Stopwatch.StartNew();
+            var value = await admin.GetJsonAsync<T>(url);
+            return (value, timer.Elapsed);
+        }
+
+        var all = await TimedAsync<ToadFlow.Server.Clash.Reports.ReportPage>($"/api/clash/reports/{runId}/collisions?scope=changes&pageSize=100");
+        var ovk = await TimedAsync<ToadFlow.Server.Clash.Reports.ReportPage>(
+            $"/api/clash/reports/{runId}/collisions?scope=changes&pageSize=100&discipline={Uri.EscapeDataString("ОВК")}");
+        var levels = await TimedAsync<List<ToadFlow.Server.Clash.Reports.ReportLevelView>>($"/api/clash/reports/{runId}/levels?scope=changes");
+        report.AppendLine($"Отчёт по разделам: страница 100 строк — вся часть {all.Elapsed.TotalSeconds:0.00} с, раздел ОВК {ovk.Elapsed.TotalSeconds:0.00} с " +
+                          $"({ovk.Value.Total:N0} строк); уровни {levels.Elapsed.TotalSeconds:0.00} с ({levels.Value.Count:N0} групп пара × уровень)");
+
+        var largest = view.Pairs.OrderByDescending(p => p.Open).First();
+        var html = await download($"/api/clash/reports/{runId}/export.html?scope=open&pair={Uri.EscapeDataString(largest.Pair)}&baseUrl={web}",
+            "report-largest-pair.html");
+        var images = CountImages(await File.ReadAllTextAsync(Path.Combine(Path.GetTempPath(), "toadclash-report-sample", "report-largest-pair.html")));
+        report.AppendLine($"  HTML самой большой пары {largest.Label} ({largest.Open:N0} открытых, картинок {images:N0}): " +
+                          $"{html.Elapsed.TotalSeconds:0.0} с, {html.Bytes / 1024.0 / 1024:0.0} МБ");
+
+        var expected = view.Pairs.Where(p => p.Open > 0).Sum(p => Math.Min(ToadFlow.Server.Clash.Reports.ReportHtml.MaxImages, p.Open));
+        foreach (var label in new[] { "архив «всё»", "повтор архива (картинки в кеше)" })
+        {
+            var timer = Stopwatch.StartNew();
+            var start = await admin.PostAsync($"/api/clash/reports/{runId}/archive?scope=open&baseUrl={web}", null);
+            start.EnsureSuccessStatusCode();
+            ToadFlow.Server.Clash.Reports.ReportArchiveView state;
+            do
+            {
+                await Task.Delay(1000);
+                state = await admin.GetJsonAsync<ToadFlow.Server.Clash.Reports.ReportArchiveView>("/api/clash/report-archives/current");
+            } while (state.State is ToadFlow.Server.Clash.Reports.ReportArchives.Queued or ToadFlow.Server.Clash.Reports.ReportArchives.Running);
+            state.State.ShouldBe(ToadFlow.Server.Clash.Reports.ReportArchives.Ready, state.Error);
+            var built = timer.Elapsed;
+            var zip = await download($"/api/clash/report-archives/{state.Id}/download", "report-all-open.zip");
+            report.AppendLine($"  {label}, «Открытые сейчас»: собран за {built.TotalSeconds:0} с, скачан за {zip.Elapsed.TotalSeconds:0.0} с, " +
+                              $"{zip.Bytes / 1024.0 / 1024:0} МБ, пар {state.PairsTotal:N0}, картинок {expected:N0}");
+        }
+    }
+
+    private static int CountImages(string html)
+    {
+        var count = 0;
+        for (var at = html.IndexOf("data:image/", StringComparison.Ordinal); at >= 0; at = html.IndexOf("data:image/", at + 1, StringComparison.Ordinal)) count++;
+        return count;
     }
 
     /// <summary>
