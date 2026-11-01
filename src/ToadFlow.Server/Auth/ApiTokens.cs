@@ -97,7 +97,22 @@ public static class ApiTokenEndpoints
             return Results.Ok(new ApiTokenCreated(new ApiTokenView(entity.Id, entity.Name, entity.Prefix, entity.CreatedAt, null), token));
         });
 
-        tokens.MapDelete("/{id:guid}", async (Guid id, HttpContext http, ToadFlowDb db, IDomainEvents events) =>
+        // Выход из ToadTools: токен отзывает сам себя. Единственное, что токену можно сделать с токенами.
+        tokens.MapDelete("/current", async (HttpContext http, ToadFlowDb db, IDomainEvents events) =>
+        {
+            if (http.User.FindFirst(ApiTokenAuthHandler.TokenClaim)?.Value is not { } claim || !Guid.TryParse(claim, out var id))
+                return Results.BadRequest(new { error = "Отозвать можно только токен, которым выполнен вход" });
+            var userId = http.User.UserId();
+            var entity = await db.ApiTokens.SingleOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+            if (entity is null) return Results.NoContent();
+
+            db.ApiTokens.Remove(entity);
+            await db.SaveChangesAsync();
+            events.Publish(new UserChanged(http.User.Actor(), userId, $"Отозван токен доступа «{entity.Name}» (выход из ToadTools)"));
+            return Results.NoContent();
+        });
+
+        tokens.MapDelete("/{id:guid}",async (Guid id, HttpContext http, ToadFlowDb db, IDomainEvents events) =>
         {
             if (ByToken(http)) return Results.Forbid();
             var userId = http.User.UserId();
