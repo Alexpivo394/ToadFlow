@@ -26,7 +26,7 @@ export function writeMine(mine: boolean) {
 type Counts = { open: number; new: number; returned: number; fixed: number };
 
 /** Есть ли у узла коллизии в области отчёта. */
-const inScope = (c: Counts, scope: string) => (scope === 'open' ? c.open > 0 : c.new + c.returned + c.fixed > 0);
+export const inScope = (c: Counts, scope: string) => (scope === 'open' ? c.open > 0 : c.new + c.returned + c.fixed > 0);
 
 /** Счётчики области: в «Изменениях» — новых / вернулось / исправлено, в «Открытых» — открыто. */
 function Count({ c, scope }: { c: Counts; scope: string }) {

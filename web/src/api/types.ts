@@ -1269,3 +1269,19 @@ export interface ReportLevelView {
   level: string;
   count: number;
 }
+
+/** Фоновая подготовка архива HTML по парам: одна на пользователя, готовый файл живёт сутки. */
+export interface ReportArchiveView {
+  id: string;
+  runId: string;
+  /** Раздел архива; null — все пары отчёта. */
+  discipline: string | null;
+  state: 'queued' | 'running' | 'ready' | 'failed' | 'expired';
+  pairsDone: number;
+  pairsTotal: number;
+  /** Сколько подготовок впереди; 0 — не в очереди. */
+  queuePosition: number;
+  sizeBytes: number | null;
+  expiresAt: string | null;
+  error: string | null;
+}

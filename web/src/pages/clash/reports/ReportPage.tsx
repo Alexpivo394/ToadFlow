@@ -4,7 +4,7 @@ import {
   Alert, Anchor, Box, Breadcrumbs, Button, Grid, Group, Pagination, Popover, SegmentedControl, Select, Stack, Text, TextInput, Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { apiFetch, downloadFile } from '../../../api/client';
+import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
 import type { CollisionStatus, ReportLevelView, ReportPage as Page, ReportView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
@@ -13,6 +13,7 @@ import { copyText } from '../../../lib/clipboard';
 import { formatDuration } from '../../../lib/format';
 import { statusLabel } from '../approved/StatusBadge';
 import { ReportCollisionDrawer } from './ReportCollisionDrawer';
+import { ReportExport } from './ReportExport';
 import { NoLevel, ReportRows } from './ReportRows';
 import { ReportSummary } from './ReportSummary';
 import { type ReportSelection, ReportTree, ReportTreeSelect, readMine, writeMine } from './ReportTree';
@@ -48,7 +49,6 @@ export function ReportPage() {
   const { can, canWork, user, disciplines: myDisciplines } = useAuth();
   const [params, setParams] = useSearchParams();
   const [copying, setCopying] = useState(false);
-  const [exporting, setExporting] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [mine, setMine] = useState(readMine);
   useEffect(() => {
@@ -158,22 +158,6 @@ export function ReportPage() {
   const run = view.run;
   const at = formatFullDateTime(run.finishedAt);
   const total = rows.data?.total ?? 0;
-  const pairLabel = selection.kind === 'pair' ? (view.pairs.find((p) => p.pair === selection.pair)?.label ?? selection.pair) : null;
-
-  const exportFile = async (format: 'xlsx' | 'html') => {
-    const query = new URLSearchParams(filters);
-    query.set('baseUrl', window.location.origin);
-    setExporting(format);
-    try {
-      const day = at.slice(0, 10);
-      await downloadFile(`/api/clash/reports/${runId}/export.${format}?${query}`,
-        `Коллизии ${[view.check.object, view.check.name, pairLabel, day].filter(Boolean).join(' ')}.${format}`);
-    } catch (error) {
-      notifications.show({ color: 'red', title: 'Не получилось выгрузить', message: (error as Error).message });
-    } finally {
-      setExporting(null);
-    }
-  };
 
   const copyChat = async () => {
     setCopying(true);
@@ -218,9 +202,9 @@ export function ReportPage() {
             v{run.version} · {run.trigger === 'schedule' ? 'по расписанию' : 'вручную'}{run.startedBy ? ` (${run.startedBy})` : ''} · поиск {formatDuration(run.searchSeconds)}
           </Text>
         </Stack>
-        <Group gap="xs">
-          <Button size="xs" variant="default" loading={exporting === 'xlsx'} onClick={() => exportFile('xlsx')}>Excel</Button>
-          <Button size="xs" variant="default" loading={exporting === 'html'} disabled={selection.kind !== 'pair'} onClick={() => exportFile('html')}>HTML</Button>
+        <Group gap="xs" align="flex-start">
+          <ReportExport runId={run.runId} view={view} selection={selection} filters={filters} total={rows.data?.total}
+            fileBase={`Коллизии ${[view.check.object, view.check.name].filter(Boolean).join(' ')}`} />
           {can('Operator') && <Button size="xs" loading={copying} onClick={copyChat}>{copied ? 'Скопировано' : 'Скопировать сообщение для чата'}</Button>}
         </Group>
       </Group>
