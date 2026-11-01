@@ -120,6 +120,22 @@ describe('Report page', () => {
       .toEqual(['АР × ОВ', 'Этаж 1 · 1', 'Этаж 2 · 1', 'ОВ × ВК', 'Этаж 1 · 1']));
   });
 
+  it('Discipline_LowercaseDiscipline_PairKeyMatchesServer', async () => {
+    // Сервер упорядочивает разделы ключа без учёта регистра: «ар × ВК», а не «ВК × ар».
+    const view = report({
+      pairs: [{ pair: 'ар × ВК', label: 'ар × ВК', disciplineA: 'ар', disciplineB: 'ВК', open: 1, new: 1, returned: 0, fixed: 0, fake: 0 }],
+      disciplines: [{ name: 'ВК', open: 1, new: 1, returned: 0, fixed: 0, pairs: ['ар × ВК'] }],
+    });
+    renderApp('/clash/reports/r2?discipline=' + encodeURIComponent('ВК'), responses({
+      '/api/clash/reports/r2': view,
+      '/api/clash/reports/r2/collisions': { total: 1, items: [row(1, 'Этаж 1', { disciplineA: 'ВК', disciplineB: 'ар' })] },
+      '/api/clash/reports/r2/levels': [{ pair: 'ар × ВК', level: 'Этаж 1', count: 1 }],
+    }));
+
+    await screen.findByText('№ 1');
+    await waitFor(() => expect(screen.getAllByTestId(/^(pair|level)-header$/).map((h) => h.textContent)).toEqual(['ар × ВК', 'Этаж 1 · 1']));
+  });
+
   it('Summary_PairClick_SelectsPair', async () => {
     renderApp('/clash/reports/r2', responses());
 

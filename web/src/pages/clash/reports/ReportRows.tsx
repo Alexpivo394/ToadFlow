@@ -14,11 +14,18 @@ export function ChangeBadge({ change }: { change: ReportRow['change'] }) {
   return <Badge size="xs" variant="outline" color={statusLabel[change].color}>в прогоне: {statusLabel[change].label}</Badge>;
 }
 
-/** Ключ пары строки — как на сервере: разделы по алфавиту. */
-export function pairKey(c: CollisionRow): string {
-  const a = c.disciplineA ?? '';
-  const b = c.disciplineB ?? '';
-  return a <= b ? `${a} × ${b}` : `${b} × ${a}`;
+/** Ключ пары по разделам: из пар отчёта, иначе как на сервере — по алфавиту без учёта регистра. */
+function pairKeys(pairs: ReportPairView[]) {
+  const known = new Map<string, string>();
+  for (const p of pairs) {
+    known.set(`${p.disciplineA}\u001f${p.disciplineB}`, p.pair);
+    known.set(`${p.disciplineB}\u001f${p.disciplineA}`, p.pair);
+  }
+  return (c: CollisionRow) => {
+    const a = c.disciplineA ?? '';
+    const b = c.disciplineB ?? '';
+    return known.get(`${a}\u001f${b}`) ?? (a.toUpperCase() <= b.toUpperCase() ? `${a} × ${b}` : `${b} × ${a}`);
+  };
 }
 
 const groupKey = (pair: string, level: string) => `${pair}\u001f${level}`;
@@ -77,6 +84,7 @@ export function ReportRows({ rows, pairs, levels, offset, showPairs, showLevels,
   onOpen: (id: string) => void;
 }) {
   const labels = new Map(pairs.map((p) => [p.pair, p.label]));
+  const pairKey = pairKeys(pairs);
   const groups = new Map<string, { start: number; count: number }>();
   const pairStarts = new Map<string, number>();
   let start = 0;
