@@ -9,6 +9,7 @@ using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Images;
 using ToadFlow.Server.Clash.Overview;
 using ToadFlow.Server.Clash.Parts;
+using ToadFlow.Server.Clash.Plugin;
 using ToadFlow.Server.Clash.Projects;
 using ToadFlow.Server.Clash.Reports;
 using ToadFlow.Server.Clash.Templates;
@@ -46,6 +47,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<SnapshotPublisher>();
         services.AddHostedService<ClashUploadCleaner>();
         services.AddScoped<PartModels>();
+        services.AddScoped<ModelResolver>();
         services.AddScoped<PartElements>();
         services.AddScoped<IDisciplineSource, PartDisciplines>();
         services.AddSingleton<PartElementsCache>();
@@ -236,6 +238,7 @@ public sealed class ClashServerModule : IServerModule
         members.MapClashCollisions();
         members.MapClashVersions();
         members.MapClashMy();
+        members.MapClashPlugin();
         members.MapClashChecks();
         members.MapClashAnalytics();
         members.MapClashReports();
