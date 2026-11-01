@@ -36,10 +36,12 @@ internal static class AnalyticsAdminEndpoints
 {
     public const string Entity = "loi-analytics";
 
-    public static void MapLoiAnalyticsAdmin(this RouteGroupBuilder loi)
-    {
-        // Ручная проверка из плагина ParamChecker — любой пользователь со своим токеном, проверка записывается на него.
-        loi.MapPost("/checks", async (ManualCheckRequest request, CheckRecorder recorder, HttpContext http, IDomainEvents events, CancellationToken ct) =>
+    /// <summary>
+    ///     Ручная проверка из плагина ParamChecker — любой пользователь со своим токеном, включая проектировщика (группа
+    ///     участников), проверка записывается на него.
+    /// </summary>
+    public static void MapLoiChecks(this RouteGroupBuilder members) =>
+        members.MapPost("/loi/checks", async (ManualCheckRequest request, CheckRecorder recorder, HttpContext http, IDomainEvents events, CancellationToken ct) =>
         {
             if (request.Id == Guid.Empty || request.Summary is not { } summary) return Results.BadRequest(new { error = "Нет id проверки или её итогов" });
             if (string.IsNullOrWhiteSpace(summary.ModelName)) return Results.BadRequest(new { error = "Не указано имя модели" });
@@ -49,6 +51,9 @@ internal static class AnalyticsAdminEndpoints
             if (recorded) events.Publish(new LoiCheckRecorded(http.User.Actor(), request.Id));
             return Results.Ok(new ManualCheckResult(recorded, recorded ? null : "Аналитика на сервере выключена или проверка уже записана"));
         });
+
+    public static void MapLoiAnalyticsAdmin(this RouteGroupBuilder loi)
+    {
 
         loi.MapGet("/analytics/settings", (LoiSettingsStore store, CancellationToken ct) => store.AnalyticsAsync(ct));
         loi.MapGet("/naming", (LoiSettingsStore store, CancellationToken ct) => store.NamingAsync(ct));

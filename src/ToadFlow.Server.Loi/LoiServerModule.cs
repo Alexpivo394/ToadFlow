@@ -82,6 +82,8 @@ public sealed class LoiServerModule : IServerModule
 
     public void MapEndpoints(RouteGroupBuilder api) => api.MapLoi();
 
+    public void MapMemberEndpoints(RouteGroupBuilder members) => members.MapLoiChecks();
+
     public async Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct)
     {
         if (LoiScheduleSettings.TryParse(settings) is not { } parsed) return ["Выберите профиль проверки LOI"];

@@ -90,8 +90,9 @@ public class AuthorizationMatrixTests : ServerTest
         members.ShouldContain("POST /api/clash/collisions/{id:guid}/notes");
         members.ShouldNotContain("POST /api/clash/collisions/{id:guid}/merge");
         members.ShouldNotContain("GET /api/clash/parts/{id:guid}");
+        members.ShouldContain("POST /api/loi/checks"); // итог ParamChecker — и от проектировщика
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
-                               && !route.Contains(" /api/profile") && !route.EndsWith("/card"))
+                               && !route.Contains(" /api/profile") && !route.EndsWith("/card") && route != "POST /api/loi/checks")
             .ShouldBeEmpty();
 
         var wrong = new List<string>();

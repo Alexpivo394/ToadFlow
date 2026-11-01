@@ -123,6 +123,20 @@ public class AnalyticsTests : ServerTest
         check.Rules.ShouldHaveSingleItem().Parameters.Select(p => p.Name).ShouldBe(["Марка", "Код"], ignoreOrder: true);
     }
 
+    /// <summary>ParamChecker запускают и проектировщики: их итог принимается тем же личным токеном ToadTools.</summary>
+    [Test]
+    public async Task ManualCheck_ByDesignerToken_Recorded()
+    {
+        await SetNamingAsync();
+        var token = await TokenClientAsync(await ClientAsync(UserRole.Designer, "АР"));
+
+        var result = await (await token.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary() }))
+            .EnsureSuccessStatusCode().ReadJsonAsync<ManualResultView>();
+
+        result.Recorded.ShouldBeTrue();
+        (await ChecksAsync()).ShouldHaveSingleItem().UserId.ShouldNotBeNull();
+    }
+
     [Test]
     public async Task AnalyticsDisabled_NothingRecorded()
     {
