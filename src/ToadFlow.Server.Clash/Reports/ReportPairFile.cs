@@ -36,7 +36,8 @@ internal static class ReportPairFile
     }
 
     /// <summary>HTML одной пары: <paramref name="selection" /> уже отфильтрована по паре.</summary>
-    public static async Task WriteAsync(Stream body, ReportView view, ReportContext context, ReportSelection selection, string pair, ToadFlowDb db,
+    /// <returns>Сколько строк в файле.</returns>
+    public static async Task<int> WriteAsync(Stream body, ReportView view, ReportContext context, ReportSelection selection, string pair, ToadFlowDb db,
         CollisionImages images, string web, TimeZoneInfo zone, CancellationToken ct)
     {
         var total = await selection.Rows.CountAsync(ct);
@@ -44,6 +45,7 @@ internal static class ReportPairFile
         var levels = selection.Order.LevelViews.Where(l => l.Pair == pair).ToList();
         await ReportHtml.WriteAsync(body, view, Pair(view, selection.Ranks, pair), levels, pictures.AheadAsync(Rows(selection, context, ct), ct), total,
             pictures.ImageAsync, web, zone, ct);
+        return total;
     }
 
     /// <summary>Имя файла из непустых частей через пробел; недопустимые в имени символы заменены на «_».</summary>

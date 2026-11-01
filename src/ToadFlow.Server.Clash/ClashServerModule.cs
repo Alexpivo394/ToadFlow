@@ -58,6 +58,8 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<CollisionReconciler>();
         services.AddScoped<DisciplineOrder>();
         services.AddScoped<RunReports>();
+        services.AddSingleton<ReportArchives>();
+        services.AddHostedService(provider => provider.GetRequiredService<ReportArchives>());
         services.AddHostedService<EngineLeaseSweeper>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
         services.AddAuthorization(options => options.AddPolicy(EngineAuthHandler.Policy,
@@ -237,6 +239,7 @@ public sealed class ClashServerModule : IServerModule
         members.MapClashChecks();
         members.MapClashAnalytics();
         members.MapClashReports();
+        members.MapClashReportArchives();
     }
 
     /// <summary>
