@@ -21,7 +21,7 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
     public const int DefaultPageSize = 100;
 
     /// <returns>null — модели с таким ключом нет.</returns>
-    public async Task<ModelCollisionPage?> PageAsync(string key, ModelCollisionQuery query, int page, int size, CancellationToken ct)
+    public async Task<ModelCollisionPage?> PageAsync(string key, ModelCollisionQuery query, int page, int size, Guid userId, CancellationToken ct)
     {
         if (!Guid.TryParse(key, out var id) || !await db.Set<ClashModel>().AnyAsync(m => m.Id == id, ct)) return null;
         var model = id.ToString("N");
@@ -29,6 +29,8 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
         var partIds = parts.Select(p => p.Id).ToArray();
 
         var source = db.Set<ClashCollision>().AsNoTracking().Where(c => partIds.Contains(c.PartId) && (c.ModelA == model || c.ModelB == model));
+        var open = CollisionEndpoints.Open;
+        var modelOpen = source.Where(c => open.Contains(c.Status));
         if (!string.IsNullOrWhiteSpace(query.Q))
             source = new CollisionFilter("all", null, null, null, null, null, null, query.Q, null).Apply(source, db, new Dictionary<string, string>(), time.GetUtcNow());
 
@@ -94,7 +96,6 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
             .ToList();
 
         var byStatus = await ByGroup(ByPair(ByLevel(source))).GroupBy(c => c.Status).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
-        var open = CollisionEndpoints.Open;
         var statusFacet = new List<FacetView>
         {
             new("open", "Открытые", byStatus.Where(s => open.Contains(s.Key)).Sum(s => s.Count)),
@@ -132,7 +133,10 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
                 MineToFix(c, model), who?.Name, who?.At);
         }).ToList();
 
-        return new ModelCollisionPage(total, mine, all - mine, items, new ModelFacets(pairFacet, levelFacet, statusFacet));
+        var state = await db.Set<ClashUserState>().AsNoTracking().SingleOrDefaultAsync(s => s.UserId == userId, ct);
+        var fresh = await MyCollisions.NewSince(db, modelOpen,MyCollisions.Mark(state, time.GetUtcNow())).CountAsync(ct);
+
+        return new ModelCollisionPage(total, mine, all - mine, items, new ModelFacets(pairFacet, levelFacet, statusFacet), fresh);
     }
 
     private static string SideOf(ClashCollision c, string model) => (c.ModelA == model, c.ModelB == model) switch

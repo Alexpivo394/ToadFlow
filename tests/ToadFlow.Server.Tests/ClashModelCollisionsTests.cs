@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
@@ -18,6 +19,10 @@ namespace ToadFlow.Server.Tests;
 /// </summary>
 public class ClashModelCollisionsTests : ServerTest
 {
+    private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
+
+    public ClashModelCollisionsTests() => Time = _time;
+
     private sealed record Setup(HttpClient Admin, FakeAgent Agent, Guid PartId, HttpClient Engine, string Ar, string Ov, string Kr);
 
     private async Task<Setup> SetupAsync()
@@ -31,10 +36,12 @@ public class ClashModelCollisionsTests : ServerTest
         return new Setup(admin, agent, partId, EngineClient(Server), Key("POL_K1_AR.rvt"), Key("POL_K1_OV.rvt"), Key("POL_K1_KR.rvt"));
     }
 
-    private static async Task RunAsync(Setup setup, IReadOnlyList<EngineHit> hits, Guid? partId = null)
+    private static async Task RunAsync(Setup setup, IReadOnlyList<EngineHit> hits, Guid? partId = null, bool approve = true)
     {
         var part = partId ?? setup.PartId;
-        var approved = await setup.Admin.PostJsonAsync($"/api/clash/parts/{part}/approve", new { comment = (string?)null, run = true });
+        var approved = approve
+            ? await setup.Admin.PostJsonAsync($"/api/clash/parts/{part}/approve", new { comment = (string?)null, run = true })
+            : await setup.Admin.PostAsync($"/api/clash/parts/{part}/approved/run", null);
         approved.StatusCode.ShouldBe(HttpStatusCode.OK, await approved.Content.ReadAsStringAsync());
         var runId = (await (await setup.Engine.PostAsync("/api/engine/runs/claim", null)).ReadJsonAsync<EngineRunAssignment>()).RunId;
         (await PostApprovedResultAsync(setup.Engine, runId, 0, true, hits.Select(h => h with { FingerprintA = 1, FingerprintB = 2 }).ToList(), Stats, [], []))
@@ -218,6 +225,30 @@ public class ClashModelCollisionsTests : ServerTest
 
         second.Total.ShouldBe(5);
         second.Items.Select(r => r.Collision.Number).ShouldBe([3, 4]);
+    }
+
+    /// <summary>
+    ///     «Новых с прошлого захода» — открытые коллизии модели, найденные или вернувшиеся после прошлой отметки захода
+    ///     пользователя, как в «Моих»; фильтры списка на число не влияют.
+    /// </summary>
+    [Test]
+    public async Task ModelCollisions_NewSinceVisit()
+    {
+        var s = await SetupAsync();
+        await using var _ = s.Agent;
+        await RunAsync(s, [KrOv(s, 1), ArOv(s, 2)]);
+
+        (await s.Admin.PostAsync("/api/clash/my/visit", null)).EnsureSuccessStatusCode();
+        (await PageAsync(s.Admin, s.Ov, "?pair=nothing")).NewSinceVisit.ShouldBe(2); // захода не было — последние 7 дней
+
+        _time.Advance(TimeSpan.FromHours(1));
+        (await s.Admin.PostAsync("/api/clash/my/visit", null)).EnsureSuccessStatusCode();
+        (await PageAsync(s.Admin, s.Ov)).NewSinceVisit.ShouldBe(0);
+
+        _time.Advance(TimeSpan.FromMinutes(5));
+        await RunAsync(s, [KrOv(s, 1), ArOv(s, 2), KrOv(s, 3)], approve: false);
+        (await PageAsync(s.Admin, s.Ov)).NewSinceVisit.ShouldBe(1);
+        (await PageAsync(s.Admin, s.Ar)).NewSinceVisit.ShouldBe(0);
     }
 
     [Test]
