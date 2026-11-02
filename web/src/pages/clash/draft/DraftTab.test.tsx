@@ -97,7 +97,7 @@ describe('Draft tab', () => {
     await screen.findByText('сцена 1');
 
     fireEvent.click(screen.getAllByLabelText('Уровень')[0]);
-    fireEvent.click(await screen.findByRole('option', { name: /Этаж 2 · 30/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /Этаж 2 — 30/ }));
 
     await waitFor(() => expect(calls().some(([url]) => url.includes('/draft/hits?') && url.includes('level=%D0%AD%D1%82%D0%B0%D0%B6+2'))).toBe(true));
   });
@@ -135,3 +135,43 @@ describe('Draft tab', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Draft on the shared filter bar', () => {
+  it('Draft_SearchByNumber', async () => {
+    open();
+    await screen.findByText('сцена 1');
+
+    const search = screen.getByLabelText('Поиск');
+    fireEvent.change(search, { target: { value: '77' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+
+    expect(await screen.findByText('сцена 77', {}, { timeout: 5000 })).toBeTruthy(); // номер прогона, даже не на этой странице
+  });
+
+  it('Draft_GroupSetPairDefault', async () => {
+    open();
+
+    expect(await screen.findByText('▾ Стены × Воздуховоды', {}, { timeout: 5000 })).toBeTruthy();
+    const group = () => screen.getAllByLabelText('Группировка').filter((e) => e.tagName === 'INPUT').map((e) => (e as HTMLInputElement).value);
+    expect(group()).toContain('По парам наборов');
+    expect(calls().find(([url]) => url.includes('/draft/hits?'))![0]).toContain('sort=setpair');
+
+    fireEvent.click(screen.getAllByLabelText('Группировка')[0]);
+    fireEvent.click(await screen.findByRole('option', { name: 'Без группировки' }));
+
+    await waitFor(() => expect(screen.queryByText('▾ Стены × Воздуховоды')).toBeNull());
+  });
+});
+
+describe('Draft run line', () => {
+  it('Draft_RunLine_TimeVisible_StatsInTooltip', async () => {
+    const stats = { elements: 1234, triangles: 5678, loadSeconds: 3, broadSeconds: 1, narrowSeconds: 1, peakWorkingSetBytes: 1048576 };
+    renderApp('/clash/setup/parts/p1?tab=draft', { ...responses, '/api/clash/parts/p1/draft/run': { ...succeeded, stats } });
+
+    const line = await screen.findByText(/^запущен/);
+    expect(screen.queryByText(/Элементов/)).toBeNull();
+    fireEvent.mouseEnter(line);
+    expect(await screen.findByText(/Элементов 1\s234/)).toBeTruthy();
+    expect(screen.getByText(/52 коллизий/)).toBeTruthy();
+  });
+});

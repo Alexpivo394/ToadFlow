@@ -48,6 +48,8 @@ public static class ReportHtml
         .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
         .a { background: #e03131; } .b { background: #1971c2; }
         a { color: #1971c2; }
+        button.revit { font: inherit; font-size: 12px; padding: 0 8px; border: 1px solid #ced4da; border-radius: 4px; background: #fff; cursor: pointer; }
+        .clip { white-space: pre; background: #f1f3f5; padding: 4px 8px; margin-top: 4px; font-size: 12px; }
         @media print {
             body { margin: 0; font-size: 11px; }
             @page { size: A4; margin: 12mm; }
@@ -81,6 +83,30 @@ public static class ReportHtml
           q.addEventListener('input', apply);
           lv.addEventListener('change', apply);
           st.addEventListener('change', apply);
+          // «Показать в Revit»: номер и ссылка в буфер — панель «Коллизии» в Revit открывает коллизию по Ctrl+V. Без буфера
+          // (файл открыт не по https) — скрытое поле и copy, а если и это запрещено — текст выделяется для ручного копирования.
+          function copied(b) { var t = b.textContent; b.textContent = 'Скопировано — Ctrl+V в Revit'; setTimeout(function () { b.textContent = t; }, 2500); }
+          function fallback(b, text) {
+            var f = document.createElement('textarea');
+            f.value = text; f.style.position = 'fixed'; f.style.top = '0'; f.style.opacity = '0';
+            document.body.appendChild(f); f.focus(); f.select();
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            f.remove();
+            if (ok) { copied(b); return; }
+            var s = document.createElement('div');
+            s.className = 'clip'; s.textContent = text; b.parentNode.appendChild(s);
+            var r = document.createRange(); r.selectNodeContents(s);
+            var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+          }
+          document.addEventListener('click', function (e) {
+            var b = e.target.closest && e.target.closest('button.revit');
+            if (!b) return;
+            var text = b.getAttribute('data-clip');
+            if (navigator.clipboard && window.isSecureContext)
+              navigator.clipboard.writeText(text).then(function () { copied(b); }, function () { fallback(b, text); });
+            else fallback(b, text);
+          });
         })();
         """;
 
@@ -150,7 +176,7 @@ public static class ReportHtml
                 if (level != currentLevel)
                     await writer.WriteAsync($"<h3 class=\"level\" id=\"level-{levelIndex.GetValueOrDefault(level, -1)}\" data-level=\"{E(level)}\" data-head>" +
                                             $"{E(LevelLabel(level))} <span class=\"count\">{N(levels.FirstOrDefault(l => l.Level == level)?.Count ?? 0)}</span></h3>");
-                await CardAsync(writer, row, await image(row.Row.Collision, ct), webBase, report.Run.PartId);
+                await CardAsync(writer, row, await image(row.Row.Collision, ct), webBase, report.Run.PartId, report.Check.Name);
             }
             else
             {
@@ -167,7 +193,7 @@ public static class ReportHtml
                 var cells = ReportColumns.Cells(row, webBase, report.Run.PartId, zone);
                 var link = ReportLabels.CollisionUrl(webBase, report.Run.PartId, row.Row.Collision.Id);
                 await writer.WriteAsync($"<tr class=\"row\" {Data(row)}>" + string.Concat(cells.Select((c, i) => i == cells.Count - 1
-                    ? $"<td><a href=\"{E(link)}\">открыть</a></td>"
+                    ? $"<td><a href=\"{E(link)}\">открыть</a> {RevitButton(row, webBase, report.Run.PartId, report.Check.Name)}</td>"
                     : $"<td>{E(ReportColumns.Display(c))}</td>")) + "</tr>");
             }
 
@@ -193,7 +219,7 @@ public static class ReportHtml
         return $"data-status=\"{c.Status}\" data-level=\"{E(row.Row.Level)}\" data-q=\"{E(q)}\"";
     }
 
-    private static async Task CardAsync(StreamWriter writer, ReportExportRow row, byte[]? png, string webBase, Guid partId)
+    private static async Task CardAsync(StreamWriter writer, ReportExportRow row, byte[]? png, string webBase, Guid partId, string partName)
     {
         var c = row.Row.Collision;
         var picture = png is null
@@ -207,11 +233,22 @@ public static class ReportHtml
             <div class="card" {Data(row)}>{picture}<div class="body">
             <div><b>№{c.Number}</b> <span class="badge">{E(ReportLabels.Status(c.Status))}</span>{change}
             · глубина {N((int)Math.Round(c.DepthMm))} мм · {E(LevelLabel(row.Row.Level))} · правит {E(CollisionFeed.AssigneeText(c.Assignee, c.DisciplineA, c.DisciplineB))}
-            · <a href="{E(ReportLabels.CollisionUrl(webBase, partId, c.Id))}">открыть</a></div>
+            · <a href="{E(ReportLabels.CollisionUrl(webBase, partId, c.Id))}">открыть</a> {RevitButton(row, webBase, partId, partName)}</div>
             {Side("a", "A", c.ModelNameA, c.CategoryA, c.FamilyA, c.TypeA, c.ElementIdA)}
             {Side("b", "B", c.ModelNameB, c.CategoryB, c.FamilyB, c.TypeB, c.ElementIdB)}
             {note}</div></div>
             """);
+    }
+
+    /// <summary>
+    ///     «Показать в Revit»: в буфер — те же две строки, что копирует карточка веба: «ToadClash №N — часть» и ссылка на коллизию.
+    ///     Перевод строки в атрибуте — <c>&amp;#10;</c>, иначе он теряется при разборе.
+    /// </summary>
+    private static string RevitButton(ReportExportRow row, string webBase, Guid partId, string partName)
+    {
+        var c = row.Row.Collision;
+        var text = $"ToadClash №{c.Number} — {partName}\n{ReportLabels.CollisionUrl(webBase, partId, c.Id)}";
+        return $"<button type=\"button\" class=\"revit\" data-clip=\"{E(text).Replace("\n", "&#10;")}\">Показать в Revit</button>";
     }
 
     private static string Side(string css, string label, string model, string category, string? family, string? type, long elementId) =>

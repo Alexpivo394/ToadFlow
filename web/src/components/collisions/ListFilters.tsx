@@ -1,5 +1,5 @@
 import { Button, Group, Select, TextInput } from '@mantine/core';
-import type { ClipboardEvent } from 'react';
+import { useEffect, useState, type ClipboardEvent } from 'react';
 import type { CollisionFacets, ValueCount } from '../../api/types';
 import type { ListParams } from './useListParams';
 
@@ -54,17 +54,39 @@ function options(values: ValueCount[] | undefined, all: string, empty?: string) 
   ];
 }
 
+type Option = { value: string; label: string };
+
+/** Поиск, который применяется по Enter или уходу из поля; смена адреса переписывает набранный текст. */
+function CommitSearch({ value, onCommit, onPaste }: { value: string; onCommit: (q: string | undefined) => void; onPaste: (e: ClipboardEvent<HTMLInputElement>) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = (raw: string) => {
+    const q = raw.trim();
+    if (q !== value) onCommit(q || undefined);
+  };
+  return (
+    <TextInput size="xs" w={180} placeholder="№, ID или UniqueId" aria-label="Поиск" value={text} onPaste={onPaste}
+      onChange={(e) => setText(e.currentTarget.value)} onBlur={(e) => commit(e.currentTarget.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(e.currentTarget.value); }} />
+  );
+}
+
 /**
  * Панель фильтров списка коллизий. `fields` — какие элементы показать. Варианты пары и уровня — из фасетов, с числами.
- * Вставка в поиск текста «ToadClash №123» или ссылки на коллизию открывает её.
+ * Вставка в поиск текста «ToadClash №123» или ссылки на коллизию открывает её. `qCommit` — поиск применяется по Enter;
+ * `sorts`, `groups` и `levelData` заменяют стандартные варианты, когда у списка они свои (отчёт, черновик).
  */
-export function ListFilters({ params, facets, fields, onChange, onOpen, onMore }: {
+export function ListFilters({ params, facets, fields, onChange, onOpen, onMore, qCommit, sorts, groups, levelData }: {
   params: ListParams;
   facets?: CollisionFacets;
   fields: ListField[];
   onChange: (patch: Partial<ListParams>) => void;
   onOpen?: (target: number | string) => void;
   onMore?: () => void;
+  qCommit?: boolean;
+  sorts?: Option[];
+  groups?: Option[];
+  levelData?: Option[];
 }) {
   const has = (field: ListField) => fields.includes(field);
   const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {
@@ -77,10 +99,12 @@ export function ListFilters({ params, facets, fields, onChange, onOpen, onMore }
 
   return (
     <Group gap="xs" wrap="wrap">
-      {has('q') && (
+      {has('q') && (qCommit ? (
+        <CommitSearch value={params.q ?? ''} onCommit={(q) => onChange({ q })} onPaste={onPaste} />
+      ) : (
         <TextInput size="xs" w={180} placeholder="№, ID или UniqueId" aria-label="Поиск" value={params.q ?? ''} onPaste={onPaste}
           onChange={(e) => onChange({ q: e.currentTarget.value || undefined })} />
-      )}
+      ))}
       {has('status') && (
         <Select size="xs" w={190} aria-label="Статус" allowDeselect={false} value={params.status} data={statuses}
           onChange={(v) => onChange({ status: v ?? 'open' })} />
@@ -89,21 +113,24 @@ export function ListFilters({ params, facets, fields, onChange, onOpen, onMore }
         <Select size="xs" w={200} aria-label="Пара разделов" allowDeselect={false} value={params.pair ?? All} data={options(facets?.pairs, 'Все пары')}
           onChange={(v) => onChange({ pair: !v || v === All ? undefined : v })} />
       )}
-      {has('level') && (
+      {has('level') && (levelData ? (
+        <Select size="xs" w={200} aria-label="Уровень" placeholder="Уровень" clearable searchable value={params.level ?? null} data={levelData}
+          onChange={(v) => onChange({ level: v ?? undefined })} />
+      ) : (
         <Select size="xs" w={180} aria-label="Уровень" allowDeselect={false} searchable value={params.level ?? All}
           data={options(facets?.levels, 'Все уровни', 'Без уровня')} onChange={(v) => onChange({ level: !v || v === All ? undefined : v })} />
-      )}
+      ))}
       {has('assignee') && (
         <Select size="xs" w={190} aria-label="Кто правит" allowDeselect={false} value={params.assignee ?? 'all'} data={assigneeOptions}
           onChange={(v) => onChange({ assignee: (v ?? 'all') as ListParams['assignee'] })} />
       )}
       {has('sort') && (
-        <Select size="xs" w={140} aria-label="Сортировка" allowDeselect={false} value={params.sort} data={sortOptions}
-          onChange={(v) => onChange({ sort: (v ?? 'depth') as ListParams['sort'] })} />
+        <Select size="xs" w={160} aria-label="Сортировка" allowDeselect={false} value={params.sort} data={sorts ?? sortOptions}
+          onChange={(v) => onChange({ sort: (v ?? params.sort) as ListParams['sort'] })} />
       )}
       {has('group') && (
-        <Select size="xs" w={170} aria-label="Группировка" allowDeselect={false} value={params.group} data={groupOptions}
-          onChange={(v) => onChange({ group: (v ?? 'none') as ListParams['group'] })} />
+        <Select size="xs" w={170} aria-label="Группировка" allowDeselect={false} value={params.group} data={groups ?? groupOptions}
+          onChange={(v) => onChange({ group: (v ?? params.group) as ListParams['group'] })} />
       )}
       {has('more') && onMore && <Button size="compact-xs" variant="subtle" onClick={onMore}>Ещё фильтры</Button>}
     </Group>

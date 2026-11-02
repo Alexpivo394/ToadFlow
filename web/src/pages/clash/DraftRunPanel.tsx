@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Badge, Button, Group, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { ApprovedVersionView, DraftRunSummary, EngineRunState } from '../../api/types';
 import { askConfirm } from '../../components/ui';
@@ -24,6 +24,13 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
   const stats = current?.stats;
   const versions = useApi<ApprovedVersionView[]>(['clash-parts', partId, 'versions'], `/api/clash/parts/${partId}/versions`);
   const [approving, setApproving] = useState(false);
+  // Сводная строка — время прогона; число коллизий, элементы, время этапов и память — в подсказке.
+  const details = current?.state === 'Succeeded'
+    ? [current.hitCount != null ? `${current.hitCount.toLocaleString('ru-RU')} коллизий` : null,
+      stats ? `Элементов ${stats.elements.toLocaleString('ru-RU')}, треугольников ${stats.triangles.toLocaleString('ru-RU')}; загрузка ${formatDuration(stats.loadSeconds)}, `
+        + `поиск ${formatDuration(stats.broadSeconds + stats.narrowSeconds)}; память движка до ${formatBytes(stats.peakWorkingSetBytes)}` : null]
+      .filter(Boolean).join(' · ')
+    : '';
 
   return (
     <Stack gap="md">
@@ -43,18 +50,15 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
         )}
         {current && <Badge color={stateLabel[current.state].color} variant="light">{stateLabel[current.state].label}</Badge>}
         {current?.stage && <Text size="sm">{current.stage}</Text>}
-        {current && <Text size="xs" c="dimmed">запущен {formatDateTime(current.createdAt)}</Text>}
-        {current?.state === 'Succeeded' && current.hitCount != null && <Text size="xs" c="dimmed">· {current.hitCount.toLocaleString('ru-RU')} коллизий</Text>}
+        {current && (
+          <Tooltip multiline w={360} withArrow disabled={!details} label={details}>
+            <Text size="xs" c="dimmed">запущен {formatDateTime(current.createdAt)}</Text>
+          </Tooltip>
+        )}
         {!readOnly && <Button ml="auto" variant="default" onClick={() => setApproving(true)}>Утвердить…</Button>}
       </Group>
       {dirty && !readOnly && <Text size="sm" c="orange">Черновик не сохранён: прогон возьмёт сохранённую версию.</Text>}
       {current?.state === 'Failed' && current.error && <Alert color="red" title="Прогон не удался">{current.error}</Alert>}
-      {current?.state === 'Succeeded' && stats && (
-        <Text size="sm" c="dimmed">
-          Элементов {stats.elements.toLocaleString('ru-RU')}, треугольников {stats.triangles.toLocaleString('ru-RU')}; загрузка {formatDuration(stats.loadSeconds)},
-          поиск {formatDuration(stats.broadSeconds + stats.narrowSeconds)}; память движка до {formatBytes(stats.peakWorkingSetBytes)}
-        </Text>
-      )}
       {approving && (
         <ApproveDialog partId={partId} nextVersion={(versions.data?.[0]?.version ?? 0) + 1} dirty={dirty} onSave={onSave} onClose={() => setApproving(false)} />
       )}

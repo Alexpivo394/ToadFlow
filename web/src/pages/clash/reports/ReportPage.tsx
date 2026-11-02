@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useParams, useSearchParams } from 'react-router';
 import {
-  Alert, Anchor, Box, Breadcrumbs, Button, Grid, Group, Pagination, Popover, SegmentedControl, Select, Stack, Text, TextInput, Title,
+  Alert, Anchor, Box, Breadcrumbs, Button, Grid, Group, Pagination, Popover, SegmentedControl, Select, Stack, Text, Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
-import type { CollisionStatus, ReportLevelView, ReportPage as Page, ReportView } from '../../../api/types';
+import type { ReportLevelView, ReportPage as Page, ReportView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
+import { ListFilters } from '../../../components/collisions/ListFilters';
+import { ClosedStatuses, OpenStatuses, type ListParams } from '../../../components/collisions/useListParams';
 import { Panel } from '../../../components/ui';
 import { copyText } from '../../../lib/clipboard';
 import { formatDuration } from '../../../lib/format';
-import { statusLabel } from '../approved/StatusBadge';
 import { ReportCollisionDrawer } from './ReportCollisionDrawer';
 import { ReportExport } from './ReportExport';
 import { NoLevel, ReportRows } from './ReportRows';
@@ -31,6 +32,8 @@ export function formatFullDateTime(iso: string | null | undefined): string {
 
 /** Выбор и фильтры отчёта — в строке адреса: ссылку можно переслать. */
 const filterKeys = ['discipline', 'pair', 'status', 'assignee', 'level', 'model', 'q', 'sort'] as const;
+
+const reportSorts = [{ value: 'level', label: 'По уровням' }, { value: 'depth', label: 'По глубине' }, { value: 'number', label: 'По номеру' }];
 
 /** Пункты фильтра «Уровень»: уровни выборки в их порядке, одинаковые уровни разных пар — одним пунктом с общим числом. */
 function levelOptions(levels: ReportLevelView[] | undefined) {
@@ -65,11 +68,18 @@ export function ReportPage() {
     ? { kind: 'pair', pair: params.get('pair')! }
     : params.get('discipline') ? { kind: 'discipline', name: params.get('discipline')! } : { kind: 'summary' };
 
-  // Поиск применяется по Enter или уходу из поля; пока пишут — текст свой, а смена адреса (переход, другой отчёт)
-  // переписывает его. Поле не пересоздаётся при применении, фокус остаётся в нём.
-  const urlQuery = params.get('q') ?? '';
-  const [queryText, setQueryText] = useState(urlQuery);
-  useEffect(() => setQueryText(urlQuery), [urlQuery, runId]);
+  // Общая панель фильтров поверх прежних параметров адреса: без статуса — пресет области («изменения» — все, «открытые» —
+  // открытые), без сортировки — по уровням. Поиск применяется по Enter или уходу из поля.
+  const scopeStatus = scope === 'open' ? 'open' : 'all';
+  const rawStatus = params.get('status');
+  const listParams: ListParams = {
+    q: params.get('q') ?? undefined,
+    status: !rawStatus ? scopeStatus : rawStatus === OpenStatuses ? 'open' : rawStatus === ClosedStatuses ? 'closed' : rawStatus,
+    level: params.get('level') ?? undefined,
+    sort: sort as ListParams['sort'],
+    group: 'none',
+    page,
+  };
 
   const update = useCallback((patch: Record<string, string | null>, resetPage = true) =>
     setParams((p) => {
@@ -78,6 +88,15 @@ export function ReportPage() {
       if (resetPage) next.delete('page');
       return next;
     }, { replace: true }), [setParams]);
+
+  const onFilters = (patch: Partial<ListParams>) => {
+    const changes: Record<string, string | null> = {};
+    if ('q' in patch) changes.q = patch.q ?? null;
+    if ('status' in patch) changes.status = !patch.status || patch.status === scopeStatus ? null : patch.status;
+    if ('level' in patch) changes.level = patch.level ?? null;
+    if ('sort' in patch) changes.sort = !patch.sort || patch.sort === 'level' ? null : patch.sort;
+    update(changes);
+  };
 
   const select = useCallback((s: ReportSelection) => update({
     discipline: s.kind === 'discipline' ? s.name : null,
@@ -231,16 +250,8 @@ export function ReportPage() {
               <Panel>
                 <Stack gap="xs">
                   <Group gap="xs" wrap="wrap">
-                    <Select size="xs" w={170} placeholder="Статус" clearable value={params.get('status')} onChange={(v) => update({ status: v })}
-                      data={(Object.keys(statusLabel) as CollisionStatus[]).map((k) => ({ value: k, label: statusLabel[k].label }))} />
-                    <Select size="xs" w={200} placeholder="Уровень" clearable searchable data={levelOptions(options.data)} value={params.get('level')}
-                      onChange={(v) => update({ level: v })} />
-                    <TextInput key={`${runId}|q`} size="xs" w={160} placeholder="№, ID или UniqueId" value={queryText}
-                      onChange={(e) => setQueryText(e.currentTarget.value)}
-                      onBlur={(e) => update({ q: e.currentTarget.value.trim() || null })}
-                      onKeyDown={(e) => { if (e.key === 'Enter') update({ q: e.currentTarget.value.trim() || null }); }} />
-                    <SegmentedControl size="xs" value={sort} onChange={(v) => update({ sort: v === 'level' ? null : v })}
-                      data={[{ value: 'level', label: 'По уровням' }, { value: 'depth', label: 'По глубине' }, { value: 'number', label: 'По номеру' }]} />
+                    <ListFilters params={listParams} fields={['q', 'status', 'level', 'sort']} qCommit sorts={reportSorts}
+                      levelData={levelOptions(options.data)} onChange={onFilters} />
                     <Popover position="bottom-end" withinPortal>
                       <Popover.Target>
                         <Button size="xs" variant={more ? 'light' : 'default'}>Ещё{more ? ` (${more})` : ''}</Button>

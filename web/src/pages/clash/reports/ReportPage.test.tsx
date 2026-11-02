@@ -88,7 +88,8 @@ describe('Report page', () => {
     await waitFor(() => expect(screen.getAllByTestId('level-header').map((h) => h.textContent)).toEqual(['Этаж 1 · 2', 'Без уровня · 1']));
     expect(rowCalls()[0].get('pair')).toBe('АР × ОВ');
 
-    fireEvent.click(screen.getByText('По глубине'));
+    fireEvent.click(screen.getAllByLabelText('Сортировка')[0]);
+    fireEvent.click(await screen.findByRole('option', { name: 'По глубине' }));
 
     await waitFor(() => expect(rowCalls().some((p) => p.get('sort') === 'depth')).toBe(true));
     await waitFor(() => expect(screen.queryAllByTestId('level-header')).toHaveLength(0));
@@ -340,5 +341,20 @@ describe('Report page', () => {
     expect(first.textContent).toContain('POL_K1_AR.rvt');
     expect(first.textContent).toContain('Переносим трубу');
     expect(first.textContent).toContain('вернулась');
+  });
+});
+
+describe('Report on the shared filter bar', () => {
+  it('Report_OldLinkParamsStillApply', async () => {
+    renderApp(pairUrl('АР × ОВ') + '&status=Fixed&level=' + encodeURIComponent('Этаж 1') + '&model=POL_K1_AR.rvt&assignee=SideA&sort=depth&q=17', responses());
+
+    await waitFor(() => expect(rowCalls().length).toBeGreaterThan(0));
+    const p = rowCalls()[0];
+    expect([p.get('status'), p.get('level'), p.get('model'), p.get('assignee'), p.get('sort'), p.get('q')])
+      .toEqual(['Fixed', 'Этаж 1', 'POL_K1_AR.rvt', 'SideA', 'depth', '17']);
+    const values = (label: string) => screen.getAllByLabelText(label).filter((e) => e.tagName === 'INPUT').map((e) => (e as HTMLInputElement).value);
+    await waitFor(() => expect(values('Статус')).toContain('Исправленные'));
+    expect(values('Сортировка')).toContain('По глубине');
+    expect((screen.getByLabelText('Поиск') as HTMLInputElement).value).toBe('17');
   });
 });

@@ -3,14 +3,19 @@ import { useSearchParams } from 'react-router';
 import { Alert, Box, Group, NavLink, NumberInput, ScrollArea, Select, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../../../api/queries';
-import type { CheckCount, DraftFacets, DraftHitView, DraftSummary, SetPairCount } from '../../../api/types';
+import type { CheckCount, CollisionFacets, DraftFacets, DraftHitView, DraftRunSummary, DraftSummary, SetPairCount } from '../../../api/types';
+import { ListFilters } from '../../../components/collisions/ListFilters';
+import { useListParams, type ListParams } from '../../../components/collisions/useListParams';
 import { Empty } from '../../../components/ui';
 import { categoryLabel } from '../../../lib/categories';
 import { DraftRunPanel } from '../DraftRunPanel';
 import { HitScene, prefetchHit } from '../viewer/HitScene';
-import { defaultFilters, type HitFilters, PageSize, useHitNavigation } from './useHitNavigation';
+import { type HitFilters, PageSize, useHitNavigation } from './useHitNavigation';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
+
+const draftSorts = [{ value: 'setpair', label: 'По парам наборов' }, { value: 'depth', label: 'По глубине' }, { value: 'number', label: 'По номеру' }];
+const draftGroups = [{ value: 'setpair', label: 'По парам наборов' }, { value: 'none', label: 'Без группировки' }];
 
 /** Проверки в порядке матрицы, сгруппированные по группе строки; пустые — серым, чтобы было видно, что их проверили. */
 export function ChecksList({ checks, selected, onSelect }: { checks: CheckCount[]; selected: string | null; onSelect: (key: string) => void }) {
@@ -50,7 +55,9 @@ function Side({ hit, side }: { hit: DraftHitView; side: 'A' | 'B' }) {
 export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; readOnly: boolean; dirty: boolean; onSave: () => Promise<void> }) {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const [filters, setFilters] = useState<HitFilters>(defaultFilters);
+  const [list, setList] = useListParams({ sort: 'setpair', group: 'setpair' });
+  const [minDepth, setMinDepth] = useState<number | null>(null);
+  const [more, setMore] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState<'A' | 'B' | null>(null);
   const summary = useApi<DraftSummary>(['clash-parts', partId, 'summary'], `/api/clash/parts/${partId}/draft/summary`);
@@ -70,6 +77,23 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
     setFocus(null);
     update({ hit: value == null ? null : String(value) });
   }, [update]);
+  const filters: HitFilters = {
+    level: list.level ?? null, model: list.model ?? null, category: list.category ?? null, minDepth,
+    sort: list.sort === 'depth' || list.sort === 'number' ? list.sort : 'setpair',
+  };
+  // Группы по парам наборов идут подряд только при сортировке по ним: выбор группы ставит её, другая сортировка снимает группы.
+  const grouped = list.group === 'setpair' && filters.sort === 'setpair';
+  const change = (patch: Partial<ListParams>) => {
+    if ('q' in patch) {
+      const value = Number(patch.q);
+      if (patch.q && Number.isInteger(value) && value > 0) onNumber(value);
+      return;
+    }
+    if (patch.group === 'setpair') setList({ ...patch, sort: 'setpair' });
+    else if (patch.sort && patch.sort !== 'setpair') setList({ ...patch, group: 'none' });
+    else setList(patch);
+  };
+  const open = (target: number | string) => { if (typeof target === 'number') onNumber(target); };
 
   const nav = useHitNavigation({ partId, checks, check, number, filters, onCheck, onNumber });
   const facets = useApi<DraftFacets>(['clash-parts', partId, 'facets', check], check ? `/api/clash/parts/${partId}/draft/facets?check=${check}` : null);
@@ -93,7 +117,10 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
   }, [nav]);
 
   const current = nav.current;
-  const filter = (patch: Partial<HitFilters>) => setFilters({ ...filters, ...patch });
+  // Номер из поиска может быть не на этой странице и не в этой проверке: сцена берёт его из последнего прогона черновика.
+  const run = useApi<DraftRunSummary | null>(['clash-parts', partId, 'run'], `/api/clash/parts/${partId}/draft/run`);
+  const shown = current ?? (number != null && run.data ? { runId: run.data.runId, number } : null);
+  const facetLists: CollisionFacets = { pairs: [], levels: facets.data?.levels ?? [], models: [], categories: [] };
   const checkInfo = checks.find((c) => c.key === check);
 
   return (
@@ -111,20 +138,25 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
           </Box>
 
           <Stack gap={0} w={{ base: 370, xl: 430 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
-            <Group gap={6} p="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
-              <Select size="xs" w={120} clearable placeholder="все" label="Уровень" value={filters.level} onChange={(v) => filter({ level: v })}
-                data={(facets.data?.levels ?? []).map((v) => ({ value: v.value, label: `${v.value} · ${n(v.count)}` }))} />
-              <Select size="xs" w={120} clearable placeholder="все" label="Модель" value={filters.model} onChange={(v) => filter({ model: v })}
-                data={(facets.data?.models ?? []).map((v) => ({ value: v.value, label: `${v.value} · ${n(v.count)}` }))} />
-              <Select size="xs" w={130} clearable placeholder="все" label="Категория" value={filters.category} onChange={(v) => filter({ category: v })}
-                data={(facets.data?.categories ?? []).map((v) => ({ value: v.value, label: `${categoryLabel(v.value)} · ${n(v.count)}` }))} />
-              <NumberInput size="xs" w={90} label="Глубина от" min={0} value={filters.minDepth ?? ''} onChange={(v) => filter({ minDepth: v === '' ? null : Number(v) })} />
-              <Select size="xs" w={150} label="Порядок" allowDeselect={false} value={filters.sort} onChange={(v) => filter({ sort: v as HitFilters['sort'] })}
-                data={[{ value: 'setpair', label: 'по парам наборов' }, { value: 'depth', label: 'глубже сначала' }, { value: 'number', label: 'по номеру' }]} />
-            </Group>
+            <Stack gap={6} p="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+              <ListFilters params={list} facets={facetLists} fields={['q', 'level', 'sort', 'group', 'more']} qCommit sorts={draftSorts}
+                groups={draftGroups} onChange={change} onOpen={open} onMore={() => setMore((m) => !m)} />
+              {more && (
+                <Group gap="xs">
+                  <Select size="xs" w={150} clearable searchable placeholder="Модель" aria-label="Модель" value={list.model ?? null}
+                    onChange={(v) => setList({ model: v ?? undefined })}
+                    data={(facets.data?.models ?? []).map((v) => ({ value: v.value, label: `${v.value} — ${n(v.count)}` }))} />
+                  <Select size="xs" w={150} clearable searchable placeholder="Категория" aria-label="Категория" value={list.category ?? null}
+                    onChange={(v) => setList({ category: v ?? undefined })}
+                    data={(facets.data?.categories ?? []).map((v) => ({ value: v.value, label: `${categoryLabel(v.value)} — ${n(v.count)}` }))} />
+                  <NumberInput size="xs" w={110} placeholder="Глубина от, мм" aria-label="Глубина от" min={0} value={minDepth ?? ''}
+                    onChange={(v) => setMinDepth(v === '' ? null : Number(v))} />
+                </Group>
+              )}
+            </Stack>
             <ScrollArea style={{ flex: 1 }} type="auto">
               {nav.items.map((h, i) => {
-                const header = filters.sort === 'setpair' && (i === 0 || nav.items[i - 1].setPairKey !== h.setPairKey);
+                const header = grouped && (i === 0 || nav.items[i - 1].setPairKey !== h.setPairKey);
                 const pair = pairNames.get(h.setPairKey);
                 return (
                   <Fragment key={h.number}>
@@ -137,7 +169,7 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
                         </Group>
                       </UnstyledButton>
                     )}
-                    {!collapsed.has(h.setPairKey) && (
+                    {!(grouped && collapsed.has(h.setPairKey)) && (
                       <UnstyledButton w="100%" px="xs" py={4} onClick={() => onNumber(h.number)} aria-label={`Коллизия ${h.number}`}
                         bg={h.number === number ? 'var(--mantine-primary-color-light)' : undefined}
                         style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
@@ -168,9 +200,11 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
           </Stack>
 
           <Box p="xs" style={{ flex: 1, minWidth: 480 }}>
-            {current ? (
-              <HitScene runId={current.runId} number={current.number} focus={focus}
-                title={`№ ${current.number} · ${checkInfo ? `${checkInfo.groupAName} × ${checkInfo.groupBName} · ` : ''}глубина ${Math.round(current.depthMm)} мм`} />
+            {shown ? (
+              <HitScene runId={shown.runId} number={shown.number} focus={focus}
+                title={current
+                  ? `№ ${current.number} · ${checkInfo ? `${checkInfo.groupAName} × ${checkInfo.groupBName} · ` : ''}глубина ${Math.round(current.depthMm)} мм`
+                  : `№ ${shown.number}`} />
             ) : (
               <Empty>Выберите коллизию в списке</Empty>
             )}

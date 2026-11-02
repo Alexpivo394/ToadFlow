@@ -293,6 +293,29 @@ public class ClashReportExportTests : ServerTest
         html.ShouldContain("data-status=\"New\" data-level=\"Этаж 1\"");
     }
 
+    /// <summary>«Показать в Revit» у каждой строки: те же две строки, что копирует карточка веба, — номер с частью и ссылка.</summary>
+    [Test]
+    public async Task ReportHtml_RowHasShowInRevitText()
+    {
+        var (admin, agent, partId, runId) = await RunAsync(Hits(2));
+        await using var _ = agent;
+        var name = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Name;
+
+        var html = await admin.GetStringAsync($"/api/clash/reports/{runId}/export.html?baseUrl={Base}{Pair}");
+
+        var clips = Regex.Matches(html, "data-clip=\"ToadClash №([0-9]+) —([^\"]*?)&#10;([^\"]*)\"");
+        clips.Count.ShouldBe(2);
+        foreach (Match clip in clips)
+        {
+            clip.Groups[2].Value.Trim().ShouldBe(name);
+            clip.Groups[3].Value.ShouldStartWith($"{Base}/clash/checks/{partId}?collision=");
+        }
+
+        Regex.Matches(html, ">Показать в Revit</button>").Count.ShouldBe(2);
+        html.ShouldContain("navigator.clipboard");
+        Regex.Matches(html, "<script").Count.ShouldBe(1);
+    }
+
     [Test]
     public async Task ExportHtml_FilterScript_Inline()
     {
