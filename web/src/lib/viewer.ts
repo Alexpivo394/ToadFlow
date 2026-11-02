@@ -64,5 +64,6 @@ export function isVisible(element: ViewerElementView, isolation: Isolation, sele
 export function roleColor(role: ViewerElementView['role']): { color: string; opacity: number } {
   if (role === 'A') return { color: '#e03131', opacity: 1 };
   if (role === 'B') return { color: '#1971c2', opacity: 1 };
+  if (role === 'set') return { color: '#2f9e44', opacity: 1 };
   return { color: '#adb5bd', opacity: 0.2 };
 }

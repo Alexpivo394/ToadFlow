@@ -1,6 +1,7 @@
-import { Alert, ActionIcon, Badge, Button, Group, MultiSelect, Paper, Select, Stack, Table, Text, TextInput, Autocomplete } from '@mantine/core';
+import { useState } from 'react';
+import { Alert, ActionIcon, Badge, Button, Drawer, Group, MultiSelect, Paper, Select, Stack, Table, Text, TextInput, Autocomplete } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconTrash } from '@tabler/icons-react';
+import { IconCube, IconTrash } from '@tabler/icons-react';
 import { useApiPost } from '../../../api/queries';
 import type { ModelCatalog, PresenceView, SetPreviewResult, ValueCount } from '../../../api/types';
 import { categoryLabel } from '../../../lib/categories';
@@ -8,6 +9,7 @@ import {
   addCondition, addGroup, type ClashConfig, type Condition, needsValue, operators, propertyKinds, type PropertyRef, type SelectionSet,
   setCondition,
 } from '../../../lib/clashConfig';
+import { type SetFocus, SetScene } from './SetScene';
 
 const propertyValue = (p: PropertyRef) => (p.kind === 'parameter' ? `parameter:${p.sharedGuid ?? ''}:${p.parameterName ?? ''}` : p.kind);
 
@@ -92,6 +94,8 @@ export function SetEditor({ partId, config, set, source, catalog, readOnly, edit
   const [debounced] = useDebouncedValue(config, 400);
   const preview = useApiPost<SetPreviewResult>(['clash-preview', partId, set.id, JSON.stringify(debounced)], `/api/clash/parts/${partId}/preview`,
     { configuration: debounced, setId: set.id });
+  // Набор в 3D: undefined — закрыт, null — весь набор, образец — кадр на нём.
+  const [scene3d, setScene3d] = useState<SetFocus | null | undefined>(undefined);
 
   return (
     <Stack gap="sm" style={{ flex: 1, minWidth: 0 }}>
@@ -121,6 +125,11 @@ export function SetEditor({ partId, config, set, source, catalog, readOnly, edit
           <Text size="sm">
             В набор попало <b>{preview.data.matched.toLocaleString('ru-RU')}</b> из {preview.data.total.toLocaleString('ru-RU')} элементов источника
           </Text>
+          {!readOnly && (
+            <Button size="compact-xs" variant="light" w="fit-content" leftSection={<IconCube size={14} />} onClick={() => setScene3d(null)}>
+              Показать набор в 3D
+            </Button>
+          )}
           {preview.data.sample.length > 0 && (
             <Table fz="xs" verticalSpacing={2}>
               <Table.Tbody>
@@ -130,12 +139,25 @@ export function SetEditor({ partId, config, set, source, catalog, readOnly, edit
                     <Table.Td>{e.family ?? '—'}</Table.Td>
                     <Table.Td>{e.type ?? '—'}</Table.Td>
                     <Table.Td>ID {e.elementId}</Table.Td>
+                    {!readOnly && (
+                      <Table.Td w={28}>
+                        <ActionIcon size="xs" variant="subtle" aria-label={`3D образца ID ${e.elementId}`}
+                          onClick={() => setScene3d({ model: e.modelKey, uniqueId: e.uniqueId })}>
+                          <IconCube size={12} />
+                        </ActionIcon>
+                      </Table.Td>
+                    )}
                   </Table.Tr>
                 ))}
               </Table.Tbody>
             </Table>
           )}
         </Stack>
+      )}
+      {scene3d !== undefined && (
+        <Drawer opened onClose={() => setScene3d(undefined)} position="right" size="xl" title={`Набор «${set.name}» в 3D`}>
+          <SetScene key={scene3d ? `${scene3d.model}/${scene3d.uniqueId}` : 'all'} partId={partId} config={config} setId={set.id} focus={scene3d} />
+        </Drawer>
       )}
     </Stack>
   );

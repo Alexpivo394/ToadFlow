@@ -70,11 +70,15 @@ export async function apiFetch<T>(path: string, init: RequestInit & { json?: unk
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** Двоичный ответ API (сетки просмотрщика): токен в заголовке, ошибка — с текстом сервера, как у <c>apiFetch</c>. */
-export async function apiFetchBinary(path: string): Promise<ArrayBuffer> {
+/**
+ * Двоичный ответ API (сетки просмотрщика): токен в заголовке, ошибка — с текстом сервера, как у <c>apiFetch</c>. С `json` —
+ * POST с этим телом (сетки сцены набора по несохранённому черновику).
+ */
+export async function apiFetchBinary(path: string, json?: unknown): Promise<ArrayBuffer> {
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(path, { headers });
+  if (json !== undefined) headers.set('Content-Type', 'application/json');
+  const response = await fetch(path, json === undefined ? { headers } : { method: 'POST', headers, body: JSON.stringify(json) });
   if (response.status === 401) {
     onUnauthorized();
     throw new ApiError(401, 'Сессия истекла — войдите снова');

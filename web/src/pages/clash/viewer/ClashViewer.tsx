@@ -17,6 +17,8 @@ export interface ClashViewerProps {
   onPick: (index: number | null) => void;
   /** Секущий куб изменён в сцене (перетаскиванием грани). */
   onSectionChange?: (box: Box) => void;
+  /** Элемент, на который ставится кадр (образец набора); без него — на все элементы, кроме окружения. */
+  frame?: number | null;
 }
 
 interface Stage {
@@ -61,7 +63,7 @@ function inside(point: THREE.Vector3, box: Box | null): boolean {
  * Сцена коллизии на three.js. Начало координат — точка коллизии, единицы — мм, ось Z вверх (как в Revit).
  * A и B — контрастные цвета, окружение полупрозрачное, элементы без сетки — каркасы габаритов.
  */
-export default function ClashViewer({ scene, meshes, isolation, sectionBox, selected, onPick, onSectionChange }: ClashViewerProps) {
+export default function ClashViewer({ scene, meshes, isolation, sectionBox, selected, onPick, onSectionChange, frame }: ClashViewerProps) {
   const container = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
   const pick = useRef(onPick);
@@ -231,24 +233,25 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     s.render();
   }, [scene, meshes]);
 
-  // Камера — на коллизию, когда открыта новая коллизия (не при подгрузке сеток).
+  // Камера — на коллизию (или на образец набора), когда открыта новая сцена (не при подгрузке сеток). У сцены набора без
+  // образца окружения нет (радиус 0) — кадр по габариту набора.
   useEffect(() => {
     const s = stage.current;
     if (!s) return;
-    const pair = scene.elements.filter((e) => e.role !== 'context');
+    const framed = frame != null && scene.elements[frame] ? [scene.elements[frame]] : scene.elements.filter((e) => e.role !== 'context');
     const extent = Math.max(
       300,
-      ...pair.flatMap((e) => [0, 1, 2].map((axis) => Math.max(Math.abs(e.min[axis]), Math.abs(e.max[axis])))),
+      ...framed.flatMap((e) => [0, 1, 2].map((axis) => Math.max(Math.abs(e.min[axis]), Math.abs(e.max[axis])))),
     );
-    const distance = Math.min(extent * 4, scene.radiusMm * 1.5);
+    const distance = scene.radiusMm > 0 ? Math.min(extent * 4, scene.radiusMm * 1.5) : extent * 2.5;
     s.camera.position.copy(new THREE.Vector3(1, -1.2, 0.8).normalize().multiplyScalar(distance));
     s.camera.near = Math.max(1, distance / 2000);
-    s.camera.far = distance * 20 + scene.radiusMm * 4;
+    s.camera.far = distance * 20 + Math.max(scene.radiusMm, extent) * 4;
     s.camera.updateProjectionMatrix();
     s.controls.target.set(0, 0, 0);
     s.controls.update();
     s.render();
-  }, [scene]);
+  }, [scene]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Изоляция, секущий куб и подсветка выбранного — без пересборки сеток.
   useEffect(() => {
