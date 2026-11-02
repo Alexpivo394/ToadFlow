@@ -216,14 +216,20 @@ public static class CollisionEndpoints
     }
 
     /// <summary>Список коллизий части по <see cref="CollisionFilter" />.</summary>
-    /// <param name="sort"><c>depth</c> — глубже сначала; иначе по номеру.</param>
-    private static async Task<IResult> ListAsync(Guid id, string? sort, int? page, int? pageSize, HttpRequest request, ToadFlowDb db, TimeProvider time,
-        CancellationToken ct)
+    /// <param name="sort"><c>depth</c> — глубже сначала; <c>level</c> — по уровню; иначе по номеру.</param>
+    /// <param name="group"><c>element</c> — страница групп по элементу раздела <paramref name="side" /> (<see cref="ElementGroupPage" />).</param>
+    private static async Task<IResult> ListAsync(Guid id, string? sort, string? group, string? side, int? page, int? pageSize, HttpRequest request,
+        ToadFlowDb db, TimeProvider time, CancellationToken ct)
     {
         var names = await ModelNamesAsync(db, id, ct);
         var query = CollisionFilter.From(request).Apply(db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == id), db, names, time.GetUtcNow());
-        var total = await query.CountAsync(ct);
         var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
+        if (ElementGroups.Requested(group))
+            return string.IsNullOrWhiteSpace(side)
+                ? Results.BadRequest(new { error = "Выберите раздел: группировать по его элементам" })
+                : Results.Ok(await ElementGroups.PageAsync(query, [side.Trim()], page ?? 1, size, _ => Task.FromResult(names), ct));
+
+        var total = await query.CountAsync(ct);
         var rows = await CollisionFilter.Sort(query, sort).Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
         var suggested = await NumbersAsync(db, rows.Select(r => r.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         return Results.Ok(new CollisionPage(total, rows.Select(r => Row(r, names, suggested)).ToList()));

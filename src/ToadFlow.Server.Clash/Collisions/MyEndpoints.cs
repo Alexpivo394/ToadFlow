@@ -23,17 +23,20 @@ public static class MyEndpoints
     ///     <c>number</c> (по умолчанию) — по части и номеру, <c>depth</c> — глубже сначала, <c>new</c> — новые сначала, <c>level</c> — по
     ///     уровню A, затем B.
     /// </param>
-    private static async Task<IResult> ListAsync([AsParameters] MyFilter filter, string? sort, int? page, int? pageSize, HttpContext http, ToadFlowDb db,
-        TimeProvider time, CancellationToken ct)
+    /// <param name="group"><c>element</c> — страница групп по своим элементам (<see cref="ElementGroupPage" />): стороны — разделы пользователя.</param>
+    private static async Task<IResult> ListAsync([AsParameters] MyFilter filter, string? sort, string? group, int? page, int? pageSize, HttpContext http,
+        ToadFlowDb db, TimeProvider time, CancellationToken ct)
     {
+        var grouped = ElementGroups.Requested(group);
         var (disciplines, state) = await UserAsync(db, http.User.UserId(), ct);
-        if (disciplines.Length == 0) return Results.Ok(new MyCollisionPage(0, []));
+        if (disciplines.Length == 0) return grouped ? Results.Ok(new ElementGroupPage(0, 0, [])) : Results.Ok(new MyCollisionPage(0, []));
         var parts = await MyCollisions.PartsAsync(db, ct);
         filter = await ModelKeyAsync(db, filter, ct);
         var query = MyCollisions.Query(db, disciplines, parts, filter, MyCollisions.Mark(state, time.GetUtcNow()));
+        var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
+        if (grouped) return Results.Ok(await ElementGroups.PageAsync(query, disciplines, page ?? 1, size, keys => NamesAsync(db, keys, ct), ct));
 
         var total = await query.CountAsync(ct);
-        var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
         var ordered = sort switch
         {
             "depth" => query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.PartId).ThenBy(c => c.Number),
