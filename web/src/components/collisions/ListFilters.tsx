@@ -56,13 +56,19 @@ function options(values: ValueCount[] | undefined, all: string, empty?: string) 
 
 type Option = { value: string; label: string };
 
-/** Поиск, который применяется по Enter или уходу из поля; смена адреса переписывает набранный текст. */
+/**
+ * Поиск, который применяется по Enter или уходу из поля — не на каждую букву. Смена адреса переписывает набранный текст;
+ * если список поиск не принял (черновик по номеру открывает попадание), поле возвращается к действующему значению.
+ */
 function CommitSearch({ value, onCommit, onPaste }: { value: string; onCommit: (q: string | undefined) => void; onPaste: (e: ClipboardEvent<HTMLInputElement>) => void }) {
   const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
+  const [commits, setCommits] = useState(0);
+  useEffect(() => setText(value), [value, commits]);
   const commit = (raw: string) => {
     const q = raw.trim();
-    if (q !== value) onCommit(q || undefined);
+    if (q === value) return;
+    onCommit(q || undefined);
+    setCommits((c) => c + 1);
   };
   return (
     <TextInput size="xs" w={180} placeholder="№, ID или UniqueId" aria-label="Поиск" value={text} onPaste={onPaste}
@@ -73,17 +79,16 @@ function CommitSearch({ value, onCommit, onPaste }: { value: string; onCommit: (
 
 /**
  * Панель фильтров списка коллизий. `fields` — какие элементы показать. Варианты пары и уровня — из фасетов, с числами.
- * Вставка в поиск текста «ToadClash №123» или ссылки на коллизию открывает её. `qCommit` — поиск применяется по Enter;
- * `sorts`, `groups` и `levelData` заменяют стандартные варианты, когда у списка они свои (отчёт, черновик).
+ * Вставка в поиск текста «ToadClash №123» или ссылки на коллизию открывает её. Поиск применяется по Enter или уходу из
+ * поля; `sorts`, `groups` и `levelData` заменяют стандартные варианты, когда у списка они свои (отчёт, черновик).
  */
-export function ListFilters({ params, facets, fields, onChange, onOpen, onMore, qCommit, sorts, groups, levelData }: {
+export function ListFilters({ params, facets, fields, onChange, onOpen, onMore, sorts, groups, levelData }: {
   params: ListParams;
   facets?: CollisionFacets;
   fields: ListField[];
   onChange: (patch: Partial<ListParams>) => void;
   onOpen?: (target: number | string) => void;
   onMore?: () => void;
-  qCommit?: boolean;
   sorts?: Option[];
   groups?: Option[];
   levelData?: Option[];
@@ -99,12 +104,7 @@ export function ListFilters({ params, facets, fields, onChange, onOpen, onMore, 
 
   return (
     <Group gap="xs" wrap="wrap">
-      {has('q') && (qCommit ? (
-        <CommitSearch value={params.q ?? ''} onCommit={(q) => onChange({ q })} onPaste={onPaste} />
-      ) : (
-        <TextInput size="xs" w={180} placeholder="№, ID или UniqueId" aria-label="Поиск" value={params.q ?? ''} onPaste={onPaste}
-          onChange={(e) => onChange({ q: e.currentTarget.value || undefined })} />
-      ))}
+      {has('q') && <CommitSearch value={params.q ?? ''} onCommit={(q) => onChange({ q })} onPaste={onPaste} />}
       {has('status') && (
         <Select size="xs" w={190} aria-label="Статус" allowDeselect={false} value={params.status} data={statuses}
           onChange={(v) => onChange({ status: v ?? 'open' })} />

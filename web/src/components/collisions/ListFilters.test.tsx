@@ -43,4 +43,25 @@ describe('ListFilters', () => {
     expect(onOpen).toHaveBeenLastCalledWith(77);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it('ListFilters_Search_CommitsOnEnterNotPerKeystroke', () => {
+    const { onChange } = renderFilters();
+    const search = screen.getByRole('textbox', { name: 'Поиск' });
+    fireEvent.change(search, { target: { value: '1' } });
+    fireEvent.change(search, { target: { value: '12' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ q: '12' });
+  });
+
+  it('ListFilters_Search_NotApplied_FieldShowsCurrent', () => {
+    // Список не принял поиск (черновик открыл номер, а q не меняет) — поле не держит неприменённый текст.
+    const { onChange } = renderFilters();
+    const search = screen.getByRole('textbox', { name: 'Поиск' }) as HTMLInputElement;
+    fireEvent.change(search, { target: { value: '77' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith({ q: '77' });
+    expect(search.value).toBe('');
+  });
 });

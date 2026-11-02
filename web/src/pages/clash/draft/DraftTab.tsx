@@ -153,7 +153,7 @@ export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOp
 
           <Stack gap={0} w={{ base: 370, xl: 430 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
             <Stack gap={6} p="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
-              <ListFilters params={list} facets={facetLists} fields={['q', 'level', 'sort', 'group', 'more']} qCommit sorts={draftSorts}
+              <ListFilters params={list} facets={facetLists} fields={['q', 'level', 'sort', 'group', 'more']} sorts={draftSorts}
                 groups={draftGroups} onChange={change} onOpen={open} onMore={() => setMore((m) => !m)} />
               {more && (
                 <Group gap="xs">

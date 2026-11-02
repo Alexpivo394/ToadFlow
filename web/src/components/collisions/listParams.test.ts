@@ -55,6 +55,14 @@ describe('useListParams', () => {
     expect(fromUrl.result.current[0]).toMatchObject({ status: 'open', sort: 'number' }); // адрес важнее сохранённого
   });
 
+  it('ListParams_PickDefault_OverStored_TakesEffect', () => {
+    localStorage.setItem('test.list', JSON.stringify({ assignee: 'taken' }));
+    const { result } = renderHook(() => useListParams({ assignee: 'mine' }, 'test.list'), { wrapper: wrapper() });
+    expect(result.current[0].assignee).toBe('taken');
+    act(() => result.current[1]({ assignee: 'mine' }));
+    expect(result.current[0].assignee).toBe('mine');
+  });
+
   it('ListParams_StorageThrows_StillWorks', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('запрещено'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('запрещено'); });

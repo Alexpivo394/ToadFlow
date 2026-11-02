@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
 /**
@@ -77,12 +77,15 @@ export function useListParams(defaults: Partial<ListParams>, storageKey?: string
   const defaultsKey = JSON.stringify(defaults);
   const all = useMemo<ListParams>(() => ({ ...baseListParams, ...(JSON.parse(defaultsKey) as Partial<ListParams>) }), [defaultsKey]);
   const text = search.toString();
+  // Выбор значения по умолчанию поверх сохранённого не меняет адрес (умолчания в адрес не пишутся) — пересчёт по счётчику.
+  const [revision, setRevision] = useState(0);
 
   const params = useMemo<ListParams>(() => {
+    void revision;
     const current = new URLSearchParams(text);
     const fromUrl = parse(Object.fromEntries(keys.filter((k) => current.has(k)).map((k) => [k, current.get(k)])));
     return Object.keys(fromUrl).length > 0 ? { ...all, ...fromUrl } : { ...all, ...readStorage(storageKey) };
-  }, [text, all, storageKey]);
+  }, [text, all, storageKey, revision]);
 
   const update = useCallback((patch: Partial<ListParams>) => {
     const next: ListParams = { ...params, ...patch };
@@ -97,6 +100,7 @@ export function useListParams(defaults: Partial<ListParams>, storageKey?: string
       return url;
     }, { replace: true });
     writeStorage(storageKey, next);
+    setRevision((r) => r + 1);
   }, [params, all, setSearch, storageKey]);
 
   return [params, update];

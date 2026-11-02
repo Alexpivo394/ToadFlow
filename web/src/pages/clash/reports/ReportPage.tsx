@@ -250,7 +250,7 @@ export function ReportPage() {
               <Panel>
                 <Stack gap="xs">
                   <Group gap="xs" wrap="wrap">
-                    <ListFilters params={listParams} fields={['q', 'status', 'level', 'sort']} qCommit sorts={reportSorts}
+                    <ListFilters params={listParams} fields={['q', 'status', 'level', 'sort']} sorts={reportSorts}
                       levelData={levelOptions(options.data)} onChange={onFilters} />
                     <Popover position="bottom-end" withinPortal>
                       <Popover.Target>
