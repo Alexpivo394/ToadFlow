@@ -76,7 +76,7 @@ public sealed record PartModelView(
 /// <param name="LastApproved">Итог последнего удачного утверждённого прогона; null — не было.</param>
 public sealed record ClashPartSummary(Guid Id, string Name, string? Object, string? Part, int Models, int Sets, DateTimeOffset UpdatedAt,
     IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun, int? ApprovedVersion = null,
-    Collisions.ApprovedRunSummary? LastApproved = null);
+    Collisions.ApprovedRunSummary? LastApproved = null, IReadOnlyList<string>? ScheduleNames = null);
 
 public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models);
 

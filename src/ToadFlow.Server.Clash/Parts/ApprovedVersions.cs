@@ -18,7 +18,8 @@ public sealed class ClashPartVersion
 }
 
 /// <summary>Утвердить черновик; <paramref name="Run" /> — сразу прогнать утверждённую версию на последних выгрузках.</summary>
-public sealed record ApproveRequest(string? Comment, bool Run);
+/// <param name="Schedules">Расписания регулярного прогона части; null — выбор не меняется. Применяется в той же транзакции.</param>
+public sealed record ApproveRequest(string? Comment, bool Run, IReadOnlyList<Guid>? Schedules = null);
 
 /// <param name="RunId">Прогон утверждённой версии, поставленный при утверждении; null — не ставился.</param>
 public sealed record ApprovedVersionView(int Version, DateTimeOffset ApprovedAt, string UserName, string? Comment, Guid? RunId = null);

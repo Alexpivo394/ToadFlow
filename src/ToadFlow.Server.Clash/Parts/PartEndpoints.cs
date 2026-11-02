@@ -39,6 +39,7 @@ public static class PartEndpoints
         var approved = await db.Set<Engine.EngineRun>().AsNoTracking().Where(r => approvedIds.Contains(r.Id) && r.Summary != null)
             .ToDictionaryAsync(r => r.Id, r => r.Summary!, ct);
 
+        var schedules = await PartSchedules.ClashSchedulesAsync(db, ct);
         var now = time.GetUtcNow();
         var result = new List<ClashPartSummary>(parts.Count);
         foreach (var part in parts)
@@ -52,7 +53,8 @@ public static class PartEndpoints
                 .ToList();
             result.Add(new ClashPartSummary(part.Id, part.Name, part.Object, part.Part, partModels.Count, config.Sets.Count, part.UpdatedAt,
                 config.Groups.Select(g => g.Name).ToList(), warnings, runs.TryGetValue(part.Id, out var run) ? Engine.DraftRunSummary.Of(run) : null, part.ApprovedVersion,
-                part.ApprovedRunId is { } approvedRun ? approved.GetValueOrDefault(approvedRun) : null));
+                part.ApprovedRunId is { } approvedRun ? approved.GetValueOrDefault(approvedRun) : null,
+                schedules.Where(s => s.Parts.Contains(part.Id)).Select(s => s.Schedule.Name).ToList()));
         }
 
         return [.. result];
@@ -100,6 +102,7 @@ public static class PartEndpoints
                 return Results.BadRequest(new { error = "Не понятно, с чего начать черновик" });
         }
 
+        var schedules = await PartSchedules.ClashSchedulesAsync(db, ct);
         var now = time.GetUtcNow();
         var part = new ClashPart { Id = Guid.CreateVersion7(), CreatedAt = now };
         Apply(part, new ClashPartRequest(request.Name, request.Object, request.Part), http, now);

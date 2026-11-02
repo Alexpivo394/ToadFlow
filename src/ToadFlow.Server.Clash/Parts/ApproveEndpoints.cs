@@ -62,6 +62,8 @@ public static class ApproveEndpoints
         };
         db.Set<ClashPartVersion>().Add(version);
         part.ApprovedVersion = version.Version;
+        if (request.Schedules is { } schedules && await PartSchedules.ApplyAsync(db, part, schedules, version.UserId, version.ApprovedAt, ct) is { } scheduleError)
+            return Results.BadRequest(new { error = scheduleError });
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
