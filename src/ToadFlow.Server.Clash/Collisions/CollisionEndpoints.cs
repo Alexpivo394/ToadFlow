@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Auth;
@@ -63,6 +64,7 @@ public sealed record CollisionPage(int Total, IReadOnlyList<CollisionRow> Items)
 /// <summary>Запись ленты для показа: событие коллизии или образец глубины.</summary>
 /// <param name="Kind">Имя <see cref="CollisionEventKind" /> или <see cref="CollisionFeed.DepthKind" />.</param>
 /// <param name="UserId">Автор записи — для карточки коллеги (<c>/api/users/{id}/card</c>); null — система.</param>
+/// <param name="BulkId">Запись массового действия — веб помечает её «массово»; null — поштучно.</param>
 public sealed record FeedEntry(
     DateTimeOffset At,
     string Kind,
@@ -72,7 +74,8 @@ public sealed record FeedEntry(
     CollisionStatus? ToStatus,
     int? Version,
     float? DepthMm,
-    Guid? UserId = null);
+    Guid? UserId = null,
+    Guid? BulkId = null);
 
 public sealed record CollisionCard(CollisionRow Collision, IReadOnlyList<FeedEntry> Feed);
 
@@ -134,6 +137,8 @@ public static class CollisionEndpoints
         var approvedWrite = approved.MapGroup("").RequireAuthorization(Policies.Operator);
         approvedWrite.MapPost("/run", StartAsync);
         approvedWrite.MapPost("/run/cancel", CancelAsync);
+
+        members.MapPost("/clash/collisions/bulk", BulkEndpoints.BulkAsync).RequireAuthorization(Policies.Designer);
 
         var collision = members.MapGroup("/clash/collisions/{id:guid}");
         collision.MapGet("", CardAsync);
@@ -259,7 +264,7 @@ public static class CollisionEndpoints
         var samples = await db.Set<ClashCollisionSample>().AsNoTracking().Where(s => s.CollisionId == id).ToListAsync(ct);
         var feed = events
             .Select(e => new FeedEntry(e.At, e.Kind.ToString(), e.UserId is { } u ? users.GetValueOrDefault(u, "") : null, e.Text, e.FromStatus, e.ToStatus,
-                e.Version, null, e.UserId))
+                e.Version, null, e.UserId, e.BulkId))
             .Concat(samples.Select(s => new FeedEntry(s.At, CollisionFeed.DepthKind, null, $"Глубина {s.DepthMm:0} мм", null, null, s.Version, s.DepthMm)))
             .OrderByDescending(e => e.At).ThenBy(e => e.Kind == CollisionFeed.DepthKind ? 1 : 0)
             .ToList();
@@ -268,62 +273,22 @@ public static class CollisionEndpoints
 
     private static Task<IResult> StatusAsync(Guid id, CollisionStatusRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct) =>
-        ChangeAsync(id, db, http, time, events, ct, async collision =>
-            await NotMineAsync(db, http, collision, ct)
-            ?? (collision.Status == CollisionStatus.Fake && request.Status != CollisionStatus.Fake && !http.User.IsStaff()
-                && await FakeSetByAsync(db, collision.Id, ct) != http.User.UserId()
-                    ? "Снять фиктивную, поставленную другим, может координатор"
-                    : null),
-            (collision, now, user) =>
-        {
-            var next = CollisionTransitions.Manual(collision.Status, request.Status, collision.FoundNow, request.Note);
-            var entry = Event(collision.Id, now, user, CollisionEventKind.Status, request.Note?.Trim() ?? "");
-            entry.FromStatus = collision.Status;
-            entry.ToStatus = next;
-            collision.Status = next;
-            return entry;
-        });
+        ChangeAsync(id, db, http, time, events, ct, async (collision, actor, now) =>
+            CollisionChanges.Status(collision, request.Status, request.Note, actor,
+                collision.Status == CollisionStatus.Fake ? await FakeSetByAsync(db, collision.Id, ct) : null, now));
 
     private static Task<IResult> AssigneeAsync(Guid id, CollisionAssigneeRequest request, ToadFlowDb db, HttpContext http, TimeProvider time,
         IDomainEvents events, CancellationToken ct) =>
-        ChangeAsync(id, db, http, time, events, ct, collision => NotMineAsync(db, http, collision, ct), (collision, now, user) =>
-        {
-            if (collision.Assignee == request.Assignee) throw new CollisionTransitionException("«Кто правит» уже такой");
-            var note = request.Note?.Trim() ?? "";
-            if (note.Length > CollisionFeed.MaxNoteLength) throw new CollisionTransitionException($"Примечание — до {CollisionFeed.MaxNoteLength} символов");
-            var entry = Event(collision.Id, now, user, CollisionEventKind.Assignee,
-                $"Кто правит: {CollisionFeed.AssigneeText(collision, collision.Assignee)} → {CollisionFeed.AssigneeText(collision, request.Assignee)}");
-            collision.Assignee = request.Assignee;
-            // На микросекунду позже — лента по времени показывает примечание после смены (точность времени в базе — микросекунды).
-            if (note.Length > 0) db.Set<ClashCollisionEvent>().Add(Event(collision.Id, now.AddMicroseconds(1), user, CollisionEventKind.Note, note));
-            return entry;
-        });
+        ChangeAsync(id, db, http, time, events, ct, (collision, actor, now) =>
+            Task.FromResult(CollisionChanges.Assignee(collision, request.Assignee, request.Note, actor, now)));
 
     /// <summary>«Беру»: «кто правит» — моя сторона, а если оба элемента из моих разделов — обе стороны.</summary>
-    private static async Task<IResult> TakeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct)
-    {
-        var me = await db.Set<User>().AsNoTracking().Where(u => u.Id == http.User.UserId()).Select(u => new { u.DisplayName, u.Disciplines }).SingleAsync(ct);
-        return await ChangeAsync(id, db, http, time, events, ct, (collision, now, user) =>
-        {
-            var side = MyCollisions.Side(collision, me.Disciplines)
-                       ?? throw new CollisionTransitionException("Взять можно только коллизию своего раздела: ни один её элемент не из ваших разделов");
-            var text = collision.Assignee == side
-                ? $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(collision, side)}"
-                : $"взял(а) {me.DisplayName}: {CollisionFeed.AssigneeText(collision, collision.Assignee)} → {CollisionFeed.AssigneeText(collision, side)}";
-            collision.Assignee = side;
-            return Event(collision.Id, now, user, CollisionEventKind.Assignee, text);
-        });
-    }
+    private static Task<IResult> TakeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
+        ChangeAsync(id, db, http, time, events, ct, (collision, actor, now) => Task.FromResult(CollisionChanges.Take(collision, actor, now)));
 
     private static Task<IResult> NoteAsync(Guid id, CollisionNoteRequest request, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events,
         CancellationToken ct) =>
-        ChangeAsync(id, db, http, time, events, ct, (collision, now, user) =>
-        {
-            var text = request.Text?.Trim() ?? "";
-            if (text.Length is 0 or > CollisionFeed.MaxNoteLength)
-                throw new CollisionTransitionException($"Примечание — от 1 до {CollisionFeed.MaxNoteLength} символов");
-            return Event(collision.Id, now, user, CollisionEventKind.Note, text);
-        });
+        ChangeAsync(id, db, http, time, events, ct, (collision, actor, now) => Task.FromResult(CollisionChanges.Note(collision, request.Text, actor, now)));
 
     /// <summary>
     ///     Объединение с прежней коллизией: у прежней — пара этой (новые UniqueId, точка, глубина), её номер, статус и лента
@@ -389,33 +354,23 @@ public static class CollisionEndpoints
         return Results.Ok();
     }
 
-    /// <summary>
-    ///     Статус и «кто правит» проектировщик меняет только в коллизиях своего раздела — хотя бы один элемент из модели его
-    ///     раздела, как в «Моих». Координатор — в любых.
-    /// </summary>
-    /// <returns>Почему нельзя; null — можно.</returns>
-    private static async Task<string?> NotMineAsync(ToadFlowDb db, HttpContext http, ClashCollision collision, CancellationToken ct)
-    {
-        if (http.User.IsStaff()) return null;
-        var disciplines = await db.Set<User>().AsNoTracking().Where(u => u.Id == http.User.UserId()).Select(u => u.Disciplines).SingleAsync(ct);
-        return MyCollisions.Side(collision, disciplines) is null
-            ? "Менять статус и «кто правит» можно только в коллизиях своего раздела: ни один её элемент не из ваших разделов"
-            : null;
-    }
-
     /// <summary>Кто поставил «фиктивную» — по последней записи ленты; null — система.</summary>
     private static Task<Guid?> FakeSetByAsync(ToadFlowDb db, Guid collisionId, CancellationToken ct) =>
         db.Set<ClashCollisionEvent>().AsNoTracking()
             .Where(e => e.CollisionId == collisionId && e.Kind == CollisionEventKind.Status && e.ToStatus == CollisionStatus.Fake)
             .OrderByDescending(e => e.At).Select(e => e.UserId).FirstOrDefaultAsync(ct);
 
-    private static Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct,
-        Func<ClashCollision, DateTimeOffset, Guid, ClashCollisionEvent> change) =>
-        ChangeAsync(id, db, http, time, events, ct, _ => Task.FromResult<string?>(null), change);
+    /// <summary>Пользователь запроса для <see cref="CollisionChanges" />.</summary>
+    internal static async Task<CollisionActor> ActorAsync(ToadFlowDb db, ClaimsPrincipal principal, CancellationToken ct)
+    {
+        var id = principal.UserId();
+        var me = await db.Set<User>().AsNoTracking().Where(u => u.Id == id).Select(u => new { u.DisplayName, u.Disciplines }).SingleAsync(ct);
+        return new CollisionActor(id, me.DisplayName, me.Disciplines, principal.IsStaff());
+    }
 
-    /// <param name="forbidden">Почему этому пользователю правка запрещена (403); null — можно.</param>
+    /// <param name="change">Правка через <see cref="CollisionChanges" />: записи ленты или исключение отказа.</param>
     private static async Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events, CancellationToken ct,
-        Func<ClashCollision, Task<string?>> forbidden, Func<ClashCollision, DateTimeOffset, Guid, ClashCollisionEvent> change)
+        Func<ClashCollision, CollisionActor, DateTimeOffset, Task<IReadOnlyList<ClashCollisionEvent>>> change)
     {
         // Под блокировкой части, как сверка: правка видит статус после сверки и не затирается ею.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -423,11 +378,15 @@ public static class CollisionEndpoints
         await LockPartAsync(db, partId, ct);
         var collision = await db.Set<ClashCollision>().SingleOrDefaultAsync(c => c.Id == id, ct);
         if (collision is null) return Results.NotFound();
-        if (await forbidden(collision) is { } reason) return Results.Json(new { error = reason }, statusCode: StatusCodes.Status403Forbidden);
+        var actor = await ActorAsync(db, http.User, ct);
         var now = time.GetUtcNow();
         try
         {
-            db.Set<ClashCollisionEvent>().Add(change(collision, now, http.User.UserId()));
+            db.Set<ClashCollisionEvent>().AddRange(await change(collision, actor, now));
+        }
+        catch (CollisionForbiddenException exception)
+        {
+            return Results.Json(new { error = exception.Message }, statusCode: StatusCodes.Status403Forbidden);
         }
         catch (CollisionTransitionException exception)
         {
@@ -445,11 +404,11 @@ public static class CollisionEndpoints
         await db.Set<ClashCollision>().AsNoTracking().Where(c => c.Id == collisionId).Select(c => (Guid?)c.PartId).SingleOrDefaultAsync(ct);
 
     /// <summary>Блокировка строки части до конца транзакции — та же, что держит сверка утверждённого прогона.</summary>
-    private static Task LockPartAsync(ToadFlowDb db, Guid partId, CancellationToken ct) =>
+    internal static Task LockPartAsync(ToadFlowDb db, Guid partId, CancellationToken ct) =>
         db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM clash_parts WHERE id = {partId} FOR UPDATE", ct);
 
     private static ClashCollisionEvent Event(Guid collisionId, DateTimeOffset at, Guid? user, CollisionEventKind kind, string text) =>
-        new() { Id = Guid.CreateVersion7(), CollisionId = collisionId, At = at, UserId = user, Kind = kind, Text = text };
+        CollisionChanges.Event(collisionId, at, user, kind, text);
 
     /// <summary>Имена моделей части по ключу (Id в форме N).</summary>
     internal static async Task<Dictionary<string, string>> ModelNamesAsync(ToadFlowDb db, Guid partId, CancellationToken ct) =>

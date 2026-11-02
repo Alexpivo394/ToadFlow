@@ -574,6 +574,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("at");
 
+                    b.Property<Guid?>("BulkId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bulk_id");
+
                     b.Property<Guid>("CollisionId")
                         .HasColumnType("uuid")
                         .HasColumnName("collision_id");

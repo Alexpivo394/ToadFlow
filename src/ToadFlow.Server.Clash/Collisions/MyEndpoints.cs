@@ -74,7 +74,7 @@ public static class MyEndpoints
     }
 
     /// <summary>Фильтр модели принимает и имя (фасет отдаёт модели по имени): имя заменяется ключом.</summary>
-    private static async Task<MyFilter> ModelKeyAsync(ToadFlowDb db, MyFilter filter, CancellationToken ct)
+    internal static async Task<MyFilter> ModelKeyAsync(ToadFlowDb db, MyFilter filter, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(filter.Model) || Guid.TryParse(filter.Model, out _)) return filter;
         var name = filter.Model.Trim();
@@ -115,7 +115,7 @@ public static class MyEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<(string[] Disciplines, ClashUserState? State)> UserAsync(ToadFlowDb db, Guid userId, CancellationToken ct)
+    internal static async Task<(string[] Disciplines, ClashUserState? State)> UserAsync(ToadFlowDb db, Guid userId, CancellationToken ct)
     {
         var disciplines = await db.Set<User>().AsNoTracking().Where(u => u.Id == userId).Select(u => u.Disciplines).SingleAsync(ct);
         var state = await db.Set<ClashUserState>().AsNoTracking().SingleOrDefaultAsync(s => s.UserId == userId, ct);
