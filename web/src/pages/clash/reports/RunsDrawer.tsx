@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Anchor, Button, Checkbox, Drawer, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { Alert, Anchor, Button, Checkbox, Drawer, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { ReportRunView, RunCompare } from '../../../api/types';
 import { formatFullDateTime } from './ReportPage';
@@ -60,6 +60,7 @@ export function RunsDrawer({ partId, opened, onClose }: { partId: string; opened
             <Text size="xs" c="dimmed">Отметьте два прогона</Text>
           </Group>
           {pair && compare.data && <CompareTable compare={compare.data} runs={runs.data} />}
+          {pair && compare.error && <Alert color="red" p="xs">{compare.error.message}</Alert>}
           <Table>
             <Table.Thead>
               <Table.Tr>

@@ -357,4 +357,18 @@ describe('Report on the shared filter bar', () => {
     expect(values('Сортировка')).toContain('По глубине');
     expect((screen.getByLabelText('Поиск') as HTMLInputElement).value).toBe('17');
   });
+
+  it('Report_StatusPreset_SentAsStatusList', async () => {
+    renderApp(pairUrl('АР × ОВ'), responses());
+    await screen.findByText('№ 1');
+
+    fireEvent.click(screen.getAllByLabelText('Статус').find((e) => e.tagName === 'INPUT')!);
+    fireEvent.click(await screen.findByRole('option', { name: 'Открытые' }));
+    await waitFor(() => expect(rowCalls().some((p) => p.get('status') === 'New,Active,Returned,FixedPending,Unchecked')).toBe(true));
+
+    fireEvent.click(screen.getAllByLabelText('Статус').find((e) => e.tagName === 'INPUT')!);
+    fireEvent.click(await screen.findByRole('option', { name: 'Закрытые' }));
+    await waitFor(() => expect(rowCalls().some((p) => p.get('status') === 'Fixed,GoneByRules,Fake')).toBe(true));
+    expect(rowCalls().some((p) => p.get('status') === 'open' || p.get('status') === 'closed')).toBe(false);
+  }, 15_000);
 });

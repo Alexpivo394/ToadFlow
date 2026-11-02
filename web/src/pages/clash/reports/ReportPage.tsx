@@ -92,7 +92,10 @@ export function ReportPage() {
   const onFilters = (patch: Partial<ListParams>) => {
     const changes: Record<string, string | null> = {};
     if ('q' in patch) changes.q = patch.q ?? null;
-    if ('status' in patch) changes.status = !patch.status || patch.status === scopeStatus ? null : patch.status;
+    // Сервер понимает только статусы через запятую и `all`: пресеты «Открытые»/«Закрытые» уходят списками статусов.
+    if ('status' in patch)
+      changes.status = !patch.status || patch.status === scopeStatus ? null
+        : patch.status === 'open' ? OpenStatuses : patch.status === 'closed' ? ClosedStatuses : patch.status;
     if ('level' in patch) changes.level = patch.level ?? null;
     if ('sort' in patch) changes.sort = !patch.sort || patch.sort === 'level' ? null : patch.sort;
     update(changes);

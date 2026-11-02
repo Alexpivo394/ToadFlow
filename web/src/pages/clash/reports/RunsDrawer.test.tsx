@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { renderUi } from '../../../test/renderApp';
+import { Failure, renderUi } from '../../../test/renderApp';
 import { RunsDrawer } from './RunsDrawer';
 
 const run = (runId: string, finishedAt: string, comparable = true) => ({
@@ -48,5 +48,19 @@ describe('Runs drawer', () => {
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
     expect(boxes.map((b) => b.disabled)).toEqual([false, false, true]);
     expect(screen.getByText('Прогон до обновления — сравнение недоступно')).toBeTruthy();
+  });
+
+  it('Runs_CompareError_Shown', async () => {
+    renderUi(<RunsDrawer partId="p1" opened onClose={() => {}} />, {
+      '/api/clash/parts/p1/approved/runs': runs,
+      '/api/clash/parts/p1/approved/runs/compare': new Failure(400, 'Прогоны разных частей не сравниваются'),
+    });
+
+    await screen.findByRole('button', { name: 'Сравнить' });
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Сравнить' }));
+
+    expect(await screen.findByText('Прогоны разных частей не сравниваются')).toBeTruthy();
   });
 });
