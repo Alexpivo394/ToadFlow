@@ -260,3 +260,15 @@ describe('Check page on the shared list', () => {
     expect(screen.getByText('массово')).toBeTruthy();
   });
 });
+
+describe('Approved grouping by element', () => {
+  it('ApprovedTab_GroupByElement_WaitsForDiscipline_AndShowsIt', async () => {
+    open({}, '/clash/checks/p1?group=element');
+    const lists = () => calls().filter(([url]) => url.startsWith('/api/clash/parts/p1/approved/collisions?')).map(([url]) => new URL(url, 'http://x').searchParams);
+
+    await waitFor(() => expect(lists().some((q) => q.get('group') === 'element' && q.get('side') === 'АР')).toBe(true));
+    expect(lists().some((q) => q.get('group') === 'element' && !q.get('side'))).toBe(false);
+    expect(screen.getByText('Элементы раздела')).toBeTruthy();
+    expect(screen.getAllByLabelText('Раздел для группировки').some((e) => (e as HTMLInputElement).value === 'АР')).toBe(true);
+  });
+});

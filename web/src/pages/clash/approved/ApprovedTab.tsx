@@ -139,12 +139,18 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
     if (element) q.set('element', element);
     return q.toString();
   }, [check, element]);
+  // Группировка по элементу требует раздел: без выбранного — первый раздел части; пока часть не загружена, разделов нет —
+  // список без группировки (запрос группы без раздела сервер отклоняет).
+  const shown = useMemo<ListParams>(() => {
+    if (list.group !== 'element' || list.side) return list;
+    return disciplines[0] ? { ...list, side: disciplines[0] } : { ...list, group: 'none' };
+  }, [list, disciplines]);
   const source = useMemo<ListSource>(() => ({
     list: (p) => `/api/clash/parts/${partId}/approved/collisions?${extra(toQuery(p))}&pageSize=${PageSize}`,
     partId,
   }), [partId, extra]);
-  const facets = useApi<CollisionFacets>(['clash-list', partId, 'facets', extra(toQuery(list))],
-    `/api/clash/parts/${partId}/approved/facets?${extra(toQuery(list))}`);
+  const facets = useApi<CollisionFacets>(['clash-list', partId, 'facets', extra(toQuery(shown))],
+    `/api/clash/parts/${partId}/approved/facets?${extra(toQuery(shown))}`);
 
   const index = items.findIndex((i) => i.row.id === collisionId);
   const current = index >= 0 ? items[index].row : null;
@@ -161,10 +167,6 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [items, index, update]);
-
-  // Группировка по элементу требует раздел: по умолчанию — первый раздел части.
-  const change = (patch: Partial<ListParams>) =>
-    setList(patch.group === 'element' && !list.side && !patch.side ? { ...patch, side: disciplines[0] } : patch);
 
   const open = (target: number | string) => {
     if (typeof target === 'string') update({ collision: target });
@@ -211,11 +213,9 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
         <Stack gap={0} w={{ base: 400, xl: 470 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
           <Stack gap={6} p="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
             <ListFilters params={list} facets={facets.data ?? undefined} fields={['q', 'status', 'pair', 'level', 'sort', 'group', 'more']}
-              onChange={change} onOpen={open} onMore={() => setMore((m) => !m)} />
+              onChange={setList} onOpen={open} onMore={() => setMore((m) => !m)} />
             {more && (
               <Group gap="xs">
-                <Select size="xs" w={150} aria-label="Раздел для группировки" placeholder="Раздел" data={disciplines} value={list.side ?? null}
-                  onChange={(v) => setList({ side: v ?? undefined })} />
                 <Select size="xs" w={180} aria-label="Модель" placeholder="Модель" clearable searchable value={list.model ?? null}
                   data={(facets.data?.models ?? []).map((m) => ({ value: m.value, label: `${m.value} — ${n(m.count)}` }))}
                   onChange={(v) => setList({ model: v ?? undefined })} />
@@ -224,15 +224,22 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
                   onChange={(v) => setList({ category: v ?? undefined })} />
               </Group>
             )}
+            {shown.group === 'element' && (
+              <Group gap={6}>
+                <Text size="xs" c="dimmed">Элементы раздела</Text>
+                <Select size="xs" w={150} aria-label="Раздел для группировки" allowDeselect={false} data={disciplines} value={shown.side ?? null}
+                  onChange={(v) => setList({ side: v ?? undefined })} />
+              </Group>
+            )}
             {element && (
               <Group gap="xs">
                 <Badge variant="light">Один элемент</Badge>
                 <Button size="compact-xs" variant="subtle" onClick={() => update({ element: null, page: null })}>все элементы</Button>
               </Group>
             )}
-            <ExportButtons partId={partId} filters={new URLSearchParams(extra(toQuery(list)))} />
+            <ExportButtons partId={partId} filters={new URLSearchParams(extra(toQuery(shown)))} />
           </Stack>
-          <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk={canEdit} canEdit={canEdit}
+          <CollisionList source={source} params={shown} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk={canEdit} canEdit={canEdit}
             onParams={setList} onItems={setItems} />
         </Stack>
 
