@@ -11,30 +11,39 @@ import { categoryLabel } from '../../lib/categories';
 import { Side } from '../../pages/clash/approved/ApprovedTab';
 import { assigneeText, StatusBadge } from '../../pages/clash/approved/StatusBadge';
 import { BulkDialog, type BulkChoice } from './BulkDialog';
-import { SelectionBar } from './SelectionBar';
-import { ClosedStatuses, OpenStatuses, type ListParams } from './useListParams';
+import { BulkLimit, SelectionBar } from './SelectionBar';
+import type { ListParams } from './useListParams';
+
+export { BulkLimit } from './SelectionBar';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 
-/** Наибольшее число коллизий в одном массовом действии — как на сервере. */
-export const BulkLimit = 5000;
+/** Наибольшая страница списка на сервере (DraftResultEndpoints.MaxPageSize). */
+const MaxPageSize = 200;
+/** Сколько отказов массового действия показывать списком; остальные — «ещё N». */
+const ShownRefusals = 20;
 
 /**
  * Откуда список. `list` — адрес страницы списка по параметрам (без группировки — CollisionPage или MyCollisionPage, с
  * `group=element` — ElementGroupPage). `partId` — часть для «все по фильтру»; без неё выделение шлётся по частям строк.
- * `my` и `filterExtra` — фильтр «Моих» для «все по фильтру».
+ * `my` — список «Моих»: «все по фильтру» идёт фильтром «Моих».
  */
 export type ListSource = {
   list: (p: ListParams) => string;
   partId?: string;
   my?: boolean;
-  filterExtra?: Partial<BulkFilter>;
 };
 
 /** Строка списка: коллизия и, в «Моих», её проверка. */
 export type ListItem = { row: CollisionRow; partId?: string; my?: MyCollisionRow };
 
 type AnyPage = CollisionPage | MyCollisionPage;
+
+/** Выделенная коллизия: её часть (массовое действие идёт по частям) и имя части — для итога. */
+type Picked = { partId?: string; partName?: string };
+
+/** Итог массового действия, если в нём есть что показать: отказы, «без изменений», ошибки частей. */
+type Outcome = { done: number; unchanged: number; refused: BulkRefusal[]; failures: string[] };
 
 function items(page: AnyPage | undefined | null): ListItem[] {
   return (page?.items ?? []).map((item) =>
@@ -56,22 +65,23 @@ function pageSizeOf(url: string): number {
   return Number.isFinite(size) && size > 0 ? size : 50;
 }
 
-/** Фильтр «все по фильтру» — те же поля, что у списка. */
+/** Поля запроса списка, которые сервер понимает и в фильтре массового действия. */
+const bulkKeys = ['status', 'check', 'discipline', 'pair', 'level', 'model', 'q', 'element', 'category', 'scope', 'object', 'since'] as const;
+
+/**
+ * Фильтр «все по фильтру» — ровно запрос списка: берётся из адреса списка, чтобы добавки страницы (проверка, элемент, «новые
+ * для меня») попадали в него так же, как в список, и действие не ушло на другой набор коллизий.
+ */
 export function bulkFilterOf(p: ListParams, source: ListSource): BulkFilter {
-  const filter: BulkFilter = { ...source.filterExtra };
-  filter.status = p.status === 'open' ? OpenStatuses : p.status === 'closed' ? ClosedStatuses : p.status;
-  if (p.q?.trim()) filter.q = p.q.trim();
-  if (p.pair) filter.pair = p.pair;
-  if (p.level) filter.level = p.level;
-  if (p.model) filter.model = p.model;
-  if (p.category) filter.category = p.category;
-  if (p.stuckDays) filter.stuckDays = p.stuckDays;
-  if (source.my) {
-    filter.my = true;
-    if (p.assignee === 'mine') filter.scope = 'tofix';
-    else if (p.assignee === 'taken') filter.scope = 'taken';
-    else if (p.assignee === 'all') filter.scope = 'all';
+  const query = new URL(source.list({ ...p, page: 1 }), 'http://local').searchParams;
+  const filter: BulkFilter = {};
+  if (source.my) filter.my = true;
+  for (const key of bulkKeys) {
+    const value = query.get(key);
+    if (value !== null) filter[key] = value;
   }
+  const stuck = Number(query.get('stuckDays'));
+  if (stuck > 0) filter.stuckDays = stuck;
   return filter;
 }
 
@@ -119,11 +129,34 @@ function CollisionLine({ item, active, checked, showBox, bulk, onSelect, onCheck
   );
 }
 
-/** Коллизии раскрытой группы элемента. */
-function GroupRows({ url, render }: { url: string; render: (items: ListItem[]) => ReactNode }) {
+/** Одна страница коллизий раскрытой группы. */
+function GroupPage({ url, render }: { url: string; render: (items: ListItem[]) => ReactNode }) {
   const page = useApi<AnyPage>(['clash-list', url], url);
+  if (page.error) return <Text size="xs" c="red" px="lg" py={4}>{page.error.message}</Text>;
   if (!page.data) return <Text size="xs" c="dimmed" px="lg" py={4}>Загрузка…</Text>;
   return <>{render(items(page.data))}</>;
+}
+
+/** Коллизии раскрытой группы элемента: страницами, «Показать ещё» добавляет следующую. */
+function GroupRows({ url, total, render }: { url: string; total: number; render: (items: ListItem[]) => ReactNode }) {
+  const size = pageSizeOf(url);
+  const [pages, setPages] = useState(1);
+  const shown = Math.min(total, pages * size);
+  return (
+    <>
+      {Array.from({ length: pages }, (_, i) => <GroupPage key={i} url={withQuery(url, { page: String(i + 1) })} render={render} />)}
+      {total > shown && (
+        <Group gap="xs" px="lg" py={4}>
+          <Text size="xs" c="dimmed">Показано {n(shown)} из {n(total)}</Text>
+          <Button size="compact-xs" variant="subtle" onClick={() => setPages((p) => p + 1)}>Показать ещё</Button>
+        </Group>
+      )}
+    </>
+  );
+}
+
+function errorText(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
 }
 
 /**
@@ -146,12 +179,12 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
   const queryClient = useQueryClient();
   const grouped = params.group === 'element';
   const url = source.list(params);
-  const page = useApi<AnyPage | ElementGroupPage>(['clash-list', url], url);
+  const page = useApi<AnyPage | ElementGroupPage>(['clash-list', url], url, { keepPrevious: true });
   const groups = grouped && page.data && 'groups' in page.data ? page.data : null;
   const flat = !grouped && page.data && !('groups' in page.data) ? page.data : null;
   const rows = useMemo(() => items(flat), [flat]);
 
-  const [selected, setSelected] = useState<Map<string, string | undefined>>(new Map());
+  const [selected, setSelected] = useState<Map<string, Picked>>(new Map());
   const [byFilter, setByFilter] = useState(false);
   const [groupIds, setGroupIds] = useState<Map<string, ListItem[]>>(new Map());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -159,22 +192,27 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
   const [choice, setChoice] = useState<BulkChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [conflict, setConflict] = useState<{ error: string; count: number } | null>(null);
-  const [refused, setRefused] = useState<BulkRefusal[]>([]);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   useEffect(() => onItems?.(rows), [rows, onItems]);
 
-  // Новый фильтр — новое выделение: выделенное по старому фильтру легко изменить, не видя его.
-  const filterKey = JSON.stringify({ ...params, page: 0 });
+  // Новый список — новое выделение: выделенное по старому фильтру легко изменить, не видя его. Ключ — сам запрос списка без
+  // страницы: в нём и фильтры панели, и добавки страницы (проверка, элемент, «новые для меня», проект, часть).
+  const resetKey = JSON.stringify([source.list({ ...params, page: 1 }), source.partId ?? null, source.my ?? false]);
   useEffect(() => {
     setSelected(new Map());
     setByFilter(false);
     setExpanded(new Set());
     setGroupIds(new Map());
-  }, [filterKey]);
+  }, [resetKey]);
+  // Диапазон Shift — в пределах одной страницы.
+  useEffect(() => setLast(null), [url]);
 
   const total = groups ? groups.collisions : flat?.total ?? 0;
   const count = byFilter ? total : selected.size;
   const filterTotal = source.partId && !grouped ? total : null;
+
+  const pick = (item: ListItem): Picked => ({ partId: item.partId ?? source.partId, partName: item.my?.partName });
 
   const toggle = (list: ListItem[], index: number, e: MouseEvent) => {
     const item = list[index];
@@ -184,7 +222,7 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
       const on = !next.has(item.row.id);
       const range = e.shiftKey && last !== null && list === rows ? list.slice(Math.min(last, index), Math.max(last, index) + 1) : [item];
       for (const r of range) {
-        if (on) next.set(r.row.id, r.partId ?? source.partId);
+        if (on) next.set(r.row.id, pick(r));
         else next.delete(r.row.id);
       }
       return next;
@@ -194,6 +232,18 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
 
   const elementKey = (g: ElementGroup) => `${g.model}:${g.uniqueId}`;
   const elementUrl = (g: ElementGroup) => withQuery(source.list({ ...params, group: 'none', side: undefined, page: 1 }), { element: elementKey(g), group: null, side: null });
+
+  /** Все коллизии группы — страницами по наибольшему размеру сервера, не больше предела массового действия. */
+  const loadGroup = async (g: ElementGroup): Promise<ListItem[]> => {
+    const want = Math.min(g.count, BulkLimit);
+    const all: ListItem[] = [];
+    for (let p = 1; all.length < want; p++) {
+      const batch = items(await apiFetch<AnyPage>(withQuery(elementUrl(g), { pageSize: String(MaxPageSize), page: String(p) })));
+      all.push(...batch);
+      if (batch.length < MaxPageSize) break;
+    }
+    return all.slice(0, want);
+  };
 
   const toggleGroup = async (g: ElementGroup) => {
     const key = elementKey(g);
@@ -207,16 +257,16 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
       return;
     }
     try {
-      const list = known ?? items(await apiFetch<AnyPage>(withQuery(elementUrl(g), { pageSize: String(BulkLimit), page: '1' })));
+      const list = known ?? await loadGroup(g);
       setGroupIds((prev) => new Map(prev).set(key, list));
       setByFilter(false);
       setSelected((prev) => {
         const next = new Map(prev);
-        for (const i of list) next.set(i.row.id, i.partId ?? source.partId);
+        for (const i of list) next.set(i.row.id, pick(i));
         return next;
       });
     } catch (e) {
-      notifications.show({ color: 'red', message: e instanceof Error ? e.message : 'Не удалось загрузить коллизии группы' });
+      notifications.show({ color: 'red', message: errorText(e, 'Не удалось загрузить коллизии группы') });
     }
   };
 
@@ -225,31 +275,81 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
     setByFilter(false);
   };
 
+  const refresh = () => {
+    for (const key of ['clash-list', 'clash-collisions', 'clash-my']) void queryClient.invalidateQueries({ queryKey: [key] });
+  };
+
+  /** Итог: уведомление «Готово» и, если есть что сказать, полоса итога над списком. */
+  const report = (results: BulkResult[], failures: string[]) => {
+    const done = results.reduce((sum, r) => sum + r.done, 0);
+    const unchanged = results.reduce((sum, r) => sum + (r.unchanged ?? 0), 0);
+    const refused = results.flatMap((r) => r.refused);
+    setOutcome(refused.length > 0 || unchanged > 0 || failures.length > 0 ? { done, unchanged, refused, failures } : null);
+    notifications.show({
+      color: failures.length > 0 ? 'orange' : 'green',
+      message: [`Готово: ${n(done)}`, ...(unchanged > 0 ? [`без изменений: ${n(unchanged)}`] : []), ...failures].join('; '),
+    });
+  };
+
+  const runByFilter = async (base: Omit<BulkRequest, 'partId'>, expected?: number) => {
+    try {
+      const result = await apiFetch<BulkResult>('/api/clash/collisions/bulk', {
+        method: 'POST', json: { ...base, partId: source.partId!, filter: bulkFilterOf(params, source), expectedCount: expected ?? total },
+      });
+      setChoice(null);
+      setConflict(null);
+      clear();
+      report([result], []);
+      refresh();
+    } catch (e) {
+      const body = e instanceof ApiError ? (e.body as { count?: unknown } | null) : null;
+      if (e instanceof ApiError && e.status === 409 && typeof body?.count === 'number') setConflict({ error: e.message, count: body.count });
+      else notifications.show({ color: 'red', message: errorText(e, 'Не удалось изменить коллизии') });
+    }
+  };
+
+  /** Выделенные строки — запросом на каждую часть. Ошибка одной части не отменяет сделанное в других. */
+  const runByIds = async (base: Omit<BulkRequest, 'partId'>) => {
+    const byPart = new Map<string, { ids: string[]; name?: string }>();
+    for (const [id, picked] of selected) {
+      if (!picked.partId) continue;
+      const entry = byPart.get(picked.partId) ?? { ids: [], name: picked.partName };
+      entry.ids.push(id);
+      byPart.set(picked.partId, entry);
+    }
+    const results: BulkResult[] = [];
+    const failures: string[] = [];
+    const failedParts = new Set<string>();
+    for (const [partId, { ids, name }] of byPart) {
+      try {
+        results.push(await apiFetch<BulkResult>('/api/clash/collisions/bulk', { method: 'POST', json: { ...base, partId, ids } }));
+      } catch (e) {
+        failedParts.add(partId);
+        const message = errorText(e, 'Не удалось изменить коллизии');
+        failures.push(byPart.size > 1 ? `Часть «${name ?? partId}»: ${message}` : message);
+      }
+    }
+    if (results.length === 0) {
+      // Ничего не изменено — диалог остаётся с примечанием, «Продолжить» повторит то же.
+      notifications.show({ color: 'red', message: failures.join('; ') });
+      return;
+    }
+    // Изменённые части уходят из выделения: повтор не задвоит примечание. Не изменённые остаются — их можно повторить.
+    setChoice(null);
+    setConflict(null);
+    setByFilter(false);
+    setSelected((prev) => new Map([...prev].filter(([, picked]) => picked.partId !== undefined && failedParts.has(picked.partId))));
+    report(results, failures);
+    refresh();
+  };
+
   const run = async (note: string | undefined, expected?: number) => {
     if (!choice) return;
     setBusy(true);
     try {
       const base = { action: choice.action, assignee: choice.assignee, note };
-      let requests: BulkRequest[];
-      if (byFilter) requests = [{ ...base, partId: source.partId!, filter: bulkFilterOf(params, source), expectedCount: expected ?? total }];
-      else {
-        const byPart = new Map<string, string[]>();
-        for (const [id, part] of selected) if (part) byPart.set(part, [...(byPart.get(part) ?? []), id]);
-        requests = [...byPart].map(([partId, ids]) => ({ ...base, partId, ids }));
-      }
-      const results: BulkResult[] = [];
-      for (const request of requests) results.push(await apiFetch<BulkResult>('/api/clash/collisions/bulk', { method: 'POST', json: request }));
-      const done = results.reduce((sum, r) => sum + r.done, 0);
-      setRefused(results.flatMap((r) => r.refused));
-      setChoice(null);
-      setConflict(null);
-      clear();
-      notifications.show({ color: 'green', message: `Готово: ${n(done)}` });
-      for (const key of ['clash-list', 'clash-collisions', 'clash-my']) void queryClient.invalidateQueries({ queryKey: [key] });
-    } catch (e) {
-      const body = e instanceof ApiError ? (e.body as { count?: unknown } | null) : null;
-      if (e instanceof ApiError && e.status === 409 && typeof body?.count === 'number') setConflict({ error: e.message, count: body.count });
-      else notifications.show({ color: 'red', message: e instanceof Error ? e.message : 'Не удалось изменить коллизии' });
+      if (byFilter) await runByFilter(base, expected);
+      else await runByIds(base);
     } finally {
       setBusy(false);
     }
@@ -262,6 +362,11 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
 
   const size = pageSizeOf(url);
   const pages = Math.max(1, Math.ceil((groups ? groups.groups : flat?.total ?? 0) / size));
+  const summary = outcome && [
+    `Готово: ${n(outcome.done)}`,
+    ...(outcome.unchanged > 0 ? [`без изменений: ${n(outcome.unchanged)}`] : []),
+    ...(outcome.refused.length > 0 ? [`не изменены: ${n(outcome.refused.length)}`] : []),
+  ].join(' · ');
 
   return (
     <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
@@ -269,13 +374,15 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
         <SelectionBar count={count} filterTotal={filterTotal} byFilter={byFilter} canEdit={canEdit} onAllByFilter={() => setByFilter(true)}
           onClear={clear} onAction={(c) => { setConflict(null); setChoice(c); }} />
       )}
-      {refused.length > 0 && (
+      {outcome && (
         <Stack gap={0} px="xs" py={4} bg="var(--mantine-color-orange-light)">
           <Group justify="space-between">
-            <Text size="xs" fw={600}>Не изменены: {n(refused.length)}</Text>
-            <CloseButton size="xs" aria-label="Скрыть отказы" onClick={() => setRefused([])} />
+            <Text size="xs" fw={600}>{summary}</Text>
+            <CloseButton size="xs" aria-label="Скрыть итог" onClick={() => setOutcome(null)} />
           </Group>
-          {refused.map((r) => <Text key={r.number} size="xs">№{r.number} — {r.reason}</Text>)}
+          {outcome.failures.map((f) => <Text key={f} size="xs" c="red">{f}</Text>)}
+          {outcome.refused.slice(0, ShownRefusals).map((r) => <Text key={r.number} size="xs">№{r.number} — {r.reason}</Text>)}
+          {outcome.refused.length > ShownRefusals && <Text size="xs" c="dimmed">ещё {n(outcome.refused.length - ShownRefusals)}</Text>}
         </Stack>
       )}
       <ScrollArea style={{ flex: 1 }} type="auto">
@@ -301,7 +408,7 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
                   </Group>
                 </UnstyledButton>
               </Group>
-              {open && <GroupRows url={elementUrl(g)} render={renderRows} />}
+              {open && <GroupRows url={elementUrl(g)} total={g.count} render={renderRows} />}
             </Stack>
           );
         })}

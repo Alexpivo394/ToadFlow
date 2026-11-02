@@ -1,7 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { Failure, renderUi } from '../../test/renderApp';
-import { CollisionList, type ListSource } from './CollisionList';
+import { bulkFilterOf, CollisionList, type ListSource } from './CollisionList';
 import { toQuery, type ListParams } from './useListParams';
 
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
@@ -55,7 +56,7 @@ describe('CollisionList', () => {
 
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить группу ID 2001' }));
     expect(await screen.findByText('Выделено 2')).toBeTruthy();
-    const ids = calls().map(([url]) => new URL(url, 'http://x').searchParams).find((p) => p.get('pageSize') === '5000');
+    const ids = calls().map(([url]) => new URL(url, 'http://x').searchParams).find((p) => p.has('element') && p.get('pageSize') === '200');
     expect(ids?.get('element')).toBe('m2:ub1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Беру' }));
@@ -129,5 +130,170 @@ describe('CollisionList', () => {
 
     await waitFor(() => expect(bulkBodies()).toHaveLength(1));
     expect(bulkBodies()[0]).toMatchObject({ action: 'Fake', note: 'Отверстие есть в КР', ids: ['c1'] });
+  });
+});
+
+const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => collision(from + i));
+const searchOf = (url: string) => new URL(url, 'http://x').searchParams;
+
+function Harness({ initial, sources }: { initial: ListParams; sources: ListSource[] }) {
+  const [params, setParams] = useState(initial);
+  const [which, setWhich] = useState(0);
+  return (
+    <>
+      <button type="button" onClick={() => setWhich(1)}>другой источник</button>
+      <CollisionList source={sources[which]} params={params} selectedId={null} onSelect={() => {}} bulk
+        onParams={(patch) => setParams((p) => ({ ...p, ...patch }))} />
+    </>
+  );
+}
+
+const myRow = (n: number, partId: string, partName: string) => ({
+  collision: collision(n), partId, partName, object: null, part: null, mineToFix: true, takenBy: null, takenAt: null, unseen: false,
+});
+
+describe('CollisionList after review', () => {
+  it('List_GroupCheckbox_PagesBy200UntilGroupCount', async () => {
+    list({ ...base, group: 'element', side: 'ОВК' }, {
+      '/api/clash/parts/p1/collisions': (url: string) => {
+        const q = searchOf(url);
+        if (!q.has('element')) return { groups: 1, collisions: 450, items: [group(1, 450)] };
+        const page = Number(q.get('page'));
+        const size = Number(q.get('pageSize'));
+        return { total: 450, items: range((page - 1) * size + 1, Math.max(0, Math.min(size, 450 - (page - 1) * size))) };
+      },
+    });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить группу ID 2001' }));
+    expect(await screen.findByText('Выделено 450')).toBeTruthy();
+    const pages = calls().map(([url]) => searchOf(url)).filter((p) => p.has('element'));
+    expect(pages.map((p) => p.get('pageSize'))).toEqual(['200', '200', '200']);
+    expect(pages.map((p) => p.get('page'))).toEqual(['1', '2', '3']);
+  });
+
+  it('List_ExpandedGroup_ShowMore', async () => {
+    list({ ...base, group: 'element', side: 'ОВК' }, {
+      '/api/clash/parts/p1/collisions': (url: string) => {
+        const q = searchOf(url);
+        if (!q.has('element')) return { groups: 1, collisions: 60, items: [group(1, 60)] };
+        return q.get('page') === '2' ? { total: 60, items: range(51, 10) } : { total: 60, items: range(1, 50) };
+      },
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Группа ID 2001 — 60' }));
+    expect(await screen.findByText('Показано 50 из 60')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }));
+    expect(await screen.findByRole('button', { name: 'Коллизия 60' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Показать ещё' })).toBeNull();
+  });
+
+  it('List_SourceChange_ResetsSelection', async () => {
+    const other: ListSource = { ...source, list: (p) => `${source.list(p)}&check=k` };
+    renderUi(<Harness initial={base} sources={[source, other]} />, flat);
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    expect(screen.getByText('Выделено 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'другой источник' }));
+    await waitFor(() => expect(screen.queryByText('Выделено 1')).toBeNull());
+  });
+
+  it('List_ShiftRange_NotAcrossPages', async () => {
+    renderUi(<Harness initial={base} sources={[source]} />, {
+      '/api/clash/parts/p1/collisions': (url: string) =>
+        searchOf(url).get('page') === '2' ? { total: 120, items: [collision(3), collision(4)] } : { total: 120, items: [collision(1), collision(2)] },
+    });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    fireEvent.click(screen.getByRole('button', { name: '→' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №4' }), { shiftKey: true });
+    expect(await screen.findByText('Выделено 2')).toBeTruthy();
+  });
+
+  it('List_PageChange_KeepsPreviousRowsWhileLoading', async () => {
+    renderUi(<Harness initial={base} sources={[source]} />, flat);
+    await screen.findByRole('button', { name: 'Коллизия 1' });
+    const real = fetch;
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) =>
+      searchOf(url).get('page') === '2' ? new Promise(() => {}) : real(url, init)));
+
+    fireEvent.click(screen.getByRole('button', { name: '→' }));
+    await waitFor(() => expect((fetch as unknown as FetchMock).mock.calls.some(([url]) => searchOf(url).get('page') === '2')).toBe(true));
+    expect(screen.getByRole('button', { name: 'Коллизия 1' })).toBeTruthy();
+  });
+
+  it('List_AllByFilter_OverLimit_Disabled', async () => {
+    list(base, { '/api/clash/parts/p1/collisions': { total: 6000, items: [collision(1)] } });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    const button = screen.getByRole('button', { name: /больше 5\s000 — сузьте фильтр/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it('List_ManyRefusals_ShowsFirst20', async () => {
+    const refused = Array.from({ length: 25 }, (_, i) => ({ number: 100 + i, reason: 'нельзя' }));
+    list(base, { ...flat, 'POST /api/clash/collisions/bulk': { done: 0, refused } });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Исправлены' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+
+    expect(await screen.findByText('№119 — нельзя')).toBeTruthy();
+    expect(screen.queryByText('№120 — нельзя')).toBeNull();
+    expect(screen.getByText('ещё 5')).toBeTruthy();
+  });
+
+  it('List_BulkUnchanged_Shown', async () => {
+    list(base, { ...flat, 'POST /api/clash/collisions/bulk': { done: 1, refused: [], unchanged: 1 } });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выделить №2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Беру' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+
+    expect(await screen.findByText(/без изменений: 1/)).toBeTruthy();
+  });
+
+  it('List_MyBulk_PartFails_KeepsOthersDone', async () => {
+    const my: ListSource = { list: (p) => `/api/clash/my?${toQuery(p)}&pageSize=50`, my: true };
+    renderUi(<CollisionList source={my} params={base} selectedId={null} onSelect={() => {}} bulk />, {
+      '/api/clash/my': { total: 2, items: [myRow(1, 'p1', 'Корпус 1'), myRow(2, 'p2', 'Корпус 2')] },
+      'POST /api/clash/collisions/bulk': (_url: string, init?: RequestInit) =>
+        JSON.parse(String(init!.body)).partId === 'p1' ? new Failure(500, 'сбой сервера') : { done: 1, refused: [] },
+    });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выделить №2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Беру' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Продолжить' }));
+
+    expect(await screen.findByText('Часть «Корпус 1»: сбой сервера')).toBeTruthy();
+    expect(screen.getByText(/Готово: 1/)).toBeTruthy();
+    expect(screen.getByText('Выделено 1')).toBeTruthy(); // осталась только не изменённая часть
+    expect(bulkBodies().map((b) => b.partId)).toEqual(['p1', 'p2']);
+  });
+});
+
+describe('bulkFilterOf', () => {
+  it('BulkFilter_My_NewForMe_EqualsListQuery', () => {
+    const my: ListSource = {
+      list: (p) => {
+        const q = new URLSearchParams(toQuery(p));
+        q.set('since', 'unseen');
+        q.set('scope', 'all');
+        q.set('partId', 'p1');
+        return `/api/clash/my?${q}&pageSize=50`;
+      },
+      partId: 'p1',
+      my: true,
+    };
+    const filter = bulkFilterOf({ ...base, assignee: 'mine', q: '12' }, my);
+    expect(filter).toEqual({ my: true, scope: 'all', since: 'unseen', status: 'New,Active,Returned,FixedPending,Unchecked', q: '12' });
+  });
+
+  it('BulkFilter_Approved_HasCheckAndElement', () => {
+    const approved: ListSource = { list: (p) => `/api/clash/parts/p1/approved/collisions?${toQuery(p)}&check=k&element=m2%3Aub1&pageSize=50`, partId: 'p1' };
+    expect(bulkFilterOf({ ...base, level: 'Этаж 1', stuckDays: 7 }, approved)).toEqual({
+      status: 'New,Active,Returned,FixedPending,Unchecked', level: 'Этаж 1', stuckDays: 7, check: 'k', element: 'm2:ub1',
+    });
   });
 });

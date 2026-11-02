@@ -1,15 +1,19 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { apiFetch } from './client';
 
-/** GET-запрос с ключом: первый элемент ключа — сущность, по ней приходят живые обновления. */
-export function useApi<T>(key: unknown[], path: string | null, options: { refetchInterval?: number } = {}) {
+/**
+ * GET-запрос с ключом: первый элемент ключа — сущность, по ней приходят живые обновления. `keepPrevious` — пока грузится
+ * новый ключ (другая страница, фильтр), показывать прежние данные, а не пустоту.
+ */
+export function useApi<T>(key: unknown[], path: string | null, options: { refetchInterval?: number; keepPrevious?: boolean } = {}) {
   return useQuery({
     queryKey: key,
     // 204 — «ничего нет»: TanStack Query не принимает undefined, поэтому null.
     queryFn: async () => ((await apiFetch<T>(path!)) ?? null) as T,
     enabled: path !== null,
     refetchInterval: options.refetchInterval,
+    placeholderData: options.keepPrevious ? keepPreviousData : undefined,
   });
 }
 

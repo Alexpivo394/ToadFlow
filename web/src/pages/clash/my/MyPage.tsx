@@ -66,8 +66,7 @@ export function MyPage() {
     list: (p) => `/api/clash/my?${extra(toQuery(p))}&pageSize=${PageSize}`,
     partId: partId ?? undefined,
     my: true,
-    filterExtra: { ...(fresh ? { since: 'unseen', scope: 'all' } : {}), ...(project && project !== NoProject ? { object: project } : {}) },
-  }), [extra, partId, fresh, project]);
+  }), [extra, partId]);
   const facets = useApi<CollisionFacets>(['clash-my', 'facets', extra(toQuery(list))], `/api/clash/my/facets?${extra(toQuery(list))}`);
 
   const index = items.findIndex((i) => i.row.id === collisionId);

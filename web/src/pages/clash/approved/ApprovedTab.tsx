@@ -142,8 +142,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
   const source = useMemo<ListSource>(() => ({
     list: (p) => `/api/clash/parts/${partId}/approved/collisions?${extra(toQuery(p))}&pageSize=${PageSize}`,
     partId,
-    filterExtra: { ...(check ? { check } : {}), ...(element ? { element } : {}) },
-  }), [partId, extra, check, element]);
+  }), [partId, extra]);
   const facets = useApi<CollisionFacets>(['clash-list', partId, 'facets', extra(toQuery(list))],
     `/api/clash/parts/${partId}/approved/facets?${extra(toQuery(list))}`);
 

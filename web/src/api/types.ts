@@ -1373,6 +1373,8 @@ export interface BulkRefusal {
 export interface BulkResult {
   done: number;
   refused: BulkRefusal[];
+  /** Ничего не поменялось — уже было так (например, «кто правит» уже эта сторона). Старый сервер поля не шлёт. */
+  unchanged?: number;
 }
 
 export interface RunCompareRow {

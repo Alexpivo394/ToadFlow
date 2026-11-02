@@ -3,6 +3,9 @@ import type { BulkChoice } from './BulkDialog';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 
+/** Наибольшее число коллизий в одном массовом действии — как на сервере (BulkEndpoints.MaxCount). */
+export const BulkLimit = 5000;
+
 export const bulkChoices = {
   take: { action: 'Take', label: 'Беру' },
   fake: { action: 'Fake', label: 'Фиктивные' },
@@ -16,7 +19,7 @@ export const bulkChoices = {
 
 /**
  * Полоса выделения: «Выделено N · Выделить все по фильтру (M) · Снять» и действия. «Все по фильтру» есть, когда фильтр
- * шире выделения и сервер может применить действие по фильтру.
+ * шире выделения и сервер может применить действие по фильтру; больше предела сервера — кнопка выключена с подсказкой сузить.
  */
 export function SelectionBar({ count, filterTotal, byFilter, canEdit, onAllByFilter, onClear, onAction }: {
   count: number;
@@ -31,9 +34,11 @@ export function SelectionBar({ count, filterTotal, byFilter, canEdit, onAllByFil
   return (
     <Group gap="xs" px="xs" py={4} wrap="wrap" bg="var(--mantine-primary-color-light)" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
       <Text size="xs" fw={600}>Выделено {n(count)}</Text>
-      {!byFilter && filterTotal !== null && filterTotal > count && (
+      {!byFilter && filterTotal !== null && filterTotal > count && (filterTotal > BulkLimit ? (
+        <Button size="compact-xs" variant="subtle" disabled>Все по фильтру: больше {n(BulkLimit)} — сузьте фильтр</Button>
+      ) : (
         <Button size="compact-xs" variant="subtle" onClick={onAllByFilter}>Выделить все по фильтру ({n(filterTotal)})</Button>
-      )}
+      ))}
       <Button size="compact-xs" variant="subtle" color="gray" onClick={onClear}>Снять</Button>
       {canEdit && (
         <>
