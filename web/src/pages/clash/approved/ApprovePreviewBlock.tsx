@@ -20,12 +20,27 @@ export function pairsWord(count: number): string {
 /**
  * «Если утвердить» по последнему прогону черновика: сколько коллизий уйдёт из-за правил, появится и останется — по парам
  * разделов, с «≈», потому что прогон мог разойтись с реальными выгрузками. Ниже — свёрнутый список отличий настройки.
+ * `dirty` — в редакторе есть несохранённые правки: числа их не учитывают, «Прогнать черновик» сначала сохраняет.
  */
-export function ApprovePreviewBlock({ partId }: { partId: string }) {
+export function ApprovePreviewBlock({ partId, dirty = false, onSave }: { partId: string; dirty?: boolean; onSave?: () => Promise<void> }) {
   const preview = useApi<ApprovePreview>(['clash-parts', partId, 'approve-preview'], `/api/clash/parts/${partId}/approve/preview`);
   const rerun = useApiMutation<void>('POST', () => `/api/clash/parts/${partId}/draft/run`, { invalidate: ['clash-parts'] });
   const [changesOpen, setChangesOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const data = preview.data;
+  const runDraft = async () => {
+    if (dirty && onSave) {
+      setSaving(true);
+      try {
+        await onSave();
+      } catch {
+        return; // сохранение само показало ошибку; прогон старой версии не нужен
+      } finally {
+        setSaving(false);
+      }
+    }
+    rerun.mutate();
+  };
   if (!data) return null;
 
   const pairs = [...data.pairs].sort((a, b) => b.gone + b.new - (a.gone + a.new));
@@ -40,11 +55,11 @@ export function ApprovePreviewBlock({ partId }: { partId: string }) {
         <Text size="sm" c="dimmed">Черновик ещё не прогонялся</Text>
       ) : (
         <>
-          {data.stale && (
+          {(dirty || data.stale) && (
             <Alert color="yellow" p="xs">
               <Group justify="space-between" gap="xs">
-                <Text size="sm">Черновик изменён после прогона — числа устарели</Text>
-                <Button size="compact-sm" variant="light" loading={rerun.isPending} onClick={() => rerun.mutate()}>Прогнать черновик</Button>
+                <Text size="sm">{dirty ? 'Есть несохранённые правки — числа по прогону до них' : 'Черновик изменён после прогона — числа устарели'}</Text>
+                <Button size="compact-sm" variant="light" loading={saving || rerun.isPending} onClick={() => void runDraft()}>Прогнать черновик</Button>
               </Group>
             </Alert>
           )}

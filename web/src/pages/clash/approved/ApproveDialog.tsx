@@ -14,7 +14,8 @@ import { ApprovePreviewBlock } from './ApprovePreviewBlock';
  * подсвечивает; без единого такого расписания вместо флажков — ссылка на создание.
  */
 function ScheduleChoice({ schedules, value, onChange }: { schedules: PartScheduleView[]; value: string[]; onChange: (ids: string[]) => void }) {
-  const none = !schedules.some((s) => s.selected);
+  // Подсветка — по текущему выбору в диалоге, не по сохранённому на сервере.
+  const none = !schedules.some((s) => value.includes(s.id));
   return (
     <Stack gap={6} p={none ? 'xs' : 0} bg={none ? 'var(--mantine-color-yellow-light)' : undefined} style={{ borderRadius: 6 }}>
       <Text fw={700} size="sm">Регулярный прогон</Text>
@@ -84,7 +85,7 @@ export function ApproveDialog({ partId, nextVersion, dirty, onSave, onClose }: {
         </Text>
         {dirty && <Text size="sm" c="orange">Несохранённые правки будут сохранены перед утверждением.</Text>}
         <Divider />
-        <ApprovePreviewBlock partId={partId} />
+        <ApprovePreviewBlock partId={partId} dirty={dirty} onSave={onSave} />
         {schedules.data && chosen && (
           <>
             <Divider />

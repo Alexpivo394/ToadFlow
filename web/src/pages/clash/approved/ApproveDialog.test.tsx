@@ -1,7 +1,9 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { partResponses } from '../../../test/clashPart';
-import { Failure, renderApp } from '../../../test/renderApp';
+import { Failure, renderApp, renderUi } from '../../../test/renderApp';
+import { ApproveDialog } from './ApproveDialog';
+import { ApprovePreviewBlock } from './ApprovePreviewBlock';
 
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const approvals = () => (fetch as unknown as FetchMock).mock.calls.filter(([url, init]) => url === '/api/clash/parts/p1/approve' && init?.method === 'POST');
@@ -117,3 +119,31 @@ describe('Approve dialog preview and schedules', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Approve dialog after review', () => {
+  it('ApproveDialog_NoScheduleHighlight_FollowsChoice', async () => {
+    renderUi(<ApproveDialog partId="p1" nextVersion={2} dirty={false} onClose={() => {}} />, {
+      '/api/clash/parts/p1/schedules': [schedule('s1', 'Ночная', true)],
+      '/api/clash/parts/p1/approve/preview': preview(),
+    });
+    const hint = 'У части нет расписания — после утверждения её никто не прогонит';
+
+    fireEvent.click(await screen.findByLabelText(/Ночная/));
+    expect(await screen.findByText(hint)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/Ночная/));
+    await waitFor(() => expect(screen.queryByText(hint)).toBeNull());
+  });
+
+  it('ApprovePreview_Dirty_WarnsAndSavesBeforeRun', async () => {
+    const order: string[] = [];
+    const save = vi.fn(async () => { order.push('save'); });
+    renderUi(<ApprovePreviewBlock partId="p1" dirty onSave={save} />, {
+      '/api/clash/parts/p1/approve/preview': preview(),
+      'POST /api/clash/parts/p1/draft/run': () => { order.push('run'); return null; },
+    });
+
+    expect(await screen.findByText('Есть несохранённые правки — числа по прогону до них')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Прогнать черновик' }));
+    await waitFor(() => expect(order).toEqual(['save', 'run']));
+  });
+});
