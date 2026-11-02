@@ -125,6 +125,7 @@ describe('SchedulesPage for clash extraction', () => {
     expect(put).toBeTruthy();
     const body = JSON.parse(String(put![1]!.body));
     expect(body.moduleKind).toBe('clash-extract');
+    expect(body.expectedUpdatedAt).toBe(clash.updatedAt); // защита от затирания чужой правки — 409 на сервере
     expect(body.moduleSettings).toEqual({ viewName: 'Navisworks', worksetKeyword: '#Связи', parts: [] });
     expect(body.outputFolderTemplate).toBe('');
     expect(body.selection.models[0].rvt).toBe(true);

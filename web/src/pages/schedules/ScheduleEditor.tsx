@@ -141,7 +141,8 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
     setSaving(true);
     setErrors(null);
     try {
-      const body = { ...form, selection: forModule(selected, form.moduleKind) };
+      // expectedUpdatedAt: если расписание успели изменить (например, часть добавили при утверждении), сервер ответит 409, а не затрёт правку.
+      const body = { ...form, selection: forModule(selected, form.moduleKind), expectedUpdatedAt: schedule?.updatedAt };
       const saved = schedule
         ? await apiFetch<ScheduleView>(`/api/schedules/${schedule.id}`, { method: 'PUT', json: body })
         : await apiFetch<ScheduleView>('/api/schedules', { method: 'POST', json: body });

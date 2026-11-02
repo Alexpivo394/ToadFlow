@@ -1396,7 +1396,7 @@ export interface RunCompare {
 
 export type ConfigChangeKind =
   | 'SetAdded' | 'SetRemoved' | 'SetRenamed' | 'SetConditions' | 'CellEnabled' | 'CellDisabled' | 'CellTolerance'
-  | 'ExclusionAdded' | 'ExclusionRemoved' | 'GroupAdded' | 'GroupRemoved' | 'GroupSource';
+  | 'ExclusionAdded' | 'ExclusionRemoved' | 'GroupAdded' | 'GroupRemoved' | 'GroupSource' | 'GroupRenamed';
 
 export interface ConfigChange {
   kind: ConfigChangeKind;
