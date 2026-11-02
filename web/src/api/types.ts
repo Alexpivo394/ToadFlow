@@ -747,6 +747,8 @@ export interface ClashPartSummary {
   /** Последняя утверждённая версия; null — часть не утверждалась. */
   approvedVersion: number | null;
   lastApproved: ApprovedRunSummary | null;
+  /** Расписания регулярного прогона части. */
+  scheduleNames?: string[] | null;
 }
 
 export interface ApprovedVersionView {
@@ -951,7 +953,7 @@ export interface HitPage {
 /** Элемент сцены просмотрщика; габарит — мм относительно точки коллизии. */
 export interface ViewerElementView {
   index: number;
-  role: 'A' | 'B' | 'context';
+  role: 'A' | 'B' | 'set' | 'context';
   modelId: string;
   modelName: string;
   discipline: string;
@@ -978,6 +980,8 @@ export interface ViewerSceneView {
   elements: ViewerElementView[];
   meshTriangles: number;
   truncated: boolean;
+  /** Сцена набора: сколько элементов в наборе; у сцены коллизии — 0. */
+  total?: number;
 }
 
 export interface ViewerParameter {
@@ -1071,6 +1075,8 @@ export interface FeedEntry {
   depthMm: number | null;
   /** Автор записи — для карточки коллеги; null — система. */
   userId?: string | null;
+  /** Запись массового действия: одна на все коллизии действия. */
+  bulkId?: string | null;
 }
 
 export interface CollisionCard {
@@ -1108,6 +1114,8 @@ export interface MyCollisionRow {
   mineToFix: boolean;
   takenBy: string | null;
   takenAt: string | null;
+  /** Открыта и ещё не открывалась мной. */
+  unseen?: boolean;
 }
 
 export interface MyCollisionPage {
@@ -1121,6 +1129,8 @@ export interface MySummary {
   takenByOther: number;
   newSinceVisit: number;
   previousSeenAt: string | null;
+  /** Открытые коллизии моих разделов, которые я ещё не открывал. */
+  newForMe?: number;
 }
 
 /** Контакты коллеги — карточка по имени в ленте коллизии. */
@@ -1200,6 +1210,8 @@ export interface ReportRunView {
   startedBy: string | null;
   searchSeconds: number;
   summary?: ApprovedRunSummary | null;
+  /** У прогона есть счётчики пар — его можно сравнить с другим. */
+  comparable?: boolean;
 }
 
 export interface ReportModelView {
@@ -1284,4 +1296,138 @@ export interface ReportArchiveView {
   sizeBytes: number | null;
   expiresAt: string | null;
   error: string | null;
+}
+
+// ---- Этап 8: фасеты, группы по элементу, массовые действия, сравнение прогонов, предпросмотр утверждения, расписания части ----
+
+export interface ValueCount {
+  value: string;
+  count: number;
+}
+
+/** Варианты фильтров списка с числами: каждый считается по текущему фильтру без собственного поля. */
+export interface CollisionFacets {
+  pairs: ValueCount[];
+  levels: ValueCount[];
+  models: ValueCount[];
+  categories: ValueCount[];
+}
+
+/** Коллизии одного элемента своей стороны. */
+export interface ElementGroup {
+  model: string;
+  modelName: string;
+  uniqueId: string;
+  elementId: number;
+  discipline: string;
+  category: string;
+  family: string | null;
+  type: string | null;
+  level: string | null;
+  count: number;
+  maxDepthMm: number;
+}
+
+export interface ElementGroupPage {
+  groups: number;
+  /** Коллизий в группах без повторов. */
+  collisions: number;
+  items: ElementGroup[];
+}
+
+export type BulkAction = 'Take' | 'Assignee' | 'Fake' | 'FixedPending' | 'Note' | 'Seen';
+
+export interface BulkFilter {
+  status?: string;
+  check?: string;
+  discipline?: string;
+  pair?: string;
+  assignee?: CollisionAssignee;
+  level?: string;
+  model?: string;
+  q?: string;
+  stuckDays?: number;
+  element?: string;
+  category?: string;
+  my?: boolean;
+  scope?: string;
+  object?: string;
+  since?: string;
+}
+
+export interface BulkRequest {
+  partId: string;
+  action: BulkAction;
+  note?: string;
+  assignee?: CollisionAssignee;
+  ids?: string[];
+  filter?: BulkFilter;
+  expectedCount?: number;
+}
+
+export interface BulkRefusal {
+  number: number;
+  reason: string;
+}
+
+export interface BulkResult {
+  done: number;
+  refused: BulkRefusal[];
+}
+
+export interface RunCompareRow {
+  pair: string;
+  foundA: number;
+  foundB: number;
+  new: number;
+  returned: number;
+  fixed: number;
+  goneByRules: number;
+}
+
+/** runA — прогон раньше по времени. */
+export interface RunCompare {
+  runA: string;
+  runB: string;
+  rows: RunCompareRow[];
+}
+
+export type ConfigChangeKind =
+  | 'SetAdded' | 'SetRemoved' | 'SetRenamed' | 'SetConditions' | 'CellEnabled' | 'CellDisabled' | 'CellTolerance'
+  | 'ExclusionAdded' | 'ExclusionRemoved' | 'GroupAdded' | 'GroupRemoved' | 'GroupSource';
+
+export interface ConfigChange {
+  kind: ConfigChangeKind;
+  text: string;
+}
+
+export interface ApprovePreviewPair {
+  pair: string;
+  gone: number;
+  new: number;
+  same: number;
+}
+
+/** Что будет при утверждении — по последнему прогону черновика. */
+export interface ApprovePreview {
+  draftRunAt: string | null;
+  stale: boolean;
+  neverRun: boolean;
+  firstApproval: boolean;
+  pairs: ApprovePreviewPair[];
+  changes: ConfigChange[];
+}
+
+/** Расписание выгрузки для коллизий глазами части. */
+export interface PartScheduleView {
+  id: string;
+  name: string;
+  selected: boolean;
+  isEnabled: boolean;
+  recurrenceKind: ScheduleView['recurrenceKind'];
+  daysOfWeekMask: number;
+  timeOfDay: string;
+  intervalHours: number | null;
+  onceAt: string | null;
+  nextRunAt: string | null;
 }
