@@ -29,6 +29,7 @@ public sealed record ViewerElementView(
     bool Mesh);
 
 /// <param name="X">Точка коллизии в общей системе, мм; начало координат сцены.</param>
+/// <param name="Total">Сцена набора: сколько элементов в наборе; у сцены коллизии — 0.</param>
 public sealed record ViewerSceneView(
     Guid RunId,
     int Number,
@@ -39,7 +40,8 @@ public sealed record ViewerSceneView(
     float DepthMm,
     IReadOnlyList<ViewerElementView> Elements,
     long MeshTriangles,
-    bool Truncated);
+    bool Truncated,
+    int Total = 0);
 
 public sealed record ViewerParameter(string Name, string? Text, double? Number);
 
@@ -95,29 +97,43 @@ public static class ViewerEndpoints
     {
         if (loaded.Error is { } error) return error;
         var (models, hit, selection, r) = (loaded.Models!, loaded.Hit!, loaded.Selection!, loaded.Radius);
+        var elements = Elements(models, selection.Picks, hit.X, hit.Y, hit.Z);
+        return Results.Ok(new ViewerSceneView(runId, number, hit.X, hit.Y, hit.Z, r, hit.DepthMm, elements, selection.MeshTriangles, selection.Truncated));
+    }
 
-        var elements = selection.Picks.Select((pick, i) =>
+    /// <summary>Элементы сцены в порядке выбора; габариты — мм относительно начала сцены.</summary>
+    /// <param name="x">Начало сцены в общей системе, мм.</param>
+    internal static List<ViewerElementView> Elements(IReadOnlyList<ViewerModel> models, IReadOnlyList<ViewerPick> picks, double x, double y, double z) =>
+        picks.Select((pick, i) =>
         {
             var model = models[pick.Model];
             var header = model.Index.Header;
             var entry = model.Index.Elements[pick.Element];
             var info = entry.Info;
             float[] Relative(System.Numerics.Vector3 v) =>
-                [(float)(header.OriginX + v.X - hit.X), (float)(header.OriginY + v.Y - hit.Y), (float)(header.OriginZ + v.Z - hit.Z)];
-            return new ViewerElementView(i, pick.Role switch { ViewerRole.A => "A", ViewerRole.B => "B", _ => "context" }, header.ModelKey, model.ModelName,
-                model.Discipline, info.UniqueId, info.ElementId, info.Category, info.Family, info.Type, info.Level, Relative(entry.Bounds.Min),
-                Relative(entry.Bounds.Max), entry.TriangleCount, pick.Mesh);
+                [(float)(header.OriginX + v.X - x), (float)(header.OriginY + v.Y - y), (float)(header.OriginZ + v.Z - z)];
+            var role = pick.Role switch { ViewerRole.A => "A", ViewerRole.B => "B", ViewerRole.Set => "set", _ => "context" };
+            return new ViewerElementView(i, role, header.ModelKey, model.ModelName, model.Discipline, info.UniqueId, info.ElementId, info.Category,
+                info.Family, info.Type, info.Level, Relative(entry.Bounds.Min), Relative(entry.Bounds.Max), entry.TriangleCount, pick.Mesh);
         }).ToList();
-        return Results.Ok(new ViewerSceneView(runId, number, hit.X, hit.Y, hit.Z, r, hit.DepthMm, elements, selection.MeshTriangles, selection.Truncated));
-    }
 
-    /// <summary>Сетки пишутся в ответ по одной: сцена в несколько сотен тысяч треугольников не собирается в памяти целиком.</summary>
     private static async Task<IResult> MeshesOf(Loaded loaded, HttpResponse response, CancellationToken ct)
     {
         if (loaded.Error is { } error) return error;
-        var (models, hit, selection) = (loaded.Models!, loaded.Hit!, loaded.Selection!);
+        await WriteMeshesAsync(loaded.Models!, loaded.Folders!, loaded.Selection!.Picks, loaded.Hit!.X, loaded.Hit.Y, loaded.Hit.Z, response, ct);
+        return Results.Empty;
+    }
 
-        var picks = selection.Picks.Select((pick, i) => (Pick: pick, Index: i)).Where(p => p.Pick.Mesh).ToList();
+    /// <summary>
+    ///     Сетки выбранных элементов с <see cref="ViewerPick.Mesh" /> в формате <see cref="ViewerMeshWriter" />. Пишутся в ответ по одной:
+    ///     сцена в несколько сотен тысяч треугольников не собирается в памяти целиком.
+    /// </summary>
+    /// <param name="folders">Папки слепков, по одной на модель из <paramref name="models" />.</param>
+    /// <param name="x">Начало сцены в общей системе, мм.</param>
+    internal static async Task WriteMeshesAsync(IReadOnlyList<ViewerModel> models, IReadOnlyList<string> folders, IReadOnlyList<ViewerPick> selected,
+        double x, double y, double z, HttpResponse response, CancellationToken ct)
+    {
+        var picks = selected.Select((pick, i) => (Pick: pick, Index: i)).Where(p => p.Pick.Mesh).ToList();
         response.ContentType = "application/octet-stream";
         await response.Body.WriteAsync(ViewerMeshWriter.Header(picks.Count), ct);
         var files = new Dictionary<int, FileStream>();
@@ -127,17 +143,15 @@ public static class ViewerEndpoints
             {
                 var model = models[pick.Model];
                 if (!files.TryGetValue(pick.Model, out var file))
-                    files[pick.Model] = file = File.OpenRead(Path.Combine(loaded.Folders![pick.Model], "model.tcg"));
+                    files[pick.Model] = file = File.OpenRead(Path.Combine(folders[pick.Model], "model.tcg"));
                 var mesh = ModelGeometryFile.ReadMesh(file, model.Index.Elements[pick.Element]);
-                await response.Body.WriteAsync(ViewerMeshWriter.Encode(index, mesh, model.Index.Header, hit.X, hit.Y, hit.Z), ct);
+                await response.Body.WriteAsync(ViewerMeshWriter.Encode(index, mesh, model.Index.Header, x, y, z), ct);
             }
         }
         finally
         {
             foreach (var file in files.Values) await file.DisposeAsync();
         }
-
-        return Results.Empty;
     }
 
     private static async Task<IResult> ElementAsync(Guid runId, string modelId, string uniqueId, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,

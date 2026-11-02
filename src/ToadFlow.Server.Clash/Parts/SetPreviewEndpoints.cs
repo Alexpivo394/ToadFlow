@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Alexpivo394.Revit.Clash.Rules;
+using ToadFlow.Server.Auth;
 
 namespace ToadFlow.Server.Clash.Parts;
 
@@ -21,6 +22,11 @@ public static class SetPreviewEndpoints
         api.MapPost("/clash/parts/{id:guid}/preview", PreviewAsync);
         api.MapPost("/clash/parts/{id:guid}/values", ValuesAsync);
         api.MapPost("/clash/parts/{id:guid}/unassigned", UnassignedAsync);
+
+        var sets = api.MapGroup("/clash/parts/{id:guid}/draft/sets").RequireAuthorization(Policies.Operator);
+        sets.MapPost("/scene", Viewer.SetScene.SceneAsync);
+        sets.MapPost("/meshes", Viewer.SetScene.MeshesAsync);
+        sets.MapPost("/why", Viewer.SetScene.WhyAsync);
     }
 
     private sealed record Body(ClashConfiguration Configuration, Guid? SetId, Guid? GroupId, PropertyRef? Property);

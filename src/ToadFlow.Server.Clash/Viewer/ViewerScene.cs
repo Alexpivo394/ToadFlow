@@ -12,6 +12,7 @@ public enum ViewerRole
 {
     A,
     B,
+    Set,
     Context
 }
 
