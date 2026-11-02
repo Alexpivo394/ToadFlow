@@ -21,7 +21,7 @@ public static class MyEndpoints
 
     /// <param name="sort">
     ///     <c>number</c> (по умолчанию) — по части и номеру, <c>depth</c> — глубже сначала, <c>new</c> — новые сначала, <c>level</c> — по
-    ///     уровню A, затем B.
+    ///     уровню снизу вверх, как в отчёте (<see cref="CollisionFilter.LevelOrderAsync" />).
     /// </param>
     /// <param name="group"><c>element</c> — страница групп по своим элементам (<see cref="ElementGroupPage" />): стороны — разделы пользователя.</param>
     private static async Task<IResult> ListAsync([AsParameters] MyFilter filter, string? sort, string? group, int? page, int? pageSize, HttpContext http,
@@ -31,8 +31,8 @@ public static class MyEndpoints
         var (disciplines, state) = await UserAsync(db, http.User.UserId(), ct);
         if (disciplines.Length == 0) return grouped ? Results.Ok(new ElementGroupPage(0, 0, [])) : Results.Ok(new MyCollisionPage(0, []));
         var parts = await MyCollisions.PartsAsync(db, ct);
-        filter = await ModelKeyAsync(db, filter, ct);
-        var query = MyCollisions.Query(db, disciplines, parts, filter, MyCollisions.Mark(state, time.GetUtcNow()), http.User.UserId());
+        var models = await ModelKeysAsync(db, filter.Model, ct);
+        var query = MyCollisions.Query(db, disciplines, parts, filter, MyCollisions.Mark(state, time.GetUtcNow()), http.User.UserId(), models);
         var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
         if (grouped) return Results.Ok(await ElementGroups.PageAsync(query, disciplines, page ?? 1, size, keys => NamesAsync(db, keys, ct), ct));
 
@@ -41,7 +41,8 @@ public static class MyEndpoints
         {
             "depth" => query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.PartId).ThenBy(c => c.Number),
             "new" => query.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.PartId).ThenBy(c => c.Number),
-            "level" => query.OrderBy(c => c.LevelA).ThenBy(c => c.LevelB).ThenBy(c => c.PartId).ThenBy(c => c.Number),
+            "level" => query.OrderBy(CollisionLevel.LevelPosition(await CollisionFilter.LevelOrderAsync(query, ct))).ThenBy(c => c.PartId)
+                .ThenBy(c => c.Number),
             _ => query.OrderBy(c => c.PartId).ThenBy(c => c.Number)
         };
         var rows = await ordered.Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
@@ -67,20 +68,26 @@ public static class MyEndpoints
         var (disciplines, state) = await UserAsync(db, http.User.UserId(), ct);
         if (disciplines.Length == 0) return Results.Ok(new CollisionFacets([], [], [], []));
         var parts = await MyCollisions.PartsAsync(db, ct);
-        filter = await ModelKeyAsync(db, filter, ct);
+        var models = await ModelKeysAsync(db, filter.Model, ct);
         var mark = MyCollisions.Mark(state, time.GetUtcNow());
-        IQueryable<ClashCollision> Without(MyFilter f) => MyCollisions.Query(db, disciplines, parts, f, mark, http.User.UserId());
+        IQueryable<ClashCollision> Without(MyFilter f) =>
+            MyCollisions.Query(db, disciplines, parts, f, mark, http.User.UserId(), f.Model is null ? null : models);
         return Results.Ok(await CollisionFilter.FacetsAsync(Without(filter with { Pair = null }), Without(filter with { Level = null }),
             Without(filter with { Model = null }), Without(filter with { Category = null }), keys => NamesAsync(db, keys, ct), ct));
     }
 
-    /// <summary>Фильтр модели принимает и имя (фасет отдаёт модели по имени): имя заменяется ключом.</summary>
-    internal static async Task<MyFilter> ModelKeyAsync(ToadFlowDb db, MyFilter filter, CancellationToken ct)
+    /// <summary>
+    ///     Ключи моделей фильтра: ключ (Id) — он сам; имя (фасет отдаёт модели по имени и сводит одноимённые) — все модели с этим
+    ///     именем, чтобы выбор фасета дал столько же коллизий, сколько фасет показал. Части и разделы ограничивает сам запрос «Моих».
+    /// </summary>
+    /// <returns>null — фильтра модели нет.</returns>
+    internal static async Task<IReadOnlyCollection<string>?> ModelKeysAsync(ToadFlowDb db, string? model, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(filter.Model) || Guid.TryParse(filter.Model, out _)) return filter;
-        var name = filter.Model.Trim();
-        var id = await db.Set<ClashModel>().AsNoTracking().Where(m => m.Name == name).Select(m => (Guid?)m.Id).FirstOrDefaultAsync(ct);
-        return id is { } key ? filter with { Model = key.ToString("N") } : filter;
+        if (string.IsNullOrWhiteSpace(model)) return null;
+        if (Guid.TryParse(model, out var id)) return [id.ToString("N")];
+        var name = model.Trim();
+        var ids = await db.Set<ClashModel>().AsNoTracking().Where(m => m.Name == name).Select(m => m.Id).ToListAsync(ct);
+        return ids.Count > 0 ? ids.Select(i => i.ToString("N")).ToList() : [name];
     }
 
     private static async Task<Dictionary<string, string>> NamesAsync(ToadFlowDb db, IReadOnlyList<string> keys, CancellationToken ct)

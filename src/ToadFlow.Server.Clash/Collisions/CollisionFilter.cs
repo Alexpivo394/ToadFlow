@@ -6,7 +6,7 @@ namespace ToadFlow.Server.Clash.Collisions;
 
 /// <summary>
 ///     Варианты фильтров списка с числами коллизий. Каждый фасет считается по текущему фильтру без собственного поля. Уровни и
-///     категории — по обеим сторонам, коллизия в значении считается один раз; модели — по имени.
+///     категории — по обеим сторонам, коллизия в значении считается один раз; модели — по имени. Уровни — снизу вверх по отметке, остальное — по числу.
 /// </summary>
 public sealed record CollisionFacets(
     IReadOnlyList<ValueCount> Pairs,
@@ -82,23 +82,29 @@ public sealed record CollisionFilter(
 
         if (!string.IsNullOrWhiteSpace(Model))
         {
-            var key = modelNames.FirstOrDefault(m => m.Value == Model).Key ?? Model;
-            query = query.Where(c => c.ModelA == key || c.ModelB == key);
+            // Фасет сводит одноимённые модели части в одну строку — имя выбирает их все.
+            var keys = modelNames.Where(m => m.Value == Model).Select(m => m.Key).ToArray();
+            query = ByModels(query, keys.Length > 0 ? keys : [Model]);
         }
 
         query = ByElement(query, Element);
         if (Category is { } category) query = query.Where(c => c.CategoryA == category || c.CategoryB == category);
+        return ByText(query, Q);
+    }
 
-        if (!string.IsNullOrWhiteSpace(Q))
-        {
-            var text = Q.Trim();
-            var number = int.TryParse(text, out var n) ? n : -1;
-            var elementId = long.TryParse(text, out var e) ? e : -1;
-            query = query.Where(c => c.Number == number || c.ElementIdA == elementId || c.ElementIdB == elementId
-                                     || c.UniqueIdA.Contains(text) || c.UniqueIdB.Contains(text));
-        }
+    /// <summary>Модель любой из сторон — одна из <paramref name="keys" /> (Id в форме N).</summary>
+    internal static IQueryable<ClashCollision> ByModels(IQueryable<ClashCollision> query, IReadOnlyCollection<string> keys) =>
+        query.Where(c => keys.Contains(c.ModelA) || keys.Contains(c.ModelB));
 
-        return query;
+    /// <summary>Поиск: номер коллизии, ElementId или часть UniqueId элемента любой из сторон; пусто — без фильтра.</summary>
+    internal static IQueryable<ClashCollision> ByText(IQueryable<ClashCollision> query, string? q)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return query;
+        var text = q.Trim();
+        var number = int.TryParse(text, out var n) ? n : -1;
+        var elementId = long.TryParse(text, out var e) ? e : -1;
+        return query.Where(c => c.Number == number || c.ElementIdA == elementId || c.ElementIdB == elementId
+                                || c.UniqueIdA.Contains(text) || c.UniqueIdB.Contains(text));
     }
 
     /// <summary>Уровень любой из сторон или ключ группы отчёта «A / B» (<see cref="CollisionLevel.Key" />); <c>-</c> — без уровня.</summary>
@@ -121,13 +127,24 @@ public sealed record CollisionFilter(
         return query.Where(c => (c.ModelA == model && c.UniqueIdA == uniqueId) || (c.ModelB == model && c.UniqueIdB == uniqueId));
     }
 
-    /// <summary>Сортировка: <c>depth</c> — глубже сначала; <c>level</c> — по уровню A, затем B; иначе по номеру.</summary>
-    public static IOrderedQueryable<ClashCollision> Sort(IQueryable<ClashCollision> query, string? sort) => sort switch
+    /// <summary>Сортировка: <c>depth</c> — глубже сначала; <c>level</c> — по уровню снизу вверх (<see cref="LevelOrderAsync" />), затем по номеру; иначе по номеру.</summary>
+    public static async Task<IOrderedQueryable<ClashCollision>> SortAsync(IQueryable<ClashCollision> query, string? sort, CancellationToken ct) => sort switch
     {
         "depth" => query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.Number),
-        "level" => query.OrderBy(c => c.LevelA).ThenBy(c => c.LevelB).ThenBy(c => c.Number),
+        "level" => query.OrderBy(CollisionLevel.LevelPosition(await LevelOrderAsync(query, ct))).ThenBy(c => c.Number),
         _ => query.OrderBy(c => c.Number)
     };
+
+    /// <summary>
+    ///     Уровни выборки (<see cref="CollisionLevel.Key" />) снизу вверх, как в отчёте: по наименьшей отметке Z их коллизий, при равной —
+    ///     по имени; без уровня — в конце.
+    /// </summary>
+    public static async Task<string[]> LevelOrderAsync(IQueryable<ClashCollision> query, CancellationToken ct)
+    {
+        var levels = await query.GroupBy(CollisionLevel.Key).Select(g => new { g.Key, MinZ = g.Min(c => c.Z) }).ToListAsync(ct);
+        return levels.OrderBy(l => l.Key.Length == 0).ThenBy(l => l.MinZ).ThenBy(l => l.Key, StringComparer.CurrentCultureIgnoreCase)
+            .Select(l => l.Key).ToArray();
+    }
 
     /// <summary>Фасеты <see cref="CollisionFacets" />: каждая выборка отфильтрована всеми полями, кроме своего.</summary>
     /// <param name="pairs">Выборка без фильтра пары.</param>
@@ -141,11 +158,11 @@ public sealed record CollisionFilter(
     {
         var pairCounts = await pairs.GroupBy(c => c.DisciplinePair).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
 
-        var levelSides = levels.Where(c => c.LevelA != null && c.LevelA != "").Select(c => new { c.Id, Value = c.LevelA! })
-            .Union(levels.Where(c => c.LevelB != null && c.LevelB != "").Select(c => new { c.Id, Value = c.LevelB! }))
+        var levelSides = levels.Where(c => c.LevelA != null && c.LevelA != "").Select(c => new { c.Id, Value = c.LevelA!, c.Z })
+            .Union(levels.Where(c => c.LevelB != null && c.LevelB != "").Select(c => new { c.Id, Value = c.LevelB!, c.Z }))
             .Union(levels.Where(c => (c.LevelA == null || c.LevelA == "") && (c.LevelB == null || c.LevelB == ""))
-                .Select(c => new { c.Id, Value = CollisionLevel.None }));
-        var levelCounts = await levelSides.GroupBy(s => s.Value).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
+                .Select(c => new { c.Id, Value = CollisionLevel.None, c.Z }));
+        var levelCounts = await levelSides.GroupBy(s => s.Value).Select(g => new { g.Key, Count = g.Count(), MinZ = g.Min(s => s.Z) }).ToListAsync(ct);
 
         var modelSides = models.Select(c => new { c.Id, Value = c.ModelA }).Union(models.Select(c => new { c.Id, Value = c.ModelB }));
         var modelCounts = await modelSides.GroupBy(s => s.Value).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
@@ -156,7 +173,9 @@ public sealed record CollisionFilter(
 
         return new CollisionFacets(
             Ordered(pairCounts.Select(p => (p.Key, p.Count))),
-            Ordered(levelCounts.Select(l => (l.Key, l.Count))),
+            // Уровни — снизу вверх, как в отчёте и сортировке по уровню; без уровня — в конце.
+            levelCounts.OrderBy(l => l.Key == CollisionLevel.None).ThenBy(l => l.MinZ).ThenBy(l => l.Key, StringComparer.CurrentCultureIgnoreCase)
+                .Select(l => new ValueCount(l.Key, l.Count)).ToList(),
             Ordered(modelCounts.Select(m => (names.GetValueOrDefault(m.Key, m.Key), m.Count))),
             Ordered(categoryCounts.Select(c => (c.Key, c.Count))));
     }

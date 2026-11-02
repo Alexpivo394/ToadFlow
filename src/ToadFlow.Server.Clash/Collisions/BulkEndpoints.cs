@@ -177,10 +177,11 @@ public static class BulkEndpoints
 
         var (disciplines, state) = await MyEndpoints.UserAsync(db, actor.UserId, ct);
         var parts = (await MyCollisions.PartsAsync(db, ct)).Where(p => p.Id == partId).ToList();
-        var my = await MyEndpoints.ModelKeyAsync(db, new MyFilter(filter.Scope, filter.Status, filter.Object, partId, filter.Pair, filter.Level,
-            filter.Model, filter.Since, filter.Element, filter.Category), ct);
+        var my = new MyFilter(filter.Scope, filter.Status, filter.Object, partId, filter.Pair, filter.Level, filter.Model, filter.Since, filter.Element,
+            filter.Category, filter.Q);
+        var models = await MyEndpoints.ModelKeysAsync(db, filter.Model, ct);
         // «Мои» читают без отслеживания; массовое действие меняет коллизии — те же строки по Id, с отслеживанием.
-        var ids = MyCollisions.Query(db, disciplines, parts, my, MyCollisions.Mark(state, now), actor.UserId).Select(c => c.Id);
+        var ids = MyCollisions.Query(db, disciplines, parts, my, MyCollisions.Mark(state, now), actor.UserId, models).Select(c => c.Id);
         return db.Set<ClashCollision>().Where(c => ids.Contains(c.Id));
     }
 

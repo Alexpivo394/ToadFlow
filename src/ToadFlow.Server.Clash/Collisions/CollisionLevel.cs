@@ -19,6 +19,10 @@ public static class CollisionLevel
         Array.IndexOf(keys, c.DisciplinePair + Separator
                             + (c.LevelA == c.LevelB || c.LevelB == null ? c.LevelA ?? "" : c.LevelA == null ? c.LevelB : c.LevelA + " / " + c.LevelB));
 
+    /// <summary>Место строки в порядке уровней без пары: индекс <see cref="Key" /> в <paramref name="levels" />.</summary>
+    public static Expression<Func<ClashCollision, int>> LevelPosition(string[] levels) => c =>
+        Array.IndexOf(levels, c.LevelA == c.LevelB || c.LevelB == null ? c.LevelA ?? "" : c.LevelA == null ? c.LevelB : c.LevelA + " / " + c.LevelB);
+
     /// <summary>Место пары в порядке пар.</summary>
     public static Expression<Func<ClashCollision, int>> PairPosition(string[] pairs) => c => Array.IndexOf(pairs, c.DisciplinePair);
 

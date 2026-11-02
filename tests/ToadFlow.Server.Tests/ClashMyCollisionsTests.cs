@@ -5,6 +5,7 @@ using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Auth;
+using ToadFlow.Server.Clash;
 using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Tests.Infrastructure;
 using static ToadFlow.Server.Tests.Infrastructure.ClashDraftFixtures;
@@ -149,6 +150,78 @@ public class ClashMyCollisionsTests : ServerTest
         (await MyAsync(ov, "?pair=АР%20×%20ОВ")).Length.ShouldBe(2);
         (await MyAsync(ov, "?object=" + Uri.EscapeDataString("Без проекта"))).Length.ShouldBe(2); // часть без объекта — как в списке проектов
         (await MyAsync(ov, "?object=DON")).ShouldBeEmpty();
+    }
+
+    /// <summary>Две модели с одним именем (разные пути): ключи в форме N.</summary>
+    private async Task<(string First, string Second)> SameNamedModelsAsync(string name)
+    {
+        var (first, second) = (Guid.NewGuid(), Guid.NewGuid());
+        await DbAsync(async db =>
+        {
+            foreach (var id in new[] { first, second })
+                db.Set<ClashModel>().Add(new ClashModel
+                {
+                    Id = id, Key = $@"\\server\{id:N}\{name}".ToLowerInvariant(), Name = name, ModelPath = $@"\\server\{id:N}\{name}",
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            await db.SaveChangesAsync();
+        });
+        return (first.ToString("N"), second.ToString("N"));
+    }
+
+    /// <summary>Фасет «Модель» сводит одноимённые модели в строку; фильтр по имени берёт все такие модели — и список, и «все по фильтру».</summary>
+    [Test]
+    public async Task My_ModelByName_AllSameNamedModels()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var (first, second) = await SameNamedModelsAsync("Общая.rvt");
+        await RunAsync(admin, engine, partId, [Hit(1, modelA: first), Hit(2, modelA: second), Hit(3)], approve: true);
+        var ov = await DesignerAsync("ОВ");
+        var model = Uri.EscapeDataString("Общая.rvt");
+
+        (await ov.GetJsonAsync<CollisionFacets>("/api/clash/my/facets")).Models.Single(m => m.Value == "Общая.rvt").Count.ShouldBe(2);
+        (await MyAsync(ov, "?model=" + model)).Select(r => r.Collision.Number).Order().ShouldBe([1, 2]);
+        (await MyAsync(ov, "?model=" + first)).ShouldHaveSingleItem().Collision.Number.ShouldBe(1); // плагин — по ключу
+        var bulk = await ov.PostJsonAsync("/api/clash/collisions/bulk",
+            new { partId, action = "Note", note = "Смотрю", filter = new { my = true, model = "Общая.rvt" }, expectedCount = 2 });
+        bulk.StatusCode.ShouldBe(HttpStatusCode.OK, await bulk.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>Поиск «Моих»: номер, ElementId или часть UniqueId — как в списке проверки; «все по фильтру» берёт те же строки.</summary>
+    [Test]
+    public async Task My_Q_NumberOrElement()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Hit(1), Hit(2), Hit(3)], approve: true);
+        var ov = await DesignerAsync("ОВ");
+
+        (await MyAsync(ov, "?q=2")).ShouldHaveSingleItem().Collision.Number.ShouldBe(2);
+        (await MyAsync(ov, "?q=ua-3")).ShouldHaveSingleItem().Collision.Number.ShouldBe(3);
+        (await MyAsync(ov, "?q=100001")).ShouldHaveSingleItem().Collision.Number.ShouldBe(1);
+        (await ov.GetJsonAsync<CollisionFacets>("/api/clash/my/facets?q=2")).Pairs.ShouldHaveSingleItem().Count.ShouldBe(1);
+        var bulk = await ov.PostJsonAsync("/api/clash/collisions/bulk",
+            new { partId, action = "Note", note = "Смотрю", filter = new { my = true, q = "2" }, expectedCount = 1 });
+        bulk.StatusCode.ShouldBe(HttpStatusCode.OK, await bulk.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>Сортировка по уровню — снизу вверх, как в отчёте: «Этаж 2» раньше «Этаж 10».</summary>
+    [Test]
+    public async Task My_SortLevel_ByElevation()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [
+            Hit(1) with { LevelA = "Этаж 10", LevelB = "Этаж 10", Z = 30_000 },
+            Hit(2) with { LevelA = "Этаж 2", LevelB = "Этаж 2", Z = 3_000 },
+            Hit(3) with { LevelA = "Этаж 10", LevelB = "Этаж 10", Z = 30_100 },
+            Hit(4) with { LevelA = null, LevelB = null, Z = -1_000 }
+        ], approve: true);
+        var ov = await DesignerAsync("ОВ");
+
+        (await MyAsync(ov, "?sort=level")).Select(r => r.Collision.Number).ShouldBe([2, 1, 3, 4]);
+        (await ov.GetJsonAsync<CollisionFacets>("/api/clash/my/facets")).Levels.Select(l => l.Value).ShouldBe(["Этаж 2", "Этаж 10", CollisionLevel.None]);
     }
 
     /// <summary>

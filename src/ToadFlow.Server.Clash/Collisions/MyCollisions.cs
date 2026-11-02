@@ -36,6 +36,7 @@ public sealed record MySummary(IReadOnlyList<string> Disciplines, int ToFix, int
 /// <param name="Since"><c>visit</c> — только новые с прошлого захода (плагин до 3.4.0); <c>unseen</c> — новые для меня: не открывал с тех пор, как появилась или вернулась.</param>
 /// <param name="Element">Элемент любой из сторон: <c>{модель:N}:{UniqueId}</c>.</param>
 /// <param name="Category">Категория элемента любой из сторон.</param>
+/// <param name="Q">Номер коллизии, ElementId или часть UniqueId — как в списке проверки (<see cref="CollisionFilter.Q" />).</param>
 public sealed record MyFilter(
     string? Scope = null,
     string? Status = null,
@@ -46,7 +47,8 @@ public sealed record MyFilter(
     string? Model = null,
     string? Since = null,
     string? Element = null,
-    string? Category = null);
+    string? Category = null,
+    string? Q = null);
 
 /// <summary>
 ///     «Мои коллизии» — одна выборка для веба и плагина. Коллизия моя, если хотя бы один её элемент из модели моего раздела;
@@ -69,8 +71,12 @@ public static class MyCollisions
 
     /// <summary>Мои коллизии утверждённых частей по фильтру, без сортировки.</summary>
     /// <param name="userId">Чьи отметки просмотра считать для <c>since=unseen</c>.</param>
+    /// <param name="modelKeys">
+    ///     Ключи моделей фильтра <see cref="MyFilter.Model" />, если имя уже разобрано (<see cref="MyEndpoints.ModelKeysAsync" />); null —
+    ///     ключ из фильтра как есть.
+    /// </param>
     public static IQueryable<ClashCollision> Query(ToadFlowDb db, string[] disciplines, IEnumerable<ApprovedPart> parts, MyFilter filter,
-        DateTimeOffset mark, Guid userId = default)
+        DateTimeOffset mark, Guid userId = default, IReadOnlyCollection<string>? modelKeys = null)
     {
         var ids = parts.Where(p => (filter.PartId is not { } partId || p.Id == partId)
                                    && (string.IsNullOrWhiteSpace(filter.Object) || ProjectOf(p.Object) == filter.Object.Trim()))
@@ -91,7 +97,8 @@ public static class MyCollisions
         if (!string.IsNullOrWhiteSpace(filter.Pair)) query = query.Where(c => c.DisciplinePair == filter.Pair);
         query = CollisionFilter.ByLevel(query, filter.Level);
 
-        if (!string.IsNullOrWhiteSpace(filter.Model))
+        if (modelKeys is not null) query = CollisionFilter.ByModels(query, modelKeys);
+        else if (!string.IsNullOrWhiteSpace(filter.Model))
         {
             var key = Guid.TryParse(filter.Model, out var guid) ? guid.ToString("N") : filter.Model.Trim();
             query = query.Where(c => c.ModelA == key || c.ModelB == key);
@@ -103,6 +110,8 @@ public static class MyCollisions
             var category = filter.Category.Trim();
             query = query.Where(c => c.CategoryA == category || c.CategoryB == category);
         }
+
+        query = CollisionFilter.ByText(query, filter.Q);
 
         if (string.Equals(filter.Since, "visit", StringComparison.OrdinalIgnoreCase)) query = NewSince(db, query, mark);
         else if (string.Equals(filter.Since, "unseen", StringComparison.OrdinalIgnoreCase)) query = Unseen(db, query, userId);

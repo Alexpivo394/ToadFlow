@@ -2,7 +2,9 @@ using System.Net;
 using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash;
 using ToadFlow.Server.Clash.Collisions;
+using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Tests.Infrastructure;
 using static ToadFlow.Server.Tests.Infrastructure.ClashDraftFixtures;
 
@@ -64,6 +66,48 @@ public class ClashCollisionListTests : ServerTest
         facets.Levels.Select(l => (l.Value, l.Count)).OrderBy(l => l.Value)
             .ShouldBe([(CollisionLevel.None, 1), ("Этаж 1", 2), ("Этаж 2", 1)]);
         facets.Categories.Single(c => c.Value == "OST_Walls").Count.ShouldBe(3);
+    }
+
+    /// <summary>Уровни — снизу вверх по отметке, как в отчёте: «Этаж 2» раньше «Этаж 10»; без уровня — в конце. Фасет уровней — в том же порядке.</summary>
+    [Test]
+    public async Task List_SortLevel_ByElevation()
+    {
+        var (admin, agent, partId) = await SetupAsync(
+            At(Hit(1) with { Z = 30_000 }, "Этаж 10", "Этаж 10"),
+            At(Hit(2) with { Z = 3_000 }, "Этаж 2", "Этаж 2"),
+            At(Hit(3) with { Z = -1_000 }, null, null),
+            At(Hit(4) with { Z = 30_100 }, "Этаж 10", "Этаж 10"));
+        await using var _ = agent;
+
+        (await NumbersAsync(admin, partId, "?sort=level")).ShouldBe([2, 1, 4, 3]);
+        (await admin.GetJsonAsync<CollisionFacets>($"/api/clash/parts/{partId}/approved/facets")).Levels.Select(l => l.Value)
+            .ShouldBe(["Этаж 2", "Этаж 10", CollisionLevel.None]);
+    }
+
+    /// <summary>Две модели части с одним именем (разные пути): фильтр по имени берёт обе, как фасет.</summary>
+    [Test]
+    public async Task List_ModelByName_AllSameNamedModelsOfPart()
+    {
+        var (first, second) = (Guid.NewGuid(), Guid.NewGuid());
+        var (admin, agent, partId) = await SetupAsync(Hit(1, modelA: first.ToString("N")), Hit(2, modelA: second.ToString("N")), Hit(3));
+        await using var _ = agent;
+        await DbAsync(async db =>
+        {
+            foreach (var id in new[] { first, second })
+            {
+                db.Set<ClashModel>().Add(new ClashModel
+                {
+                    Id = id, Key = $@"\\server\{id:N}\общая.rvt", Name = "Общая.rvt", ModelPath = $@"\\server\{id:N}\Общая.rvt", CreatedAt = DateTimeOffset.UtcNow
+                });
+                db.Set<ClashPartModel>().Add(new ClashPartModel { PartId = partId, ModelId = id });
+            }
+
+            await db.SaveChangesAsync();
+        });
+
+        (await admin.GetJsonAsync<CollisionFacets>($"/api/clash/parts/{partId}/approved/facets")).Models.Single(m => m.Value == "Общая.rvt").Count
+            .ShouldBe(2);
+        (await NumbersAsync(admin, partId, "?model=" + Uri.EscapeDataString("Общая.rvt"))).Order().ShouldBe([1, 2]);
     }
 
     [Test]

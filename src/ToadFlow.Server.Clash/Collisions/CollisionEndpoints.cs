@@ -237,7 +237,7 @@ public static class CollisionEndpoints
                 : Results.Ok(await ElementGroups.PageAsync(query, [side.Trim()], page ?? 1, size, _ => Task.FromResult(names), ct));
 
         var total = await query.CountAsync(ct);
-        var rows = await CollisionFilter.Sort(query, sort).Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
+        var rows = await (await CollisionFilter.SortAsync(query, sort, ct)).Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
         var suggested = await NumbersAsync(db, rows.Select(r => r.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         return Results.Ok(new CollisionPage(total, rows.Select(r => Row(r, names, suggested)).ToList()));
     }
