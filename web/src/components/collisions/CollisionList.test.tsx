@@ -297,3 +297,34 @@ describe('bulkFilterOf', () => {
     });
   });
 });
+
+describe('CollisionList seen action', () => {
+  const my: ListSource = { list: (p) => `/api/clash/my?${toQuery(p)}&pageSize=50`, my: true };
+  const myPage = { '/api/clash/my': { total: 1, items: [myRow(1, 'p1', 'Корпус 1')] } };
+
+  it('Seen_OnlyInMy_AndOnlyWhenCanWork', async () => {
+    const first = list(base, flat);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    expect(screen.getByRole('button', { name: 'Беру' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Отметить просмотренными' })).toBeNull();
+    first.unmount();
+
+    const mine = renderUi(<CollisionList source={my} params={base} selectedId={null} onSelect={() => {}} bulk />, myPage);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    expect(screen.getByRole('button', { name: 'Отметить просмотренными' })).toBeTruthy();
+    mine.unmount();
+
+    renderUi(<CollisionList source={my} params={base} selectedId={null} onSelect={() => {}} bulk canEdit={false} />, myPage);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    expect(screen.queryByRole('button', { name: 'Отметить просмотренными' })).toBeNull();
+  });
+
+  it('Unseen_IsDotWithExplanation', async () => {
+    renderUi(<CollisionList source={my} params={base} selectedId={null} onSelect={() => {}} />,
+      { '/api/clash/my': { total: 1, items: [{ ...myRow(1, 'p1', 'Корпус 1'), unseen: true }] } });
+
+    const dot = await screen.findByRole('img', { name: /Вы ещё не открывали эту коллизию/ });
+    expect(dot.textContent).toBe('');
+    expect(screen.queryByText('нов')).toBeNull();
+  });
+});

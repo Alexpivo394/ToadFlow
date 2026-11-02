@@ -24,7 +24,7 @@ const collision = (n: number, assignee = 'Both') => ({
 
 const row = (n: number, assignee = 'Both') => ({
   collision: collision(n, assignee), partId: 'p1', partName: 'Корпус 1', object: 'DON', part: 'корпус 1',
-  mineToFix: assignee !== 'SideA', takenBy: assignee === 'SideA' ? 'Пётр' : null, takenAt: assignee === 'SideA' ? '2026-10-30T10:00:00Z' : null,
+  unseen: n === 1, mineToFix: assignee !== 'SideA', takenBy: assignee === 'SideA' ? 'Пётр' : null, takenAt: assignee === 'SideA' ? '2026-10-30T10:00:00Z' : null,
 });
 
 const element = { index: 0, role: 'A', modelId: 'm1', modelName: 'DON_K1_KR.rvt', discipline: 'КР', uniqueId: 'ua1', elementId: 1001, category: 'OST_Walls',
@@ -139,3 +139,25 @@ describe('My collisions', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('My collisions: unseen mark', () => {
+  it('My_OpenCollision_ClearsUnseenWithoutRefetch', async () => {
+    renderApp('/clash/my', responses());
+
+    expect(await screen.findByRole('img', { name: /Вы ещё не открывали эту коллизию/ })).toBeTruthy();
+    expect(screen.getByText('ещё не открывали')).toBeTruthy(); // подпись счётчика «Новые для меня»
+    const before = myCalls().length;
+    fireEvent.click(screen.getByRole('button', { name: 'Коллизия 1' }));
+
+    await waitFor(() => expect(posts('/api/clash/collisions/c1/seen')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole('img', { name: /Вы ещё не открывали эту коллизию/ })).toBeNull());
+    expect(myCalls().length).toBe(before); // строки не перезапрашиваются и не прыгают
+  });
+
+  it('My_Viewer_NoBulk', async () => {
+    renderApp('/clash/my', { ...responses(), '/api/auth/me': { ...designer(['ОВК']), role: 'Viewer' } });
+
+    expect(await screen.findByRole('button', { name: 'Коллизия 1' })).toBeTruthy();
+    expect(screen.queryAllByRole('checkbox', { name: /^Выделить №/ })).toHaveLength(0);
+  });
+});

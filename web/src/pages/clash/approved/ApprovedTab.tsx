@@ -232,7 +232,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
             )}
             <ExportButtons partId={partId} filters={new URLSearchParams(extra(toQuery(list)))} />
           </Stack>
-          <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk canEdit={canEdit}
+          <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk={canEdit} canEdit={canEdit}
             onParams={setList} onItems={setItems} />
         </Stack>
 

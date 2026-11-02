@@ -21,12 +21,14 @@ export const bulkChoices = {
  * Полоса выделения: «Выделено N · Выделить все по фильтру (M) · Снять» и действия. «Все по фильтру» есть, когда фильтр
  * шире выделения и сервер может применить действие по фильтру; больше предела сервера — кнопка выключена с подсказкой сузить.
  */
-export function SelectionBar({ count, filterTotal, byFilter, canEdit, onAllByFilter, onClear, onAction }: {
+export function SelectionBar({ count, filterTotal, byFilter, canEdit, canSeen, onAllByFilter, onClear, onAction }: {
   count: number;
   /** Сколько коллизий под фильтром; null — «все по фильтру» недоступно. */
   filterTotal: number | null;
   byFilter: boolean;
   canEdit: boolean;
+  /** «Отметить просмотренными» — только в «Моих» и только для тех, кто работает с коллизиями (массовые действия — от проектировщика). */
+  canSeen: boolean;
   onAllByFilter: () => void;
   onClear: () => void;
   onAction: (choice: BulkChoice) => void;
@@ -58,7 +60,7 @@ export function SelectionBar({ count, filterTotal, byFilter, canEdit, onAllByFil
           <Button size="compact-xs" variant="light" onClick={() => onAction(bulkChoices.note)}>Примечание…</Button>
         </>
       )}
-      <Button size="compact-xs" variant="light" color="gray" onClick={() => onAction(bulkChoices.seen)}>Отметить просмотренными</Button>
+      {canSeen && <Button size="compact-xs" variant="light" color="gray" onClick={() => onAction(bulkChoices.seen)}>Отметить просмотренными</Button>}
     </Group>
   );
 }

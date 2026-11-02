@@ -114,6 +114,7 @@ describe('Approved tab', () => {
     expect(screen.queryByRole('button', { name: 'Объединить' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Фиктивная…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Прогнать утверждённую' })).toBeNull();
+    expect(screen.queryAllByRole('checkbox', { name: /^Выделить №/ })).toHaveLength(0); // массовые действия наблюдателю закрыты
   });
 
   /** Набранное примечание и форма «Передать» не переходят на другую коллизию при ↑/↓ или выборе в списке. */

@@ -12,6 +12,17 @@ import { copyText } from '../../../lib/clipboard';
 import { formatDateTime } from '../../../lib/format';
 import { assigneeText, statusLabel, StatusBadge } from './StatusBadge';
 
+/** Страница списка с отметкой «ещё не открывал» у этой коллизии снята; другие данные (фасеты, группы) — как были. */
+export function markSeen<T extends { items?: unknown[] } | null | undefined>(data: T, collisionId: string): T {
+  if (!data || !Array.isArray(data.items)) return data;
+  const isTarget = (item: unknown) => {
+    const row = item as { collision?: { id?: string }; unseen?: boolean };
+    return row.unseen === true && row.collision?.id === collisionId;
+  };
+  if (!data.items.some(isTarget)) return data;
+  return { ...data, items: data.items.map((item) => (isTarget(item) ? { ...(item as object), unseen: false } : item)) };
+}
+
 /** Имя автора записи ленты: по нажатию — должность и контакты, чтобы связаться. */
 function Author({ userId, name }: { userId: string; name: string }) {
   const [opened, setOpened] = useState(false);
@@ -86,10 +97,14 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true, pa
   const [copied, setCopied] = useState(false);
   const c = card.data?.collision;
 
-  // Открыл — значит увидел: коллизия уходит из «новых для меня».
+  // Открыл — значит увидел: коллизия уходит из «новых для меня». Точка у строки снимается в загруженных списках на месте,
+  // без перезапроса: строки не прыгают (в «Новых для меня» строка остаётся до следующей загрузки списка).
   useEffect(() => {
     apiFetch(`/api/clash/collisions/${collisionId}/seen`, { method: 'POST' })
-      .then(() => queryClient.invalidateQueries({ queryKey: ['clash-my'] }))
+      .then(() => {
+        queryClient.setQueriesData<{ items?: unknown[] } | null>({ queryKey: ['clash-list'] }, (data) => markSeen(data, collisionId));
+        return queryClient.invalidateQueries({ queryKey: ['clash-my'] });
+      })
       .catch(() => {});
   }, [collisionId, queryClient]);
 

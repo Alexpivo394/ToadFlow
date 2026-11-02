@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Box, Card, Group, Select, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Box, Card, Group, Select, SimpleGrid, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { CheckView, CollisionFacets, MySummary } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
@@ -17,15 +17,29 @@ const n = (value: number) => value.toLocaleString('ru-RU');
 const PageSize = 50;
 const NoProject = 'Без проекта';
 
-function Counter({ label, value, active, onClick }: { label: string; value: number | undefined; active: boolean; onClick: () => void }) {
-  return (
+/** Подсказка счётчика «Новые для меня»: заказчик не понял отметку — имя оставлено, смысл объясняется. */
+const NewForMeHint = 'Коллизии, которые вы ещё не открывали: появились или вернулись после вашего последнего просмотра. В списке они отмечены синей точкой; откройте карточку — отметка снимется';
+
+function Counter({ label, value, active, onClick, caption, hint }: {
+  label: string;
+  value: number | undefined;
+  active: boolean;
+  onClick: () => void;
+  caption?: string;
+  hint?: string;
+}) {
+  const button = (
     <UnstyledButton onClick={onClick} aria-label={`${label}: ${value ?? 0}`}>
       <Card withBorder padding="sm" radius="md" bg={active ? 'var(--mantine-primary-color-light)' : undefined}>
         <Text size="xs" c="dimmed">{label}</Text>
-        <Text fw={700} size="xl">{value == null ? '—' : n(value)}</Text>
+        <Group gap={6} align="baseline">
+          <Text fw={700} size="xl">{value == null ? '—' : n(value)}</Text>
+          {caption && <Text size="xs" c="dimmed">{caption}</Text>}
+        </Group>
       </Card>
     </UnstyledButton>
   );
+  return hint ? <Tooltip label={hint} multiline w={300} withArrow openDelay={300}>{button}</Tooltip> : button;
 }
 
 /**
@@ -120,7 +134,8 @@ export function MyPage() {
       <SimpleGrid cols={3} spacing="sm" maw={720}>
         <Counter label="Мне править" value={summary.data?.toFix} active={!fresh && list.assignee === 'mine'} onClick={() => switchTo('mine')} />
         <Counter label="Взяла другая сторона" value={summary.data?.takenByOther} active={!fresh && list.assignee === 'taken'} onClick={() => switchTo('taken')} />
-        <Counter label="Новые для меня" value={summary.data?.newForMe} active={fresh} onClick={() => switchTo('new')} />
+        <Counter label="Новые для меня" value={summary.data?.newForMe} active={fresh} onClick={() => switchTo('new')}
+          caption="ещё не открывали" hint={NewForMeHint} />
       </SimpleGrid>
       <Group gap="xs" wrap="wrap">
         <Text size="sm" c="dimmed">Разделы: {summary.data?.disciplines.join(', ') ?? ''}</Text>
@@ -134,7 +149,7 @@ export function MyPage() {
       <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 330px)" mih={560}
         style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8, overflow: 'hidden' }}>
         <Stack gap={0} w={{ base: 400, xl: 460 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
-          <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk canEdit={canWork}
+          <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk={canWork} canEdit={canWork}
             onParams={setList} onItems={setItems}
             extra={(item) => item.my && (
               <>

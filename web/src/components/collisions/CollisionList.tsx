@@ -1,4 +1,4 @@
-import { Badge, Button, Checkbox, CloseButton, Group, ScrollArea, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Badge, Box, Button, Checkbox, CloseButton, Group, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
@@ -65,6 +65,9 @@ function pageSizeOf(url: string): number {
   return Number.isFinite(size) && size > 0 ? size : 50;
 }
 
+/** Что значит синяя точка у строки «Моих» — текст подсказки и имя для чтения с экрана. */
+export const UnseenHint = 'Вы ещё не открывали эту коллизию — она появилась или вернулась после вашего последнего просмотра. Откройте карточку, и отметка снимется';
+
 /** Поля запроса списка, которые сервер понимает и в фильтре массового действия. */
 const bulkKeys = ['status', 'check', 'discipline', 'pair', 'level', 'model', 'q', 'element', 'category', 'scope', 'object', 'since'] as const;
 
@@ -109,7 +112,11 @@ function CollisionLine({ item, active, checked, showBox, bulk, onSelect, onCheck
           <Stack gap={2} w={70}>
             <Group gap={4} wrap="nowrap">
               <Text size="xs" c="dimmed">№ {row.number}</Text>
-              {item.my?.unseen && <Badge size="xs" color="orange" variant="dot" aria-label="Новая для меня">нов</Badge>}
+              {item.my?.unseen && (
+                <Tooltip label={UnseenHint} multiline w={280} withArrow openDelay={200}>
+                  <Box role="img" aria-label={UnseenHint} w={8} h={8} style={{ borderRadius: '50%', background: 'var(--mantine-color-blue-6)', flexShrink: 0 }} />
+                </Tooltip>
+              )}
             </Group>
             <StatusBadge status={row.status} />
           </Stack>
@@ -371,7 +378,8 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
   return (
     <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
       {bulk && count > 0 && (
-        <SelectionBar count={count} filterTotal={filterTotal} byFilter={byFilter} canEdit={canEdit} onAllByFilter={() => setByFilter(true)}
+        <SelectionBar count={count} filterTotal={filterTotal} byFilter={byFilter} canEdit={canEdit} canSeen={!!source.my && canEdit}
+          onAllByFilter={() => setByFilter(true)}
           onClear={clear} onAction={(c) => { setConflict(null); setChoice(c); }} />
       )}
       {outcome && (
