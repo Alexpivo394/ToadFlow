@@ -1,4 +1,5 @@
 import { act, render } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
@@ -57,6 +58,41 @@ export class Failure {
  * /api/auth/me — вошедший администратор.
  */
 export function renderApp(path: string, responses: Record<string, unknown>) {
+  stubFetch(responses);
+
+  return render(
+    <MantineProvider theme={theme}>
+      <DatesProvider settings={{ locale: 'ru' }}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <ModalsProvider>
+            <MemoryRouter initialEntries={[path]}>
+              <NavigateProbe />
+              <AuthProvider>
+                <App />
+              </AuthProvider>
+            </MemoryRouter>
+          </ModalsProvider>
+        </QueryClientProvider>
+      </DatesProvider>
+    </MantineProvider>,
+  );
+}
+
+/** Отдельный компонент в обвязке приложения (тема, запросы, адрес) с теми же ответами сервера, что у <c>renderApp</c>. */
+export function renderUi(ui: ReactNode, responses: Record<string, unknown>, path = '/') {
+  stubFetch(responses);
+  return render(
+    <MantineProvider theme={theme}>
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ModalsProvider>
+          <MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>
+        </ModalsProvider>
+      </QueryClientProvider>
+    </MantineProvider>,
+  );
+}
+
+function stubFetch(responses: Record<string, unknown>) {
   const all: Record<string, unknown> = {
     '/api/auth/me': { id: 'u1', login: 'admin', displayName: 'Администратор', role: 'Admin', isDisabled: false, lastLoginAt: null },
     ...responses,
@@ -79,21 +115,4 @@ export function renderApp(path: string, responses: Record<string, unknown>) {
     }),
   );
   setToken('test-token');
-
-  return render(
-    <MantineProvider theme={theme}>
-      <DatesProvider settings={{ locale: 'ru' }}>
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <ModalsProvider>
-            <MemoryRouter initialEntries={[path]}>
-              <NavigateProbe />
-              <AuthProvider>
-                <App />
-              </AuthProvider>
-            </MemoryRouter>
-          </ModalsProvider>
-        </QueryClientProvider>
-      </DatesProvider>
-    </MantineProvider>,
-  );
 }
