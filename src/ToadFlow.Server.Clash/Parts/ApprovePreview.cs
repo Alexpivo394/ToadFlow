@@ -38,7 +38,7 @@ public static class ApprovePreviews
         if (part is null) return Results.NotFound();
         var draft = ConfigurationJson.Deserialize(part.DraftJson);
         var changes = part.ApprovedVersion is { } approved
-            ? ConfigurationDiff.Compare(ConfigurationJson.Deserialize(await VersionJsonAsync(db, id, approved, ct) ?? part.DraftJson), draft)
+            ? await CompareAsync(db, ConfigurationJson.Deserialize(await VersionJsonAsync(db, id, approved, ct) ?? part.DraftJson), draft, ct)
             : [];
         var run = part.ResultRunId is { } runId ? await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == runId, ct) : null;
         if (run is null) return Results.Ok(new ApprovePreview(null, false, true, part.ApprovedVersion is null, [], changes));
@@ -70,8 +70,20 @@ public static class ApprovePreviews
     {
         if (await VersionJsonAsync(db, id, version, ct) is not { } json) return Results.NotFound();
         return await VersionJsonAsync(db, id, version - 1, ct) is { } previous
-            ? Results.Ok(ConfigurationDiff.Compare(ConfigurationJson.Deserialize(previous), ConfigurationJson.Deserialize(json)))
+            ? Results.Ok(await CompareAsync(db, ConfigurationJson.Deserialize(previous), ConfigurationJson.Deserialize(json), ct))
             : Results.Ok(Array.Empty<ConfigChange>());
+    }
+
+    /// <summary>Отличия с именами моделей из источников групп.</summary>
+    private static async Task<IReadOnlyList<ConfigChange>> CompareAsync(ToadFlowDb db, ClashConfiguration before, ClashConfiguration after,
+        CancellationToken ct)
+    {
+        var ids = ConfigurationDiff.ModelKeys(before, after).Select(k => Guid.TryParse(k, out var key) ? key : (Guid?)null).OfType<Guid>().ToList();
+        var names = ids.Count == 0
+            ? new Dictionary<string, string>()
+            : (await db.Set<ClashModel>().AsNoTracking().Where(m => ids.Contains(m.Id)).Select(m => new { m.Id, m.Name }).ToListAsync(ct))
+            .ToDictionary(m => m.Id.ToString("N"), m => m.Name);
+        return ConfigurationDiff.Compare(before, after, names);
     }
 
     private static Task<string?> VersionJsonAsync(ToadFlowDb db, Guid id, int version, CancellationToken ct) =>

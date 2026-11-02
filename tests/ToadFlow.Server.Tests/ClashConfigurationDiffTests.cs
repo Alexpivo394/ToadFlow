@@ -54,6 +54,47 @@ public class ClashConfigurationDiffTests
     [Test]
     public void Diff_Same_Empty() => ConfigurationDiff.Compare(Config(), Config()).ShouldBeEmpty();
 
+    private static ClashConfiguration WithGroup(string name, IReadOnlyList<string> disciplines, IReadOnlyList<string> models) =>
+        Config() with { Groups = [.. Config().Groups, new SetGroup(Driveways, name, new GroupSource(disciplines, models))] };
+
+    private static readonly Guid Driveways = Guid.NewGuid();
+
+    private static readonly Dictionary<string, string> ModelNames = new() { ["k1"] = "АР_корпус1.rvt", ["k2"] = "АР_корпус2.rvt", ["k3"] = "АР_паркинг.rvt" };
+
+    /// <summary>Замена модели в группе видна по именам: число моделей то же, а состав другой.</summary>
+    [Test]
+    public void Diff_GroupModelReplaced_ByName()
+    {
+        var changes = ConfigurationDiff.Compare(WithGroup("Проезды", [], ["k1", "k2"]), WithGroup("Проезды", [], ["k1", "k3"]), ModelNames);
+
+        changes.ShouldHaveSingleItem().ShouldBe(new ConfigChange(ConfigChangeKind.GroupSource,
+            "Группа «Проезды»: модели добавлены: «АР_паркинг.rvt»; модели убраны: «АР_корпус2.rvt»"));
+        ConfigurationDiff.Compare(Config(), WithGroup("Проезды", ["АР"], ["k3"]), ModelNames).ShouldHaveSingleItem().Text
+            .ShouldBe("Группа «Проезды» добавлена: разделы АР; модели «АР_паркинг.rvt»");
+    }
+
+    /// <summary>Порядок разделов и моделей в источнике — не изменение; разделы — без учёта регистра, как в правилах.</summary>
+    [Test]
+    public void Diff_GroupSourceReordered_Empty() =>
+        ConfigurationDiff.Compare(WithGroup("Проезды", ["АР", "КР"], ["k1", "k2"]), WithGroup("Проезды", ["кр", "АР"], ["k2", "k1"]), ModelNames)
+            .ShouldBeEmpty();
+
+    [Test]
+    public void Diff_GroupDisciplines()
+    {
+        var changes = ConfigurationDiff.Compare(WithGroup("Проезды", ["АР"], []), WithGroup("Проезды", ["АР", "КР"], []), ModelNames);
+
+        changes.ShouldHaveSingleItem().ShouldBe(new ConfigChange(ConfigChangeKind.GroupSource, "Группа «Проезды»: разделы АР → АР, КР"));
+    }
+
+    [Test]
+    public void Diff_GroupRenamed()
+    {
+        var changes = ConfigurationDiff.Compare(WithGroup("Проезды", ["АР"], []), WithGroup("Пандусы", ["АР"], []));
+
+        changes.ShouldHaveSingleItem().ShouldBe(new ConfigChange(ConfigChangeKind.GroupRenamed, "Группа «Проезды» переименована в «Пандусы»"));
+    }
+
     [Test]
     public void Diff_SetsAndCells_AddedRemoved()
     {

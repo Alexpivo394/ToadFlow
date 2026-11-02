@@ -16,7 +16,8 @@ public enum ConfigChangeKind
     ExclusionRemoved,
     GroupAdded,
     GroupRemoved,
-    GroupSource
+    GroupSource,
+    GroupRenamed
 }
 
 /// <param name="Text">Готовая строка для человека: «Клетка АР × КР: допуск 20 → 50 мм».</param>
@@ -28,31 +29,66 @@ public sealed record ConfigChange(ConfigChangeKind Kind, string Text);
 /// </summary>
 public static class ConfigurationDiff
 {
-    public static IReadOnlyList<ConfigChange> Compare(ClashConfiguration before, ClashConfiguration after)
+    /// <param name="modelNames">Имена моделей по ключу (Id в форме N) — модели источника группы называются по имени; без имени — ключом.</param>
+    public static IReadOnlyList<ConfigChange> Compare(ClashConfiguration before, ClashConfiguration after,
+        IReadOnlyDictionary<string, string>? modelNames = null)
     {
         var changes = new List<ConfigChange>();
-        Groups(before, after, changes);
+        Groups(before, after, modelNames ?? new Dictionary<string, string>(), changes);
         Sets(before, after, changes);
         Cells(before, after, changes);
         Exclusions(before, after, changes);
         return changes;
     }
 
-    private static void Groups(ClashConfiguration before, ClashConfiguration after, List<ConfigChange> changes)
+    /// <summary>Ключи моделей из источников групп обеих конфигураций — чьи имена нужны <see cref="Compare" />.</summary>
+    public static IReadOnlyList<string> ModelKeys(params ClashConfiguration[] configurations) =>
+        configurations.SelectMany(c => c.Groups).SelectMany(g => g.Source.ModelKeys).Distinct(StringComparer.Ordinal).ToList();
+
+    private static void Groups(ClashConfiguration before, ClashConfiguration after, IReadOnlyDictionary<string, string> names, List<ConfigChange> changes)
     {
         var old = before.Groups.ToDictionary(g => g.Id);
         foreach (var group in after.Groups)
         {
             if (!old.TryGetValue(group.Id, out var was))
-                changes.Add(new ConfigChange(ConfigChangeKind.GroupAdded, $"Группа «{group.Name}» добавлена: {SourceText(group.Source)}"));
-            else if (SourceText(was.Source) != SourceText(group.Source))
-                changes.Add(new ConfigChange(ConfigChangeKind.GroupSource, $"Группа «{group.Name}»: {SourceText(was.Source)} → {SourceText(group.Source)}"));
+            {
+                changes.Add(new ConfigChange(ConfigChangeKind.GroupAdded, $"Группа «{group.Name}» добавлена: {SourceText(group.Source, names)}"));
+                continue;
+            }
+
+            if (was.Name != group.Name)
+                changes.Add(new ConfigChange(ConfigChangeKind.GroupRenamed, $"Группа «{was.Name}» переименована в «{group.Name}»"));
+            if (SourceChange(was.Source, group.Source, names) is { } source)
+                changes.Add(new ConfigChange(ConfigChangeKind.GroupSource, $"Группа «{group.Name}»: {source}"));
         }
 
         var current = after.Groups.Select(g => g.Id).ToHashSet();
         foreach (var group in before.Groups.Where(g => !current.Contains(g.Id)))
             changes.Add(new ConfigChange(ConfigChangeKind.GroupRemoved, $"Группа «{group.Name}» удалена"));
     }
+
+    /// <summary>
+    ///     Что поменялось в источнике группы: разделы (без учёта регистра и порядка, как их сравнивают правила) и состав моделей по ключу —
+    ///     добавленные и убранные модели по имени.
+    /// </summary>
+    /// <returns>null — источник тот же.</returns>
+    private static string? SourceChange(GroupSource was, GroupSource now, IReadOnlyDictionary<string, string> names)
+    {
+        var parts = new List<string>();
+        if (!was.Disciplines.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(now.Disciplines))
+            parts.Add($"разделы {DisciplinesText(was)} → {DisciplinesText(now)}");
+        var (oldKeys, newKeys) = (was.ModelKeys.ToHashSet(StringComparer.Ordinal), now.ModelKeys.ToHashSet(StringComparer.Ordinal));
+        if (now.ModelKeys.Where(k => !oldKeys.Contains(k)).Distinct().ToList() is { Count: > 0 } added)
+            parts.Add("модели добавлены: " + ModelsText(added, names));
+        if (was.ModelKeys.Where(k => !newKeys.Contains(k)).Distinct().ToList() is { Count: > 0 } removed)
+            parts.Add("модели убраны: " + ModelsText(removed, names));
+        return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
+    private static string DisciplinesText(GroupSource source) => source.Disciplines.Count == 0 ? "нет" : string.Join(", ", source.Disciplines);
+
+    private static string ModelsText(IEnumerable<string> keys, IReadOnlyDictionary<string, string> names) =>
+        string.Join(", ", keys.Select(k => $"«{names.GetValueOrDefault(k, k)}»"));
 
     private static void Sets(ClashConfiguration before, ClashConfiguration after, List<ConfigChange> changes)
     {
@@ -115,11 +151,11 @@ public static class ConfigurationDiff
 
     private static string Mm(double value) => value.ToString("0.##", CultureInfo.GetCultureInfo("ru-RU"));
 
-    private static string SourceText(GroupSource source)
+    private static string SourceText(GroupSource source, IReadOnlyDictionary<string, string> names)
     {
         var parts = new List<string>();
         if (source.Disciplines.Count > 0) parts.Add("разделы " + string.Join(", ", source.Disciplines));
-        if (source.ModelKeys.Count > 0) parts.Add("моделей: " + source.ModelKeys.Count);
+        if (source.ModelKeys.Count > 0) parts.Add("модели " + ModelsText(source.ModelKeys.Distinct(), names));
         return parts.Count == 0 ? "без источника" : string.Join("; ", parts);
     }
 }
