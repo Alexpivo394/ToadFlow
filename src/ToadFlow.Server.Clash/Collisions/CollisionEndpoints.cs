@@ -130,6 +130,7 @@ public static class CollisionEndpoints
         approved.MapGet("/run", RunAsync);
         approved.MapGet("/summary", SummaryAsync);
         approved.MapGet("/collisions", ListAsync);
+        approved.MapGet("/facets", FacetsAsync);
         var approvedWrite = approved.MapGroup("").RequireAuthorization(Policies.Operator);
         approvedWrite.MapPost("/run", StartAsync);
         approvedWrite.MapPost("/run/cancel", CancelAsync);
@@ -226,6 +227,17 @@ public static class CollisionEndpoints
         var rows = await CollisionFilter.Sort(query, sort).Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
         var suggested = await NumbersAsync(db, rows.Select(r => r.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         return Results.Ok(new CollisionPage(total, rows.Select(r => Row(r, names, suggested)).ToList()));
+    }
+
+    /// <summary>Фасеты списка: те же параметры, что у <see cref="ListAsync" />.</summary>
+    private static async Task<IResult> FacetsAsync(Guid id, HttpRequest request, ToadFlowDb db, TimeProvider time, CancellationToken ct)
+    {
+        var names = await ModelNamesAsync(db, id, ct);
+        var (filter, now) = (CollisionFilter.From(request), time.GetUtcNow());
+        IQueryable<ClashCollision> Without(CollisionFilter f) =>
+            f.Apply(db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == id), db, names, now);
+        return Results.Ok(await CollisionFilter.FacetsAsync(Without(filter with { Pair = null }), Without(filter with { Level = null }),
+            Without(filter with { Model = null }), Without(filter with { Category = null }), _ => Task.FromResult(names), ct));
     }
 
     private static async Task<IResult> CardAsync(Guid id, ToadFlowDb db, CancellationToken ct)

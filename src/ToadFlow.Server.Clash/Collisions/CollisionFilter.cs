@@ -1,6 +1,18 @@
+using Alexpivo394.Revit.Clash.Rules;
+using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Data;
 
 namespace ToadFlow.Server.Clash.Collisions;
+
+/// <summary>
+///     Варианты фильтров списка с числами коллизий. Каждый фасет считается по текущему фильтру без собственного поля. Уровни и
+///     категории — по обеим сторонам, коллизия в значении считается один раз; модели — по имени.
+/// </summary>
+public sealed record CollisionFacets(
+    IReadOnlyList<ValueCount> Pairs,
+    IReadOnlyList<ValueCount> Levels,
+    IReadOnlyList<ValueCount> Models,
+    IReadOnlyList<ValueCount> Categories);
 
 /// <summary>
 ///     Фильтр коллизий из строки адреса — один для списка проверки, отчёта прогона и выгрузок.
@@ -13,6 +25,8 @@ namespace ToadFlow.Server.Clash.Collisions;
 /// <param name="Model">Модель любой из сторон: имя или ключ (Id в форме N).</param>
 /// <param name="Q">Номер коллизии, UniqueId или ElementId элемента.</param>
 /// <param name="StuckDays">Только висящие: открытые, без записей в ленте столько дней (из обзора координатора).</param>
+/// <param name="Element">Элемент любой из сторон: <c>{модель:N}:{UniqueId}</c>.</param>
+/// <param name="Category">Категория элемента любой из сторон.</param>
 public sealed record CollisionFilter(
     string? Status,
     string? Check,
@@ -22,7 +36,9 @@ public sealed record CollisionFilter(
     string? Level,
     string? Model,
     string? Q,
-    int? StuckDays)
+    int? StuckDays,
+    string? Element = null,
+    string? Category = null)
 {
     public static CollisionFilter From(HttpRequest request)
     {
@@ -40,7 +56,9 @@ public sealed record CollisionFilter(
             Text("level"),
             Text("model"),
             Text("q"),
-            int.TryParse(Text("stuckDays"), out var days) ? days : null);
+            int.TryParse(Text("stuckDays"), out var days) ? days : null,
+            Text("element")?.Trim(),
+            Text("category")?.Trim());
     }
 
     /// <param name="modelNames">Имена моделей части по ключу — фильтр модели принимает и имя.</param>
@@ -60,20 +78,16 @@ public sealed record CollisionFilter(
         if (Discipline is { } discipline) query = query.Where(c => c.DisciplineA == discipline || c.DisciplineB == discipline);
         if (Pair is { } pair) query = query.Where(c => c.DisciplinePair == pair);
         if (Assignee is { } who) query = query.Where(c => c.Assignee == who);
-        if (Level?.Trim() == CollisionLevel.None)
-            query = query.Where(c => (c.LevelA == null || c.LevelA == "") && (c.LevelB == null || c.LevelB == ""));
-        else if (!string.IsNullOrWhiteSpace(Level))
-        {
-            // Уровень любой из сторон или ключ группы отчёта «A / B» (CollisionLevel.Key).
-            var wanted = Level.Trim().ToLower();
-            query = query.Where(c => c.LevelA!.ToLower() == wanted || c.LevelB!.ToLower() == wanted || (c.LevelA + " / " + c.LevelB).ToLower() == wanted);
-        }
+        query = ByLevel(query, Level);
 
         if (!string.IsNullOrWhiteSpace(Model))
         {
             var key = modelNames.FirstOrDefault(m => m.Value == Model).Key ?? Model;
             query = query.Where(c => c.ModelA == key || c.ModelB == key);
         }
+
+        query = ByElement(query, Element);
+        if (Category is { } category) query = query.Where(c => c.CategoryA == category || c.CategoryB == category);
 
         if (!string.IsNullOrWhiteSpace(Q))
         {
@@ -87,7 +101,67 @@ public sealed record CollisionFilter(
         return query;
     }
 
-    /// <summary>Сортировка: <c>depth</c> — глубже сначала; иначе по номеру.</summary>
-    public static IOrderedQueryable<ClashCollision> Sort(IQueryable<ClashCollision> query, string? sort) =>
-        sort == "depth" ? query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.Number) : query.OrderBy(c => c.Number);
+    /// <summary>Уровень любой из сторон или ключ группы отчёта «A / B» (<see cref="CollisionLevel.Key" />); <c>-</c> — без уровня.</summary>
+    internal static IQueryable<ClashCollision> ByLevel(IQueryable<ClashCollision> query, string? level)
+    {
+        if (level?.Trim() == CollisionLevel.None)
+            return query.Where(c => (c.LevelA == null || c.LevelA == "") && (c.LevelB == null || c.LevelB == ""));
+        if (string.IsNullOrWhiteSpace(level)) return query;
+        var wanted = level.Trim().ToLower();
+        return query.Where(c => c.LevelA!.ToLower() == wanted || c.LevelB!.ToLower() == wanted || (c.LevelA + " / " + c.LevelB).ToLower() == wanted);
+    }
+
+    /// <summary>Элемент любой из сторон по <c>{модель:N}:{UniqueId}</c>; без двоеточия — без фильтра.</summary>
+    internal static IQueryable<ClashCollision> ByElement(IQueryable<ClashCollision> query, string? element)
+    {
+        var colon = element?.IndexOf(':') ?? -1;
+        if (colon <= 0) return query;
+        var (model, uniqueId) = (element![..colon].Trim(), element[(colon + 1)..].Trim());
+        if (Guid.TryParse(model, out var guid)) model = guid.ToString("N");
+        return query.Where(c => (c.ModelA == model && c.UniqueIdA == uniqueId) || (c.ModelB == model && c.UniqueIdB == uniqueId));
+    }
+
+    /// <summary>Сортировка: <c>depth</c> — глубже сначала; <c>level</c> — по уровню A, затем B; иначе по номеру.</summary>
+    public static IOrderedQueryable<ClashCollision> Sort(IQueryable<ClashCollision> query, string? sort) => sort switch
+    {
+        "depth" => query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.Number),
+        "level" => query.OrderBy(c => c.LevelA).ThenBy(c => c.LevelB).ThenBy(c => c.Number),
+        _ => query.OrderBy(c => c.Number)
+    };
+
+    /// <summary>Фасеты <see cref="CollisionFacets" />: каждая выборка отфильтрована всеми полями, кроме своего.</summary>
+    /// <param name="pairs">Выборка без фильтра пары.</param>
+    /// <param name="levels">Без фильтра уровня.</param>
+    /// <param name="models">Без фильтра модели.</param>
+    /// <param name="categories">Без фильтра категории.</param>
+    /// <param name="modelNames">Имена моделей по ключам; модель без имени отдаётся ключом.</param>
+    public static async Task<CollisionFacets> FacetsAsync(IQueryable<ClashCollision> pairs, IQueryable<ClashCollision> levels,
+        IQueryable<ClashCollision> models, IQueryable<ClashCollision> categories,
+        Func<IReadOnlyList<string>, Task<Dictionary<string, string>>> modelNames, CancellationToken ct)
+    {
+        var pairCounts = await pairs.GroupBy(c => c.DisciplinePair).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
+
+        var levelSides = levels.Where(c => c.LevelA != null && c.LevelA != "").Select(c => new { c.Id, Value = c.LevelA! })
+            .Union(levels.Where(c => c.LevelB != null && c.LevelB != "").Select(c => new { c.Id, Value = c.LevelB! }))
+            .Union(levels.Where(c => (c.LevelA == null || c.LevelA == "") && (c.LevelB == null || c.LevelB == ""))
+                .Select(c => new { c.Id, Value = CollisionLevel.None }));
+        var levelCounts = await levelSides.GroupBy(s => s.Value).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
+
+        var modelSides = models.Select(c => new { c.Id, Value = c.ModelA }).Union(models.Select(c => new { c.Id, Value = c.ModelB }));
+        var modelCounts = await modelSides.GroupBy(s => s.Value).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
+        var names = await modelNames(modelCounts.Select(m => m.Key).ToList());
+
+        var categorySides = categories.Select(c => new { c.Id, Value = c.CategoryA }).Union(categories.Select(c => new { c.Id, Value = c.CategoryB }));
+        var categoryCounts = await categorySides.GroupBy(s => s.Value).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
+
+        return new CollisionFacets(
+            Ordered(pairCounts.Select(p => (p.Key, p.Count))),
+            Ordered(levelCounts.Select(l => (l.Key, l.Count))),
+            Ordered(modelCounts.Select(m => (names.GetValueOrDefault(m.Key, m.Key), m.Count))),
+            Ordered(categoryCounts.Select(c => (c.Key, c.Count))));
+    }
+
+    private static IReadOnlyList<ValueCount> Ordered(IEnumerable<(string Value, int Count)> values) =>
+        values.GroupBy(v => v.Value).Select(g => new ValueCount(g.Key, g.Sum(v => v.Count)))
+            .OrderByDescending(v => v.Count).ThenBy(v => v.Value, StringComparer.CurrentCultureIgnoreCase).ToList();
 }

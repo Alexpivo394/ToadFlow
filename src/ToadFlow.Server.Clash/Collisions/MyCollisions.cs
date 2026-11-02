@@ -31,6 +31,8 @@ public sealed record MySummary(IReadOnlyList<string> Disciplines, int ToFix, int
 /// <param name="Pair">Пара разделов, как <see cref="ClashCollision.DisciplinePair" />.</param>
 /// <param name="Model">Ключ модели (<c>ClashModel.SnapshotKey</c>): плагин спрашивает коллизии открытой модели.</param>
 /// <param name="Since"><c>visit</c> — только новые с прошлого захода.</param>
+/// <param name="Element">Элемент любой из сторон: <c>{модель:N}:{UniqueId}</c>.</param>
+/// <param name="Category">Категория элемента любой из сторон.</param>
 public sealed record MyFilter(
     string? Scope = null,
     string? Status = null,
@@ -39,7 +41,9 @@ public sealed record MyFilter(
     string? Pair = null,
     string? Level = null,
     string? Model = null,
-    string? Since = null);
+    string? Since = null,
+    string? Element = null,
+    string? Category = null);
 
 /// <summary>
 ///     «Мои коллизии» — одна выборка для веба и плагина. Коллизия моя, если хотя бы один её элемент из модели моего раздела;
@@ -81,16 +85,19 @@ public static class MyCollisions
 
         if (Statuses(filter.Status) is { } statuses) query = query.Where(c => statuses.Contains(c.Status));
         if (!string.IsNullOrWhiteSpace(filter.Pair)) query = query.Where(c => c.DisciplinePair == filter.Pair);
-        if (!string.IsNullOrWhiteSpace(filter.Level))
-        {
-            var level = filter.Level.Trim().ToLower();
-            query = query.Where(c => c.LevelA!.ToLower() == level || c.LevelB!.ToLower() == level);
-        }
+        query = CollisionFilter.ByLevel(query, filter.Level);
 
         if (!string.IsNullOrWhiteSpace(filter.Model))
         {
             var key = Guid.TryParse(filter.Model, out var guid) ? guid.ToString("N") : filter.Model.Trim();
             query = query.Where(c => c.ModelA == key || c.ModelB == key);
+        }
+
+        query = CollisionFilter.ByElement(query, filter.Element);
+        if (!string.IsNullOrWhiteSpace(filter.Category))
+        {
+            var category = filter.Category.Trim();
+            query = query.Where(c => c.CategoryA == category || c.CategoryB == category);
         }
 
         if (string.Equals(filter.Since, "visit", StringComparison.OrdinalIgnoreCase)) query = NewSince(db, query, mark);

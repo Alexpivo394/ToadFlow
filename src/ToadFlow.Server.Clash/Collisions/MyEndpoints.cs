@@ -15,16 +15,21 @@ public static class MyEndpoints
         var my = members.MapGroup("/clash/my");
         my.MapGet("", ListAsync);
         my.MapGet("/summary", SummaryAsync);
+        my.MapGet("/facets", FacetsAsync);
         my.MapPost("/visit", VisitAsync);
     }
 
-    /// <param name="sort"><c>number</c> (по умолчанию) — по части и номеру, <c>depth</c> — глубже сначала, <c>new</c> — новые сначала.</param>
+    /// <param name="sort">
+    ///     <c>number</c> (по умолчанию) — по части и номеру, <c>depth</c> — глубже сначала, <c>new</c> — новые сначала, <c>level</c> — по
+    ///     уровню A, затем B.
+    /// </param>
     private static async Task<IResult> ListAsync([AsParameters] MyFilter filter, string? sort, int? page, int? pageSize, HttpContext http, ToadFlowDb db,
         TimeProvider time, CancellationToken ct)
     {
         var (disciplines, state) = await UserAsync(db, http.User.UserId(), ct);
         if (disciplines.Length == 0) return Results.Ok(new MyCollisionPage(0, []));
         var parts = await MyCollisions.PartsAsync(db, ct);
+        filter = await ModelKeyAsync(db, filter, ct);
         var query = MyCollisions.Query(db, disciplines, parts, filter, MyCollisions.Mark(state, time.GetUtcNow()));
 
         var total = await query.CountAsync(ct);
@@ -33,6 +38,7 @@ public static class MyEndpoints
         {
             "depth" => query.OrderByDescending(c => c.DepthMm).ThenBy(c => c.PartId).ThenBy(c => c.Number),
             "new" => query.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.PartId).ThenBy(c => c.Number),
+            "level" => query.OrderBy(c => c.LevelA).ThenBy(c => c.LevelB).ThenBy(c => c.PartId).ThenBy(c => c.Number),
             _ => query.OrderBy(c => c.PartId).ThenBy(c => c.Number)
         };
         var rows = await ordered.Skip((Math.Max(1, page ?? 1) - 1) * size).Take(size).ToListAsync(ct);
@@ -49,6 +55,35 @@ public static class MyEndpoints
                 MyCollisions.MineToFix(c, disciplines), who?.Name, who?.At);
         }).ToList();
         return Results.Ok(new MyCollisionPage(total, items));
+    }
+
+    /// <summary>Фасеты «Моих»: те же параметры, что у списка; каждый фасет — без своего поля.</summary>
+    private static async Task<IResult> FacetsAsync([AsParameters] MyFilter filter, HttpContext http, ToadFlowDb db, TimeProvider time, CancellationToken ct)
+    {
+        var (disciplines, state) = await UserAsync(db, http.User.UserId(), ct);
+        if (disciplines.Length == 0) return Results.Ok(new CollisionFacets([], [], [], []));
+        var parts = await MyCollisions.PartsAsync(db, ct);
+        filter = await ModelKeyAsync(db, filter, ct);
+        var mark = MyCollisions.Mark(state, time.GetUtcNow());
+        IQueryable<ClashCollision> Without(MyFilter f) => MyCollisions.Query(db, disciplines, parts, f, mark);
+        return Results.Ok(await CollisionFilter.FacetsAsync(Without(filter with { Pair = null }), Without(filter with { Level = null }),
+            Without(filter with { Model = null }), Without(filter with { Category = null }), keys => NamesAsync(db, keys, ct), ct));
+    }
+
+    /// <summary>Фильтр модели принимает и имя (фасет отдаёт модели по имени): имя заменяется ключом.</summary>
+    private static async Task<MyFilter> ModelKeyAsync(ToadFlowDb db, MyFilter filter, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(filter.Model) || Guid.TryParse(filter.Model, out _)) return filter;
+        var name = filter.Model.Trim();
+        var id = await db.Set<ClashModel>().AsNoTracking().Where(m => m.Name == name).Select(m => (Guid?)m.Id).FirstOrDefaultAsync(ct);
+        return id is { } key ? filter with { Model = key.ToString("N") } : filter;
+    }
+
+    private static async Task<Dictionary<string, string>> NamesAsync(ToadFlowDb db, IReadOnlyList<string> keys, CancellationToken ct)
+    {
+        var ids = keys.Select(k => Guid.TryParse(k, out var id) ? id : (Guid?)null).OfType<Guid>().ToList();
+        return (await db.Set<ClashModel>().AsNoTracking().Where(m => ids.Contains(m.Id)).Select(m => new { m.Id, m.Name }).ToListAsync(ct))
+            .ToDictionary(m => m.Id.ToString("N"), m => m.Name);
     }
 
     private static async Task<IResult> SummaryAsync(HttpContext http, ToadFlowDb db, TimeProvider time, CancellationToken ct)
