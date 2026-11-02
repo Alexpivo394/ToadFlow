@@ -169,7 +169,9 @@ describe('Approved run line', () => {
       summary: { found: 3, new: 1, active: 2, returned: 0, fixed: 1, goneByRules: 0, unchecked: 0, fake: 0, reusedPairs: 0 } }];
     open({ '/api/clash/parts/p1/approved/runs': runs }, '/clash/checks/p1?check=k-arov');
 
-    fireEvent.change(await screen.findByPlaceholderText('№, ID или UniqueId'), { target: { value: '1001' } });
+    const search = await screen.findByPlaceholderText('№, ID или UniqueId');
+    fireEvent.change(search, { target: { value: '1001' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
     fireEvent.click(await screen.findByRole('button', { name: 'Excel' }));
 
     await waitFor(() => expect(downloadFile).toHaveBeenCalled());
