@@ -92,6 +92,10 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
         run.FinishedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+
+        // Строки прогона пришли COPY, а прошлые удалены: без свежей статистики планировщик оценивает новый run_id в единицы строк и
+        // сравнивает находки с коллизиями (предпросмотр утверждения) вложенными циклами — 24 с вместо долей секунды на части DON.
+        await db.Database.ExecuteSqlRawAsync("ANALYZE clash_draft_hits", ct);
     }
 
     /// <summary>Строки прогона, который не дошёл до конца.</summary>

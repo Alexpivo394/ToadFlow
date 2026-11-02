@@ -175,6 +175,7 @@ public class RealSnapshotsCheck : ServerTest
         report.AppendLine($"    активных {analytics.Current.Open:N0}, за период: добавилось {analytics.Period.New:N0}, исправлено {analytics.Period.Fixed:N0}; " +
                           $"отстают: {string.Join(", ", analytics.Lagging.Take(3).Select(l => $"{l.Key} {l.Open:N0}"))}");
         await TimedAsync<ToadFlow.Server.Clash.Overview.OverviewView>(admin, "Обзор координатора", "/api/clash/overview");
+        await Stage8Async(admin, ovkClient, partId, report);
         await WriteReportAsync(report);
 
         if (int.TryParse(Environment.GetEnvironmentVariable("TOADCLASH_HOLD_MINUTES"), out var minutes) && minutes > 0)
@@ -536,6 +537,113 @@ public class RealSnapshotsCheck : ServerTest
         run.State.ShouldBe(EngineRunState.Succeeded);
         summary.Total.ShouldBeGreaterThan(0);
         elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(300)); // бюджет спека
+    }
+
+    /// <summary>
+    ///     Этап 8 на реальной части: время фасетов, групп по элементу (проверка и «Мои»), массовых действий, сцены набора и
+    ///     предпросмотра утверждения; шум черновика → исключение пары наборов → прогон черновика. Все замеры пишутся в отчёт,
+    ///     превышения цели собираются и проверяются в конце.
+    /// </summary>
+    private async Task Stage8Async(HttpClient admin, HttpClient ovk, Guid partId, StringBuilder report)
+    {
+        report.AppendLine("Этап 8:");
+        var slow = new List<string>();
+        var part = $"/api/clash/parts/{partId}";
+
+        async Task<JsonElement> TimedAsync(string label, double limitSeconds, Func<Task<HttpResponseMessage>> call, bool warm = true)
+        {
+            if (warm) (await call()).EnsureSuccessStatusCode();
+            var watch = Stopwatch.StartNew();
+            using var response = await call();
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var elapsed = watch.Elapsed;
+            response.EnsureSuccessStatusCode();
+            report.AppendLine($"  {label}: {elapsed.TotalSeconds:0.00} с (цель ≤ {limitSeconds:0} с)");
+            if (elapsed.TotalSeconds > limitSeconds) slow.Add($"{label}: {elapsed.TotalSeconds:0.00} с");
+            return response.Content.Headers.ContentType?.MediaType == "application/json" ? JsonDocument.Parse(bytes).RootElement.Clone() : default;
+        }
+
+        StringContent Body(string json) => new(json, Encoding.UTF8, "application/json");
+        async Task<string> DraftJsonAsync() => (await admin.GetJsonAsync<DraftView>($"{part}/draft")).Configuration.GetRawText();
+
+        var total = (await admin.GetJsonAsync<CollisionPage>($"{part}/approved/collisions?pageSize=1")).Total;
+        report.AppendLine($"  открытых коллизий части: {total:N0}");
+        await TimedAsync("фасеты проверки", 1, () => admin.GetAsync($"{part}/approved/facets?status=all"));
+        var groups = await TimedAsync("группы по элементу ОВК", 1,
+            () => admin.GetAsync($"{part}/approved/collisions?status=all&group=element&side={Uri.EscapeDataString("ОВК")}&pageSize=50"));
+        report.AppendLine($"    групп {groups.GetProperty("groups").GetInt32():N0}, коллизий в них {groups.GetProperty("collisions").GetInt32():N0}");
+        await TimedAsync("«Мои» ОВК по элементу", 1, () => ovk.GetAsync("/api/clash/my?group=element&pageSize=50"));
+        await TimedAsync("«Мои» ОВК, фасеты", 1, () => ovk.GetAsync("/api/clash/my/facets"));
+
+        // Массовые действия: 200 — «фиктивная» с примечанием, 2 000 — «кто правит».
+        var ids = new List<Guid>();
+        for (var page = 1; ids.Count < 2200; page++)
+        {
+            var items = (await admin.GetJsonAsync<CollisionPage>($"{part}/approved/collisions?sort=number&pageSize=200&page={page}")).Items;
+            if (items.Count == 0) break;
+            ids.AddRange(items.Select(c => c.Id));
+        }
+
+        var fake = await TimedAsync("массово «фиктивная», 200", 5, () => admin.PostJsonAsync("/api/clash/collisions/bulk",
+            new { partId, action = "Fake", note = "проверка этапа 8", ids = ids.Take(200).ToList() }), warm: false);
+        fake.GetProperty("done").GetInt32().ShouldBe(200);
+        var assign = await TimedAsync("массово «кто правит», 2 000", 5, () => admin.PostJsonAsync("/api/clash/collisions/bulk",
+            new { partId, action = "Assignee", assignee = "SideA", ids = ids.Skip(200).Take(2000).ToList() }), warm: false);
+        report.AppendLine($"    изменено {assign.GetProperty("done").GetInt32():N0}, отказов {assign.GetProperty("refused").GetArrayLength():N0}");
+
+        // Набор в 3D: самый большой набор черновика.
+        var draftJson = await DraftJsonAsync();
+        var sets = JsonDocument.Parse(draftJson).RootElement.GetProperty("sets").EnumerateArray()
+            .Select(s => (Id: s.GetProperty("id").GetString()!, Name: s.GetProperty("name").GetString()!)).ToList();
+        var counts = new List<(string Id, string Name, int Matched)>();
+        foreach (var set in sets)
+        {
+            using var counted = await admin.PostAsync($"{part}/preview", Body($"{{\"configuration\":{draftJson},\"setId\":\"{set.Id}\"}}"));
+            counts.Add((set.Id, set.Name, (await counted.ReadJsonAsync<JsonElement>()).GetProperty("matched").GetInt32()));
+        }
+
+        var biggest = counts.MaxBy(c => c.Matched);
+        var sceneBody = $"{{\"configuration\":{draftJson},\"setId\":\"{biggest.Id}\"}}";
+        var scene = await TimedAsync($"сцена набора «{biggest.Name}» ({biggest.Matched:N0} элементов)", 3,
+            () => admin.PostAsync($"{part}/draft/sets/scene", Body(sceneBody)));
+        report.AppendLine($"    в сцене {scene.GetProperty("elements").GetArrayLength():N0}, урезана: {scene.GetProperty("truncated").GetBoolean()}, " +
+                          $"треугольников {scene.GetProperty("meshTriangles").GetInt64():N0}");
+        await TimedAsync("сетки сцены набора", 10, () => admin.PostAsync($"{part}/draft/sets/meshes", Body(sceneBody)));
+
+        // Шум черновика → правило: самая шумная пара наборов самой шумной проверки — в исключения, прогон черновика заново.
+        var drafted = await RunWorkerAsync(admin, partId);
+        report.AppendLine($"  прогон черновика: {drafted.TotalSeconds:0} с");
+        var check = (await admin.GetJsonAsync<JsonElement>($"{part}/draft/summary")).GetProperty("checks").EnumerateArray()
+            .MaxBy(c => c.GetProperty("count").GetInt32());
+        var key = check.GetProperty("key").GetString()!;
+        var noise = (await admin.GetJsonAsync<JsonElement>($"{part}/draft/checks/{key}/setpairs")).EnumerateArray()
+            .MaxBy(p => p.GetProperty("count").GetInt32());
+        var (setA, setB) = (noise.GetProperty("setA").GetString()!, noise.GetProperty("setB").GetString()!);
+        report.AppendLine($"  шум: «{noise.GetProperty("setAName").GetString()} × {noise.GetProperty("setBName").GetString()}» — " +
+                          $"{noise.GetProperty("count").GetInt32():N0} из {check.GetProperty("count").GetInt32():N0} в проверке");
+        var fresh = await TimedAsync("предпросмотр утверждения", 1, () => admin.GetAsync($"{part}/approve/preview"));
+        fresh.GetProperty("stale").GetBoolean().ShouldBeFalse();
+
+        var config = ConfigurationJson.Deserialize(draftJson);
+        var excluded = config with { Exclusions = [.. config.Exclusions, new SetPairExclusion(Guid.Parse(setA), Guid.Parse(setB))] };
+        (await admin.PutAsync($"{part}/draft", Json(excluded))).EnsureSuccessStatusCode();
+        var stale = await TimedAsync("предпросмотр, черновик изменён после прогона", 1, () => admin.GetAsync($"{part}/approve/preview"));
+        stale.GetProperty("stale").GetBoolean().ShouldBeTrue();
+        report.AppendLine($"    изменений в настройке: {stale.GetProperty("changes").GetArrayLength()}");
+
+        await RunWorkerAsync(admin, partId);
+        var after = (await admin.GetJsonAsync<JsonElement>($"{part}/draft/checks/{key}/setpairs")).EnumerateArray()
+            .Where(p => p.GetProperty("setA").GetString() == setA && p.GetProperty("setB").GetString() == setB)
+            .Sum(p => p.GetProperty("count").GetInt32());
+        after.ShouldBe(0);
+        var preview = await TimedAsync("предпросмотр после прогона", 1, () => admin.GetAsync($"{part}/approve/preview"));
+        var pairs = preview.GetProperty("pairs").EnumerateArray().ToList();
+        report.AppendLine($"    если утвердить: уйдут ≈ {pairs.Sum(p => p.GetProperty("gone").GetInt32()):N0}, " +
+                          $"появятся ≈ {pairs.Sum(p => p.GetProperty("new").GetInt32()):N0}, " +
+                          $"без изменений {pairs.Sum(p => p.GetProperty("same").GetInt32()):N0} ({pairs.Count} пар разделов)");
+
+        await WriteReportAsync(report);
+        slow.ShouldBeEmpty();
     }
 
     private static async Task WriteReportAsync(StringBuilder report)
