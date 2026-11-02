@@ -72,7 +72,7 @@ function Unassigned({ partId, config, groupId }: { partId: string; config: Clash
 }
 
 /** Наборы: группы (разделы и свои), наборы выбранной группы со счётчиками и редактор набора. */
-export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, present }: {
+export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, present, initialSet }: {
   partId: string;
   view: DraftView;
   config: ClashConfig;
@@ -80,9 +80,11 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
   onChange: Change;
   onOpenSet: (setId: string | null) => void;
   present: PresenceView[];
+  /** Набор, открытый сразу (переход из черновика `?tab=sets&set={id}`). */
+  initialSet?: string | null;
 }) {
-  const [groupId, setGroupId] = useState<string | null>(config.groups[0]?.id ?? null);
-  const [setId, setSetId] = useState<string | null>(null);
+  const [groupId, setGroupId] = useState<string | null>(config.sets.find((s) => s.id === initialSet)?.groupId ?? config.groups[0]?.id ?? null);
+  const [setId, setSetId] = useState<string | null>(initialSet ?? null);
   const [dialog, setDialog] = useState<SetGroup | 'new' | null>(null);
   const modelIds = view.models.map((m) => `modelId=${m.modelKey}`).join('&');
   const catalog = useApi<ModelCatalog>(['clash-models', 'catalog', partId, modelIds], `/api/clash/catalog${modelIds ? `?${modelIds}` : ''}`);

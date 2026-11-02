@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { configuration, draft, partResponses } from '../../../test/clashPart';
-import { renderApp } from '../../../test/renderApp';
+import { pickOption, renderApp } from '../../../test/renderApp';
 
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const calls = () => (fetch as unknown as FetchMock).mock.calls;
@@ -98,6 +98,9 @@ describe('Matrix tab', () => {
     fireEvent.click(screen.getAllByLabelText('Набор B')[0]);
 
     expect((await screen.findAllByText('ОВ', { selector: '[class*=groupLabel]' })).length).toBeGreaterThan(0);
+    const input = (label: string) => screen.getAllByLabelText(label).filter((e) => e.tagName === 'INPUT')[0];
+    await pickOption(input('Набор A'), 'Стены');
+    await pickOption(input('Набор B'), 'Воздуховоды');
     const config = await savedConfig();
     expect(config.exclusions).toEqual([{ setA: 's-walls', setB: 's-ducts' }]);
   });

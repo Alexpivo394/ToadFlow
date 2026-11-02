@@ -8,6 +8,7 @@ import { useApi } from '../../../api/queries';
 import type { ApprovedVersionView, ClashPartView, ClashTemplateView, DraftView, PresenceView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm, Panel } from '../../../components/ui';
+import type { ClashConfig } from '../../../lib/clashConfig';
 import { formatDateTime } from '../../../lib/format';
 import { VersionsDrawer } from '../approved/VersionsDrawer';
 import { DraftTab } from '../draft/DraftTab';
@@ -82,6 +83,11 @@ export function PartShell() {
   const approved = versions.data?.[0] ?? null;
   const [showVersions, setShowVersions] = useState(false);
   const draft = useDraft(partId);
+  // Подпись последней правки из меню черновика — для полосы «есть несохранённые изменения»; правка вкладкой её снимает.
+  const [lastEdit, setLastEdit] = useState<string | null>(null);
+  useEffect(() => { if (!draft.dirty) setLastEdit(null); }, [draft.dirty]);
+  const edit: typeof draft.edit = (change) => { setLastEdit(null); draft.edit(change); };
+  const labeledEdit = (change: (config: ClashConfig) => ClashConfig, label: string) => { draft.edit(change); setLastEdit(label); };
 
   // Отметка «я здесь»: раз в 15 с и при смене вкладки или набора; уход со страницы — явный выход.
   useEffect(() => {
@@ -134,7 +140,7 @@ export function PartShell() {
               </Group>
             )
             : <Badge variant="light" color="gray">Не утверждена</Badge>}
-          {draft.dirty && <Text size="sm" c="orange">● есть несохранённые изменения</Text>}
+          {draft.dirty && !lastEdit && <Text size="sm" c="orange">● есть несохранённые изменения</Text>}
           <PresenceBadges present={presence.data ?? []} me={user?.id} />
         </Group>
         {!readOnly && (
@@ -172,6 +178,17 @@ export function PartShell() {
           </Group>
         )}
       </Group>
+      {draft.dirty && lastEdit && (
+        <Group data-testid="unsaved-banner" gap="sm" px="sm" py={6} bg="var(--mantine-color-orange-light)" style={{ borderRadius: 6 }}>
+          <Text size="sm" c="orange">● Есть несохранённые изменения: {lastEdit}</Text>
+          {!readOnly && (
+            <Group gap="xs" ml="auto">
+              <Button size="compact-sm" variant="default" onClick={draft.reset}>Отменить</Button>
+              <Button size="compact-sm" loading={draft.saving} onClick={draft.save}>Сохранить</Button>
+            </Group>
+          )}
+        </Group>
+      )}
       {draft.problems.length > 0 && (
         <Alert color="red" title="Черновик нельзя прогнать">
           <List size="sm">{draft.problems.map((p) => <List.Item key={p}>{p}</List.Item>)}</List>
@@ -188,15 +205,16 @@ export function PartShell() {
           </Tabs.List>
           <Tabs.Panel value="models"><ModelsTab part={part.data} readOnly={readOnly} /></Tabs.Panel>
           <Tabs.Panel value="sets">
-            <SetsTab partId={partId} view={draft.view} config={config} readOnly={readOnly} onChange={draft.edit} onOpenSet={setOpenSet}
+            <SetsTab partId={partId} view={draft.view} config={config} readOnly={readOnly} onChange={edit} onOpenSet={setOpenSet} initialSet={params.get('set')}
               present={(presence.data ?? []).filter((p) => p.userId !== user?.id)} />
           </Tabs.Panel>
           <Tabs.Panel value="matrix">
-            <MatrixTab config={config} readOnly={readOnly} onChange={draft.edit} />
+            <MatrixTab config={config} readOnly={readOnly} onChange={edit} />
           </Tabs.Panel>
-          <Tabs.Panel value="exclusions"><ExclusionsTab config={config} readOnly={readOnly} onChange={draft.edit} /></Tabs.Panel>
+          <Tabs.Panel value="exclusions"><ExclusionsTab config={config} readOnly={readOnly} onChange={edit} /></Tabs.Panel>
           <Tabs.Panel value="draft">
-            <DraftTab partId={partId} readOnly={readOnly} dirty={draft.dirty} onSave={draft.save} />
+            <DraftTab partId={partId} readOnly={readOnly} dirty={draft.dirty} onSave={draft.save} config={config} onEdit={labeledEdit}
+              onOpenSet={(setId) => setParams({ tab: 'sets', set: setId })} />
           </Tabs.Panel>
         </Tabs>
       </Panel>

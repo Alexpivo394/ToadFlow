@@ -156,3 +156,23 @@ export function setCell(config: ClashConfig, a: string, b: string, patch: Partia
   if (existing) return { ...config, matrix: config.matrix.map((c) => (c === existing ? { ...c, ...patch } : c)) };
   return { ...config, matrix: [...config.matrix, { groupA: a, groupB: b, enabled: true, toleranceMm: 20, ...patch }] };
 }
+
+/** Исключение пары наборов; уже исключённая пара (в любом порядке) — без изменений, та же конфигурация. */
+export function addExclusion(config: ClashConfig, setA: string, setB: string): ClashConfig {
+  if (config.exclusions.some((e) => (e.setA === setA && e.setB === setB) || (e.setA === setB && e.setB === setA))) return config;
+  return { ...config, exclusions: [...config.exclusions, { setA, setB }] };
+}
+
+/** Включённые клетки матрицы, в которые попадает пара наборов: по группам наборов, без учёта порядка. */
+export function cellsForSetPair(config: ClashConfig, setA: string, setB: string): MatrixCell[] {
+  const groupA = config.sets.find((s) => s.id === setA)?.groupId;
+  const groupB = config.sets.find((s) => s.id === setB)?.groupId;
+  if (!groupA || !groupB) return [];
+  return config.matrix.filter((c) => c.enabled && ((c.groupA === groupA && c.groupB === groupB) || (c.groupA === groupB && c.groupB === groupA)));
+}
+
+/** Допуск одной клетки — записи матрицы с теми же группами в том же порядке (другой порядок — другая запись). */
+export const setCellTolerance = (config: ClashConfig, cell: MatrixCell, mm: number): ClashConfig => ({
+  ...config,
+  matrix: config.matrix.map((c) => (c.groupA === cell.groupA && c.groupB === cell.groupB ? { ...c, toleranceMm: mm } : c)),
+});

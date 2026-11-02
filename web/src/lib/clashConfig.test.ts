@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addCondition, addGroup, copySet, emptyConfig, matrixCell, newGroup, newSet, removeGroup, removeSet, setCell, type ClashConfig,
+  addCondition, addExclusion, addGroup, cellsForSetPair, copySet, emptyConfig, matrixCell, newGroup, newSet, removeGroup, removeSet, setCell,
+  setCellTolerance, type ClashConfig,
 } from './clashConfig';
 
 const ar = newGroup('АР', { disciplines: ['АР'], modelKeys: [] });
@@ -70,5 +71,43 @@ describe('clashConfig', () => {
     expect(set.anyOf[0].all).toEqual([{ property: { kind: 'category' }, operator: 'isNotEmpty', value: null }]);
     expect(addGroup(set).anyOf).toHaveLength(2);
     expect(addCondition(set, 0).anyOf[0].all).toHaveLength(2);
+  });
+});
+
+describe('clashConfig noise to rules', () => {
+  const walls = newSet(ar.id, 'Стены');
+  const ducts = newSet(ov.id, 'Воздуховоды');
+  const base: ClashConfig = { ...emptyConfig(), groups: [ar, ov], sets: [walls, ducts] };
+
+  it('addExclusion_NoDuplicate_EitherOrder', () => {
+    const once = addExclusion(base, walls.id, ducts.id);
+    const twice = addExclusion(once, ducts.id, walls.id);
+
+    expect(once.exclusions).toEqual([{ setA: walls.id, setB: ducts.id }]);
+    expect(twice).toBe(once);
+  });
+
+  it('cellsForSetPair_TwoChecks', () => {
+    // Клетка, заданная в обоих порядках (несохранённая правка до проверки), — две проверки одной пары наборов.
+    const config: ClashConfig = {
+      ...base,
+      matrix: [
+        { groupA: ar.id, groupB: ov.id, enabled: true, toleranceMm: 20 },
+        { groupA: ov.id, groupB: ar.id, enabled: true, toleranceMm: 50 },
+        { groupA: ar.id, groupB: ar.id, enabled: true, toleranceMm: 10 },
+      ],
+    };
+
+    expect(cellsForSetPair(config, ducts.id, walls.id).map((c) => c.toleranceMm)).toEqual([20, 50]);
+    expect(cellsForSetPair({ ...config, matrix: [{ ...config.matrix[0], enabled: false }] }, walls.id, ducts.id)).toEqual([]);
+  });
+
+  it('setCellTolerance_ChangesOnlyThatCell', () => {
+    const config = setCell(setCell(base, ar.id, ov.id, { toleranceMm: 20 }), ar.id, ar.id, { toleranceMm: 10 });
+    const cell = matrixCell(config, ov.id, ar.id)!;
+
+    const result = setCellTolerance(config, cell, 35);
+
+    expect(result.matrix.map((c) => c.toleranceMm)).toEqual([35, 10]);
   });
 });

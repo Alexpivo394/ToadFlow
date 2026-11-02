@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Alert, Box, Group, NavLink, NumberInput, ScrollArea, Select, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Alert, Badge, Box, Group, NavLink, NumberInput, ScrollArea, Select, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../../../api/queries';
 import type { CheckCount, CollisionFacets, DraftFacets, DraftHitView, DraftRunSummary, DraftSummary, SetPairCount } from '../../../api/types';
@@ -8,8 +8,10 @@ import { ListFilters } from '../../../components/collisions/ListFilters';
 import { useListParams, type ListParams } from '../../../components/collisions/useListParams';
 import { Empty } from '../../../components/ui';
 import { categoryLabel } from '../../../lib/categories';
+import type { ClashConfig } from '../../../lib/clashConfig';
 import { DraftRunPanel } from '../DraftRunPanel';
 import { HitScene, prefetchHit } from '../viewer/HitScene';
+import { type LabeledEdit, SetPairMenu } from './SetPairMenu';
 import { type HitFilters, PageSize, useHitNavigation } from './useHitNavigation';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
@@ -52,7 +54,16 @@ function Side({ hit, side }: { hit: DraftHitView; side: 'A' | 'B' }) {
  * Черновик: строка прогона и три колонки — проверки, коллизии выбранной проверки (группы по парам наборов, фильтры из
  * результата), 3D выбранной коллизии. ↑/↓ листают коллизии сквозь страницы и проверки, Enter — свойства A, затем B.
  */
-export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; readOnly: boolean; dirty: boolean; onSave: () => Promise<void> }) {
+export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOpenSet }: {
+  partId: string;
+  readOnly: boolean;
+  dirty: boolean;
+  onSave: () => Promise<void>;
+  /** Черновик с несохранёнными правками — для меню «⋯» у пары наборов. */
+  config?: ClashConfig;
+  onEdit?: LabeledEdit;
+  onOpenSet?: (setId: string) => void;
+}) {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [list, setList] = useListParams({ sort: 'setpair', group: 'setpair' });
@@ -99,6 +110,9 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
   const facets = useApi<DraftFacets>(['clash-parts', partId, 'facets', check], check ? `/api/clash/parts/${partId}/draft/facets?check=${check}` : null);
   const setPairs = useApi<SetPairCount[]>(['clash-parts', partId, 'setpairs', check], check ? `/api/clash/parts/${partId}/draft/checks/${check}/setpairs` : null);
   const pairNames = new Map((setPairs.data ?? []).map((p) => [`${p.setA.replaceAll('-', '')}|${p.setB.replaceAll('-', '')}`, p]));
+  // Пара, исключённая в черновике, но ещё с коллизиями в результате: прогон старше правки — группа бледнеет до нового прогона.
+  const excluded = (pair: SetPairCount | undefined) => !!pair && !!config?.exclusions.some((e) =>
+    (e.setA === pair.setA && e.setB === pair.setB) || (e.setA === pair.setB && e.setB === pair.setA));
 
   useEffect(() => {
     if (nav.upcoming) prefetchHit(queryClient, nav.upcoming.runId, nav.upcoming.number);
@@ -161,18 +175,24 @@ export function DraftTab({ partId, readOnly, dirty, onSave }: { partId: string; 
                 return (
                   <Fragment key={h.number}>
                     {header && (
-                      <UnstyledButton w="100%" px="xs" py={4} bg="var(--mantine-color-default-hover)"
-                        onClick={() => setCollapsed((s) => { const next = new Set(s); if (next.has(h.setPairKey)) next.delete(h.setPairKey); else next.add(h.setPairKey); return next; })}>
-                        <Group justify="space-between">
-                          <Text size="xs" fw={700}>{collapsed.has(h.setPairKey) ? '▸' : '▾'} {pair ? `${pair.setAName} × ${pair.setBName}` : 'Наборы'}</Text>
-                          {pair && <Text size="xs" fw={700}>{n(pair.count)}</Text>}
-                        </Group>
-                      </UnstyledButton>
+                      <Group gap={4} wrap="nowrap" px="xs" py={4} bg="var(--mantine-color-default-hover)" style={{ opacity: excluded(pair) ? 0.5 : 1 }}>
+                        <UnstyledButton style={{ flex: 1, minWidth: 0 }}
+                          onClick={() => setCollapsed((s) => { const next = new Set(s); if (next.has(h.setPairKey)) next.delete(h.setPairKey); else next.add(h.setPairKey); return next; })}>
+                          <Group justify="space-between" wrap="nowrap">
+                            <Text size="xs" fw={700} truncate>{collapsed.has(h.setPairKey) ? '▸' : '▾'} {pair ? `${pair.setAName} × ${pair.setBName}` : 'Наборы'}</Text>
+                            <Group gap={6} wrap="nowrap">
+                              {excluded(pair) && <Badge size="xs" color="gray" variant="light">будет исключена</Badge>}
+                              {pair && <Text size="xs" fw={700}>{n(pair.count)}</Text>}
+                            </Group>
+                          </Group>
+                        </UnstyledButton>
+                        {pair && config && onEdit && onOpenSet && !readOnly && <SetPairMenu config={config} pair={pair} onEdit={onEdit} onOpenSet={onOpenSet} />}
+                      </Group>
                     )}
                     {!(grouped && collapsed.has(h.setPairKey)) && (
                       <UnstyledButton w="100%" px="xs" py={4} onClick={() => onNumber(h.number)} aria-label={`Коллизия ${h.number}`}
                         bg={h.number === number ? 'var(--mantine-primary-color-light)' : undefined}
-                        style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                        style={{ borderBottom: '1px solid var(--mantine-color-default-border)', opacity: excluded(pair) ? 0.5 : 1 }}>
                         <Group gap={6} wrap="nowrap">
                           <Text size="xs" c="dimmed" w={52}>№ {h.number}</Text>
                           <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>

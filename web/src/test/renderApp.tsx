@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { MantineProvider } from '@mantine/core';
@@ -115,4 +115,15 @@ function stubFetch(responses: Record<string, unknown>) {
     }),
   );
   setToken('test-token');
+}
+
+/** Выбор пункта в Mantine Select: открыть список поля и нажать пункт именно этого списка (у соседних полей те же пункты). */
+export async function pickOption(input: HTMLElement, name: string | RegExp) {
+  fireEvent.click(input);
+  const list = await waitFor(() => {
+    const element = document.getElementById(input.getAttribute('aria-controls') ?? '');
+    if (!element) throw new Error('Список поля не открылся');
+    return element;
+  });
+  fireEvent.click(within(list).getByRole('option', { name, hidden: true }));
 }
