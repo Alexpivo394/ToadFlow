@@ -260,6 +260,21 @@ public class ClashApprovedRunTests : ServerTest
     }
 
     [Test]
+    public async Task Basis_ReturnsPreviousEngineVersion()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var first = await ApproveAndRunAsync(admin, partId);
+        (await ClaimAsync(engine)).RunId.ShouldBe(first);
+        (await PostApprovedResultAsync(engine, first, 0, true, [Fp(Hit(1))], Stats with { EngineVersion = 7 }, [], [])).EnsureSuccessStatusCode();
+
+        var second = await RerunAsync(partId);
+        (await ClaimAsync(engine)).RunId.ShouldBe(second);
+
+        (await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{second}/basis")).PreviousEngineVersion.ShouldBe(7);
+    }
+
+    [Test]
     public async Task Basis_FirstRun_Empty()
     {
         var (admin, agent, partId, engine) = await SetupAsync();

@@ -79,8 +79,9 @@ public static class ApprovedRunFacts
     ///     Предложения сопоставить пересозданные элементы моделей с новой выгрузкой: только те, где новый элемент — в найденной
     ///     коллизии, а старый — в открытой.
     /// </summary>
+    /// <param name="truncated">Вызывается с ключом модели, слишком плотной для сопоставления: предложений по ней нет.</param>
     public static List<EngineIdentityMatch> Matches(IReadOnlyList<PreviousModel> previous, IReadOnlyDictionary<string, ModelIndex> current,
-        IReadOnlyList<ClashHit> found, IReadOnlyList<EngineOpenPair> open)
+        IReadOnlyList<ClashHit> found, IReadOnlyList<EngineOpenPair> open, Action<string>? truncated = null)
     {
         var inHits = found.SelectMany(h => new[] { h.A, h.B }).ToHashSet();
         var inOpen = open.SelectMany(p => new[] { new ElementRef(p.ModelA, p.UniqueIdA), new ElementRef(p.ModelB, p.UniqueIdB) }).ToHashSet();
@@ -89,7 +90,9 @@ public static class ApprovedRunFacts
         {
             var key = model.Index.Header.ModelKey;
             if (!current.TryGetValue(key, out var index)) continue;
-            foreach (var match in ElementMatcher.Compare(model.Index, index).FallbackMatches)
+            var report = ElementMatcher.Compare(model.Index, index);
+            if (report.Truncated) truncated?.Invoke(key);
+            foreach (var match in report.FallbackMatches)
             {
                 if (inHits.Contains(new ElementRef(key, match.NewId)) && inOpen.Contains(new ElementRef(key, match.OldId)))
                     result.Add(new EngineIdentityMatch(key, match.OldId, match.NewId));

@@ -72,7 +72,7 @@ public static class EngineEndpoints
             .Select(c => new EngineOpenPair(c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.FoundNow && c.LastFoundRunId == previous.Id, c.X, c.Y, c.Z,
                 c.DepthMm, c.FingerprintA, c.FingerprintB))
             .ToListAsync(ct);
-        return Results.Ok(new EngineBasis(previous.ConfigurationJson, previous.Models, open));
+        return Results.Ok(new EngineBasis(previous.ConfigurationJson, previous.Models, open, previous.Stats?.EngineVersion ?? 0));
     }
 
     private static async Task<IResult> DownloadAsync(Guid id, string file, ToadFlowDb db, ClashStorage storage, CancellationToken ct)

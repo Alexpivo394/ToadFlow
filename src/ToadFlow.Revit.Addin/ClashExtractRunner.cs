@@ -59,7 +59,9 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
             using var abort = new CancellationTokenSource();
             var reporter = new StepReporter(progress, payload.ModelName, abort);
             if (progress.ShouldAbort) abort.Cancel();
-            return GeometryExtractor.Extract(opened.Document, new ExtractOptions(payload.ModelKey, payload.ViewName), reporter, abort.Token);
+            var (geometry, parameters, _, _) = GeometryExtractor.Extract(opened.Document, new ExtractOptions(payload.ModelKey, payload.ViewName), reporter,
+                abort.Token);
+            return (geometry, parameters);
         }
         finally
         {

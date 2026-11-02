@@ -52,6 +52,7 @@ public sealed record EngineHit(
 /// <param name="LoadSeconds">Скачивание и чтение слепков.</param>
 /// <param name="PeakWorkingSetBytes">Пик памяти процесса работника за прогон.</param>
 /// <param name="ReusedPairs">Пары, взятые из прошлого утверждённого прогона без точной проверки.</param>
+/// <param name="EngineVersion">Версия алгоритма движка (<c>ClashEngine.AlgorithmVersion</c>); 0 — прогон до появления версии.</param>
 public sealed record EngineRunStats(
     int Elements,
     long Triangles,
@@ -61,7 +62,8 @@ public sealed record EngineRunStats(
     double NarrowSeconds,
     long PeakManagedBytes,
     long PeakWorkingSetBytes,
-    long ReusedPairs = 0);
+    long ReusedPairs = 0,
+    int EngineVersion = 0);
 
 /// <summary>Часть результата прогона; последняя часть несёт статистику, а у утверждённого прогона — ещё ушедшие пары и сопоставления.</summary>
 /// <param name="Gone">Открытые пары основы, которых нет среди найденных, с фактами о них.</param>
@@ -77,7 +79,12 @@ public sealed record EngineRunResult(
 /// <param name="PreviousConfigurationJson">Конфигурация прошлого прогона; null — прошлого не было.</param>
 /// <param name="PreviousModels">Слепки прошлого прогона.</param>
 /// <param name="Open">Все коллизии части, кроме исправленных.</param>
-public sealed record EngineBasis(string? PreviousConfigurationJson, IReadOnlyList<EngineRunModel> PreviousModels, IReadOnlyList<EngineOpenPair> Open);
+/// <param name="PreviousEngineVersion">Версия алгоритма прошлого прогона; пары переиспользуются только при совпадении с текущей.</param>
+public sealed record EngineBasis(
+    string? PreviousConfigurationJson,
+    IReadOnlyList<EngineRunModel> PreviousModels,
+    IReadOnlyList<EngineOpenPair> Open,
+    int PreviousEngineVersion = 0);
 
 /// <param name="FoundByPrevious">Найдена прошлым прогоном: точка, глубина и отпечатки — его.</param>
 public sealed record EngineOpenPair(

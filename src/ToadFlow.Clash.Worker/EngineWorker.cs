@@ -58,7 +58,9 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
                 if (basis.PreviousConfigurationJson is { } previousJson)
                 {
                     previous = await ReadPreviousAsync(runId, basis.PreviousModels, folders, ct);
-                    if (ApprovedRunFacts.SameConfiguration(previousJson, assignment.ConfigurationJson))
+                    // Пары прошлого прогона переиспользуются, только если их искал тот же алгоритм с той же конфигурацией.
+                    if (basis.PreviousEngineVersion == ClashEngine.AlgorithmVersion &&
+                        ApprovedRunFacts.SameConfiguration(previousJson, assignment.ConfigurationJson))
                     {
                         // Без всех прошлых выгрузок неизменность пары не доказать — полный пересчёт.
                         if (previous.Count == basis.PreviousModels.Count) incremental = ApprovedRunFacts.Base(previous, config, basis.Open);
@@ -87,7 +89,7 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             process.Refresh();
             var stats = new EngineRunStats(result.Stats.Elements, result.Stats.Triangles, result.Stats.CandidatePairs, load.Elapsed.TotalSeconds,
                 result.Stats.BroadPhase.TotalSeconds, result.Stats.NarrowPhase.TotalSeconds, result.Stats.PeakManagedBytes, process.PeakWorkingSet64,
-                result.Stats.ReusedPairs);
+                result.Stats.ReusedPairs, ClashEngine.AlgorithmVersion);
 
             List<EngineGonePair>? gone = null;
             List<EngineIdentityMatch>? matches = null;
@@ -95,7 +97,9 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             {
                 gone = ApprovedRunFacts.Gone(basis.Open, result.Hits, models, previousConfig, options.Threads, cancelled.Token);
                 var current = assignment.Models.ToDictionary(m => m.ModelId.ToString("N"), m => ReadIndex(folders[m.SnapshotId]));
-                matches = ApprovedRunFacts.Matches(previous, current, result.Hits, basis.Open);
+                matches = ApprovedRunFacts.Matches(previous, current, result.Hits, basis.Open,
+                    model => logger.LogWarning("Прогон {Run}: модель {Model} слишком плотная для сопоставления пересозданных элементов — предложений нет",
+                        runId, model));
             }
 
             var parts = Math.Max(1, (hits.Count + EngineApi.ResultChunkHits - 1) / EngineApi.ResultChunkHits);
@@ -110,6 +114,10 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             logger.LogInformation("Прогон {Run}: коллизий {Hits}, загрузка {Load:0.0} с, поиск {Search:0.0} с", runId, hits.Count, stats.LoadSeconds,
                 stats.BroadSeconds + stats.NarrowSeconds);
             return RunOutcome.Succeeded;
+        }
+        catch (ModelsNotAlignedException exception)
+        {
+            return await FailAsync(runId, NotAlignedMessage(exception, assignment.Models), retry: false, exception, ct);
         }
         catch (InvalidDataException exception)
         {
@@ -166,6 +174,20 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
         ModelParameters parameters;
         using (var stream = File.OpenRead(Path.Combine(folder, SnapshotCache.Parameters))) parameters = ModelParametersFile.Read(stream);
         return new ModelInput(model.Discipline, geometry, parameters);
+    }
+
+    /// <summary>«Модели не совмещены с остальными: ОВ — до остальных 6 000 км. Проверьте общие координаты моделей».</summary>
+    internal static string NotAlignedMessage(ModelsNotAlignedException exception, IReadOnlyList<EngineRunModel> models)
+    {
+        var names = models.ToDictionary(m => m.ModelId.ToString("N"), m => m.ModelName);
+        var listed = exception.Models.Select(m => $"{names.GetValueOrDefault(m.ModelKey, m.ModelKey)} — до остальных {Distance(m.DistanceMm)}");
+        return $"Модели не совмещены с остальными: {string.Join("; ", listed)}. Проверьте общие координаты моделей";
+
+        static string Distance(double mm)
+        {
+            var culture = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+            return mm < 1_000_000 ? (mm / 1000).ToString("N0", culture) + " м" : (mm / 1_000_000).ToString("N0", culture) + " км";
+        }
     }
 
     private async Task<RunOutcome> FailAsync(Guid runId, string error, bool retry, Exception exception, CancellationToken ct)

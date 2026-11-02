@@ -102,6 +102,29 @@ public class ApprovedRunTests : ServerTest
     }
 
     [Test]
+    public async Task Worker_Approved_OtherEngineVersion_FullRun()
+    {
+        var (admin, agent, partId) = await PartAsync();
+        await using var _ = agent;
+        await ApproveAsync(admin, partId);
+        var first = await RunOnceAsync();
+        first.Stats.ShouldNotBeNull().EngineVersion.ShouldBe(Alexpivo394.Revit.Clash.Engine.ClashEngine.AlgorithmVersion);
+        // Прошлый прогон считал прежний алгоритм: его пары не переиспользуются.
+        await DbAsync(async db =>
+        {
+            var run = await db.Set<EngineRun>().SingleAsync(r => r.Id == first.Id);
+            run.Stats = run.Stats! with { EngineVersion = 0 };
+            await db.SaveChangesAsync();
+        });
+
+        await RerunAsync(partId);
+        var second = await RunOnceAsync();
+
+        second.Stats.ShouldNotBeNull().ReusedPairs.ShouldBe(0);
+        second.Stats.CandidatePairs.ShouldBeGreaterThan(0);
+    }
+
+    [Test]
     public async Task Worker_Approved_DeletedElement_GoneAbsent()
     {
         var (admin, agent, partId) = await PartAsync();

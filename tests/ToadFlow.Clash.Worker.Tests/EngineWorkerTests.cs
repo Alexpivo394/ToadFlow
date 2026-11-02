@@ -1,4 +1,5 @@
 using System.Text;
+using Alexpivo394.Revit.Clash.Geometry;
 using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -120,6 +121,32 @@ public class EngineWorkerTests : ServerTest
         var run = await admin.GetJsonAsync<DraftRunSummary>($"/api/clash/parts/{partId}/draft/run");
         run.State.ShouldBe(EngineRunState.Failed);
         run.Error.ShouldNotBeNull().ShouldContain("повреждён");
+    }
+
+    [Test]
+    public async Task Worker_MisalignedModels_FailsWithoutRetry()
+    {
+        var admin = await AdminAsync();
+        await using var agent = await FakeAgent.RegisterAsync(Server, admin);
+        await agent.ConnectAsync("1.8.0", new InstalledRevitDto(2022, true));
+        var partId = await ClashDraftFixtures.PartAsync(Server, admin, agent, "POL_K1_AR.rvt", "POL_K1_OV.rvt");
+        // ОВ без общих координат: та же геометрия, но в 6 000 км от АР.
+        var published = await ClashFixtures.PublishAsync(Server, agent, "POL_K1_OV.rvt", custom: key =>
+        {
+            var header = new ModelHeader(key, @"C:\models\ОВ.rvt", 2022, DateTimeOffset.UtcNow, true, "Navisworks", 6e9, 6e9, 0);
+            return new ModelGeometry(header,
+                [ClashFixtures.Box(new ElementInfo("wall-1", 1, "OST_Walls", "Стена", "200", "Этаж 1", "АР", []), 0, 0, 0, 100)], ["wall-1"]);
+        });
+        await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded);
+        await StartAsync(admin, partId);
+
+        (await Worker().Worker.RunOnceAsync(CancellationToken.None)).ShouldBe(RunOutcome.Failed);
+
+        var run = await admin.GetJsonAsync<DraftRunSummary>($"/api/clash/parts/{partId}/draft/run");
+        run.State.ShouldBe(EngineRunState.Failed);
+        run.Error.ShouldNotBeNull().ShouldContain("POL_K1_OV");
+        run.Error.ShouldContain("общие координаты");
+        run.Error.ShouldContain("км");
     }
 
     [Test]
