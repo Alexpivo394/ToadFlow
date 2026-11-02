@@ -21,12 +21,14 @@ public static class ApproveEndpoints
         var part = members.MapGroup("/clash/parts/{id:guid}");
         part.MapGet("/versions", VersionsAsync);
         part.MapGet("/versions/{version:int}", VersionAsync);
+        part.MapGet("/versions/{version:int}/changes", ApprovePreviews.ChangesAsync);
     }
 
     public static void MapClashApprove(this RouteGroupBuilder api)
     {
         var write = api.MapGroup("/clash/parts/{id:guid}").RequireAuthorization(Policies.Operator);
         write.MapPost("/approve", ApproveAsync);
+        write.MapGet("/approve/preview", ApprovePreviews.PreviewAsync);
         write.MapPost("/draft/reset", ResetAsync);
     }
 
