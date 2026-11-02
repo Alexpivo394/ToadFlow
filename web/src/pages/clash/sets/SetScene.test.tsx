@@ -80,4 +80,15 @@ describe('Set in 3D', () => {
     const why = (fetch as unknown as FetchMock).mock.calls.find(([url]) => url === '/api/clash/parts/p1/draft/sets/why')!;
     expect(JSON.parse(String(why[1]!.body)).element).toEqual({ model: 'm1', uniqueId: 'u1' });
   });
+
+  it('SetScene_Refresh_SameConfig_Refetches', async () => {
+    renderApp('/clash/setup/parts/p1?tab=sets', responses());
+    fireEvent.click(await screen.findByRole('button', { name: 'Показать набор в 3D' }));
+    await screen.findByRole('button', { name: '3D set u1' });
+    expect(sceneBodies()).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить' }));
+
+    await waitFor(() => expect(sceneBodies()).toHaveLength(2));
+  });
 });

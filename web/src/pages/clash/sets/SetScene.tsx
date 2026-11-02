@@ -72,6 +72,13 @@ export function SetScene({ partId, config, setId, focus }: { partId: string; con
   const focusIndex = focus ? scene.data?.elements.find((e) => e.modelId === focus.model && e.uniqueId === focus.uniqueId)?.index ?? null : null;
   useEffect(() => setSelected(focusIndex), [focusIndex, scene.data]);
 
+  // Черновик не менялся — ключ запроса тот же, и новое тело ничего не перезапросит: тогда перезапрос явно (выгрузки могли обновиться).
+  const refresh = () => {
+    const next = { ...body, configuration: config };
+    if (JSON.stringify(next) !== JSON.stringify(body)) setBody(next);
+    else void scene.refetch().then(() => meshes.refetch());
+  };
+
   const members = scene.data?.elements.filter((e) => e.role === 'set').length ?? 0;
   const element = selected != null ? scene.data?.elements[selected] : undefined;
 
@@ -81,7 +88,7 @@ export function SetScene({ partId, config, setId, focus }: { partId: string; con
         {scene.data && (scene.data.truncated
           ? <Text size="sm">Показано {n(members)} из {n(scene.data.total ?? members)}</Text>
           : <Text size="sm">Элементов набора: {n(members)}</Text>)}
-        <Button size="compact-xs" variant="subtle" ml="auto" onClick={() => setBody({ ...body, configuration: config })}>Обновить</Button>
+        <Button size="compact-xs" variant="subtle" ml="auto" onClick={refresh}>Обновить</Button>
       </Group>
       <Area style={{ flex: 1, minHeight: 400, position: 'relative', border: '1px solid var(--mantine-color-default-border)', borderRadius: 8, overflow: 'hidden' }}>
         {scene.error ? (
