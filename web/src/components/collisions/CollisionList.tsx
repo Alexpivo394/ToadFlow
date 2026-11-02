@@ -9,7 +9,7 @@ import type {
 } from '../../api/types';
 import { categoryLabel } from '../../lib/categories';
 import { Side } from '../../pages/clash/approved/ApprovedTab';
-import { StatusBadge } from '../../pages/clash/approved/StatusBadge';
+import { assigneeText, StatusBadge } from '../../pages/clash/approved/StatusBadge';
 import { BulkDialog, type BulkChoice } from './BulkDialog';
 import { SelectionBar } from './SelectionBar';
 import { ClosedStatuses, OpenStatuses, type ListParams } from './useListParams';
@@ -107,8 +107,12 @@ function CollisionLine({ item, active, checked, showBox, bulk, onSelect, onCheck
             {extra}
             <Side row={row} side="A" />
             <Side row={row} side="B" />
+            {row.status === 'Fake' && !row.foundNow && <Text size="xs" c="dimmed">сейчас не пересекается</Text>}
           </Stack>
-          <Text size="xs">{Math.round(row.depthMm)} мм</Text>
+          <Stack gap={0} align="flex-end">
+            <Text size="xs">{Math.round(row.depthMm)} мм</Text>
+            {row.assignee !== 'Both' && <Text size="xs" c="dimmed">{assigneeText(row.assignee, row)}</Text>}
+          </Stack>
         </Group>
       </UnstyledButton>
     </Group>

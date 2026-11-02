@@ -36,8 +36,11 @@ function responses(disciplines = ['ОВК']) {
   return {
     '/api/auth/me': designer(disciplines),
     '/api/clash/checks': [{ partId: 'p1', name: 'Корпус 1', object: 'DON', part: 'корпус 1', version: 1, lastRunAt: null, lastRun: null, open: 2, models: [] }],
-    '/api/clash/my/summary': { disciplines, toFix: taken ? 2 : 1, takenByOther: taken ? 0 : 1, newSinceVisit: 1, previousSeenAt: null },
-    'POST /api/clash/my/visit': null,
+    '/api/clash/my/summary': { disciplines, toFix: taken ? 2 : 1, takenByOther: taken ? 0 : 1, newSinceVisit: 1, previousSeenAt: null, newForMe: 1 },
+    '/api/clash/my/facets': { pairs: [{ value: 'КР × ОВК', count: 2 }], levels: [{ value: 'Этаж 1', count: 2 }], models: [], categories: [] },
+    'POST /api/clash/collisions/c1/seen': null,
+    'POST /api/clash/collisions/c2/seen': null,
+    '/api/clash/parts/p1/approved/collisions': { total: 1, items: [] },
     '/api/clash/my': (url: string) => {
       const scope = new URL(url, 'http://x').searchParams.get('scope');
       if (disciplines.length === 0) return { total: 0, items: [] };
@@ -63,14 +66,20 @@ describe('My collisions', () => {
 
     expect(await screen.findByRole('button', { name: 'Коллизия 1' })).toBeTruthy();
     expect(myCalls()[0].get('scope')).toBe('tofix');
-    await waitFor(() => expect(posts('/api/clash/my/visit')).toHaveLength(1));
 
     fireEvent.click(await screen.findByRole('button', { name: /Взяла другая сторона/ }));
     expect(await screen.findByRole('button', { name: 'Коллизия 2' })).toBeTruthy();
     expect(screen.getByText(/взял Пётр/)).toBeTruthy();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /Новые с прошлого захода/ }));
-    await waitFor(() => expect(myCalls().some((p) => p.get('since') === 'visit' && p.get('scope') === 'all')).toBe(true));
+  it('My_CountersSwitchList_NewForMe', async () => {
+    renderApp('/clash/my', responses());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Новые для меня: 1' }));
+
+    await waitFor(() => expect(myCalls().some((p) => p.get('since') === 'unseen' && p.get('scope') === 'all')).toBe(true));
+    expect(posts('/api/clash/my/visit')).toHaveLength(0); // заход больше не отмечается
+    expect(screen.getByRole('button', { name: 'Мне править: 1' })).toBeTruthy();
   });
 
   it('MyPage_NoDisciplines_ShowsHint', async () => {

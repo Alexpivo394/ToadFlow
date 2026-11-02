@@ -78,7 +78,7 @@ export function ListFilters({ params, facets, fields, onChange, onOpen, onMore }
   return (
     <Group gap="xs" wrap="wrap">
       {has('q') && (
-        <TextInput size="xs" w={180} placeholder="№, UniqueId, ElementId" aria-label="Поиск" value={params.q ?? ''} onPaste={onPaste}
+        <TextInput size="xs" w={180} placeholder="№, ID или UniqueId" aria-label="Поиск" value={params.q ?? ''} onPaste={onPaste}
           onChange={(e) => onChange({ q: e.currentTarget.value || undefined })} />
       )}
       {has('status') && (

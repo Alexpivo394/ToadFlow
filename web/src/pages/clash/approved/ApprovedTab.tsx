@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router';
-import { Alert, Badge, Box, Button, Chip, Group, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { Alert, Badge, Box, Button, Group, Select, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { downloadFile } from '../../../api/client';
 import { useApi, useApiMutation } from '../../../api/queries';
-import type { ApprovedRunView, ReportRunView, ApprovedVersionView, CollisionPage, CollisionRow, CollisionStatus, CollisionSummary } from '../../../api/types';
+import type { ApprovedRunView, ApprovedVersionView, ClashPartView, CollisionFacets, CollisionRow, CollisionSummary, ReportRunView } from '../../../api/types';
+import { CollisionList, type ListItem, type ListSource } from '../../../components/collisions/CollisionList';
+import { ListFilters } from '../../../components/collisions/ListFilters';
+import { toQuery, useListParams, type ListParams } from '../../../components/collisions/useListParams';
 import { Empty } from '../../../components/ui';
 import { categoryLabel } from '../../../lib/categories';
 import { formatDateTime, formatDuration } from '../../../lib/format';
@@ -13,11 +16,10 @@ import { stateLabel } from '../DraftRunPanel';
 import { HitScene } from '../viewer/HitScene';
 import { RunsDrawer } from '../reports/RunsDrawer';
 import { CollisionCard } from './CollisionCard';
-import { assigneeText, openStatuses, statusLabel, StatusBadge } from './StatusBadge';
+
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 const PageSize = 50;
-const allStatuses = Object.keys(statusLabel) as CollisionStatus[];
 
 /** Строка прогона утверждённой версии: версия, состояние, итог сверки, «Прогнать утверждённую». */
 function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }) {
@@ -106,38 +108,47 @@ export function Side({ row, side }: { row: CollisionRow; side: 'A' | 'B' }) {
 }
 
 /**
- * Утверждённая проверка: строка прогона и три колонки — проверки, коллизии с фильтром по статусам (по умолчанию открытые),
- * 3D и карточка выбранной коллизии. ↑/↓ листают коллизии страницы. canEdit — статусы, «кто правит», примечания (проектировщик
- * и старше); canRun — прогоны и объединение (координатор).
+ * Утверждённая проверка: строка прогона и три колонки — проверки, общий список коллизий (фильтры в адресе, по умолчанию
+ * открытые; группы по элементу; массовые действия), 3D и карточка выбранной коллизии. ↑/↓ листают коллизии страницы.
+ * canEdit — статусы, «кто правит», примечания (проектировщик и старше); canRun — прогоны и объединение (координатор).
  */
 export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEdit: boolean; canRun: boolean }) {
-  const [params, setParams] = useSearchParams();
-  const [statuses, setStatuses] = useState<string[]>(openStatuses);
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useSearchParams();
+  const [list, setList] = useListParams({});
+  const [more, setMore] = useState(false);
+  const [items, setItems] = useState<ListItem[]>([]);
   const versions = useApi<ApprovedVersionView[]>(['clash-parts', partId, 'versions'], `/api/clash/parts/${partId}/versions`);
   const summary = useApi<CollisionSummary>(['clash-collisions', partId, 'summary'], `/api/clash/parts/${partId}/approved/summary`);
+  const part = useApi<ClashPartView>(['clash-parts', partId], `/api/clash/parts/${partId}`);
   const checks = useMemo(() => summary.data?.checks ?? [], [summary.data]);
-  const check = params.get('check');
-  const collisionId = params.get('collision');
-  // Из обзора координатора: только висящие коллизии.
-  const stuckDays = params.get('stuckDays');
+  const check = search.get('check');
+  const element = search.get('element');
+  const collisionId = search.get('collision');
+  const disciplines = useMemo(() => [...new Set((part.data?.models ?? []).map((m) => m.discipline).filter((d): d is string => !!d))].sort(), [part.data]);
 
   const update = useCallback((patch: Record<string, string | null>) =>
-    setParams((p) => {
+    setSearch((p) => {
       const next = new URLSearchParams(p);
       for (const [k, v] of Object.entries(patch)) if (v == null) next.delete(k); else next.set(k, v);
       return next;
-    }, { replace: true }), [setParams]);
+    }, { replace: true }), [setSearch]);
 
-  const search = new URLSearchParams({ status: statuses.length ? statuses.join(',') : 'all', page: String(page), pageSize: String(PageSize) });
-  if (check) search.set('check', check);
-  if (stuckDays) search.set('stuckDays', stuckDays);
-  if (query.trim()) search.set('q', query.trim());
-  const list = useApi<CollisionPage>(['clash-collisions', partId, 'list', search.toString()], `/api/clash/parts/${partId}/approved/collisions?${search}`);
-  const items = useMemo(() => list.data?.items ?? [], [list.data]);
-  const index = items.findIndex((r) => r.id === collisionId);
-  const current = index >= 0 ? items[index] : null;
+  const extra = useCallback((query: string) => {
+    const q = new URLSearchParams(query);
+    if (check) q.set('check', check);
+    if (element) q.set('element', element);
+    return q.toString();
+  }, [check, element]);
+  const source = useMemo<ListSource>(() => ({
+    list: (p) => `/api/clash/parts/${partId}/approved/collisions?${extra(toQuery(p))}&pageSize=${PageSize}`,
+    partId,
+    filterExtra: { ...(check ? { check } : {}), ...(element ? { element } : {}) },
+  }), [partId, extra, check, element]);
+  const facets = useApi<CollisionFacets>(['clash-list', partId, 'facets', extra(toQuery(list))],
+    `/api/clash/parts/${partId}/approved/facets?${extra(toQuery(list))}`);
+
+  const index = items.findIndex((i) => i.row.id === collisionId);
+  const current = index >= 0 ? items[index].row : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -146,25 +157,46 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
       const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
       if (!step || items.length === 0) return;
       e.preventDefault();
-      const next = items[Math.min(items.length - 1, Math.max(0, index + step))];
-      update({ collision: next.id });
+      update({ collision: items[Math.min(items.length - 1, Math.max(0, index + step))].row.id });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [items, index, update]);
 
+  // Группировка по элементу требует раздел: по умолчанию — первый раздел части.
+  const change = (patch: Partial<ListParams>) =>
+    setList(patch.group === 'element' && !list.side && !patch.side ? { ...patch, side: disciplines[0] } : patch);
+
+  const open = (target: number | string) => {
+    if (typeof target === 'string') update({ collision: target });
+    else {
+      const found = items.find((i) => i.row.number === target);
+      if (found) update({ collision: found.row.id });
+      else setList({ q: String(target) });
+    }
+  };
+
+  // «Ещё в N коллизиях → показать»: группы по элементу с фильтром элемента — одним изменением адреса.
+  const showElement = (key: string, discipline: string) =>
+    setSearch((p) => {
+      const next = new URLSearchParams(p);
+      next.set('group', 'element');
+      next.set('side', discipline);
+      next.set('element', key);
+      next.delete('page');
+      return next;
+    }, { replace: true });
+
   if (versions.data && versions.data.length === 0)
     return <Empty>Часть ещё не утверждена — утвердите черновик на вкладке «Черновик», и здесь появятся коллизии со статусами.</Empty>;
-  const total = list.data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PageSize));
 
   return (
     <Stack gap="sm">
       <ApprovedRunLine partId={partId} canRun={canRun} />
-      {stuckDays && (
+      {list.stuckDays && (
         <Group gap="xs">
-          <Badge color="orange" variant="light">Только висящие: без движения дольше {stuckDays} дн.</Badge>
-          <Button size="compact-xs" variant="subtle" onClick={() => { setPage(1); update({ stuckDays: null }); }}>показать все</Button>
+          <Badge color="orange" variant="light">Только висящие: без движения дольше {list.stuckDays} дн.</Badge>
+          <Button size="compact-xs" variant="subtle" onClick={() => setList({ stuckDays: undefined })}>показать все</Button>
         </Group>
       )}
       <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 290px)" mih={560}
@@ -172,55 +204,37 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
         <Box w={{ base: 200, xl: 250 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
           <Group justify="space-between" px="sm" pt="sm">
             <Text size="xs" fw={700} c="dimmed" tt="uppercase">Проверки</Text>
-            {check && <Button size="compact-xs" variant="subtle" onClick={() => { setPage(1); update({ check: null }); }}>все</Button>}
+            {check && <Button size="compact-xs" variant="subtle" onClick={() => update({ check: null, page: null })}>все</Button>}
           </Group>
-          <ChecksList checks={checks} selected={check} onSelect={(key) => { setPage(1); update({ check: key, collision: null }); }} />
+          <ChecksList checks={checks} selected={check} onSelect={(key) => update({ check: key, collision: null, page: null })} />
         </Box>
 
-        <Stack gap={0} w={{ base: 370, xl: 430 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
+        <Stack gap={0} w={{ base: 400, xl: 470 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
           <Stack gap={6} p="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
-            <Chip.Group multiple value={statuses} onChange={(v) => { setPage(1); setStatuses(v); }}>
-              <Group gap={4}>
-                {allStatuses.map((s) => <Chip key={s} size="xs" value={s}>{statusLabel[s].label}</Chip>)}
-              </Group>
-            </Chip.Group>
-            <TextInput size="xs" placeholder="№, ID или UniqueId" value={query} onChange={(e) => { setPage(1); setQuery(e.currentTarget.value); }} />
-            <ExportButtons partId={partId} filters={search} />
-          </Stack>
-          <ScrollArea style={{ flex: 1 }} type="auto">
-            {items.map((r) => (
-              <UnstyledButton key={r.id} w="100%" px="xs" py={4} onClick={() => update({ collision: r.id })} aria-label={`Коллизия ${r.number}`}
-                bg={r.id === collisionId ? 'var(--mantine-primary-color-light)' : undefined}
-                style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
-                <Group gap={6} wrap="nowrap">
-                  <Stack gap={2} w={70}>
-                    <Text size="xs" c="dimmed">№ {r.number}</Text>
-                    <StatusBadge status={r.status} />
-                  </Stack>
-                  <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-                    <Side row={r} side="A" />
-                    <Side row={r} side="B" />
-                    {r.status === 'Fake' && !r.foundNow && <Text size="xs" c="dimmed">сейчас не пересекается</Text>}
-                  </Stack>
-                  <Stack gap={0} align="flex-end">
-                    <Text size="xs">{Math.round(r.depthMm)} мм</Text>
-                    <Text size="xs" c="dimmed">{r.assignee === 'Both' ? '' : assigneeText(r.assignee, r)}</Text>
-                  </Stack>
-                </Group>
-              </UnstyledButton>
-            ))}
-            {list.data && items.length === 0 && <Text size="sm" c="dimmed" p="sm">Коллизий с такими статусами нет</Text>}
-          </ScrollArea>
-          <Group justify="space-between" px="xs" py={4} style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-            <Text size="xs" c="dimmed">{n(total)} коллизий · ↑ ↓ листать</Text>
-            {pages > 1 && (
-              <Group gap={4}>
-                <Button size="compact-xs" variant="subtle" disabled={page <= 1} onClick={() => setPage(page - 1)}>←</Button>
-                <Text size="xs">{page} / {pages}</Text>
-                <Button size="compact-xs" variant="subtle" disabled={page >= pages} onClick={() => setPage(page + 1)}>→</Button>
+            <ListFilters params={list} facets={facets.data ?? undefined} fields={['q', 'status', 'pair', 'level', 'sort', 'group', 'more']}
+              onChange={change} onOpen={open} onMore={() => setMore((m) => !m)} />
+            {more && (
+              <Group gap="xs">
+                <Select size="xs" w={150} aria-label="Раздел для группировки" placeholder="Раздел" data={disciplines} value={list.side ?? null}
+                  onChange={(v) => setList({ side: v ?? undefined })} />
+                <Select size="xs" w={180} aria-label="Модель" placeholder="Модель" clearable searchable value={list.model ?? null}
+                  data={(facets.data?.models ?? []).map((m) => ({ value: m.value, label: `${m.value} — ${n(m.count)}` }))}
+                  onChange={(v) => setList({ model: v ?? undefined })} />
+                <Select size="xs" w={180} aria-label="Категория" placeholder="Категория" clearable searchable value={list.category ?? null}
+                  data={(facets.data?.categories ?? []).map((c) => ({ value: c.value, label: `${categoryLabel(c.value)} — ${n(c.count)}` }))}
+                  onChange={(v) => setList({ category: v ?? undefined })} />
               </Group>
             )}
-          </Group>
+            {element && (
+              <Group gap="xs">
+                <Badge variant="light">Один элемент</Badge>
+                <Button size="compact-xs" variant="subtle" onClick={() => update({ element: null, page: null })}>все элементы</Button>
+              </Group>
+            )}
+            <ExportButtons partId={partId} filters={new URLSearchParams(extra(toQuery(list)))} />
+          </Stack>
+          <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk canEdit={canEdit}
+            onParams={setList} onItems={setItems} />
         </Stack>
 
         <Stack gap={0} p="xs" style={{ flex: 1, minWidth: 480 }}>
@@ -231,7 +245,8 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
                   title={current ? `№ ${current.number} · глубина ${Math.round(current.depthMm)} мм` : undefined} />
               </Box>
               <Box pt="xs" style={{ flex: 2, minHeight: 0 }}>
-                <CollisionCard key={collisionId} collisionId={collisionId} canEdit={canEdit} canMerge={canRun} />
+                <CollisionCard key={collisionId} collisionId={collisionId} canEdit={canEdit} canMerge={canRun} partId={partId} partName={part.data?.name}
+                  onShowElement={showElement} />
               </Box>
             </>
           ) : (

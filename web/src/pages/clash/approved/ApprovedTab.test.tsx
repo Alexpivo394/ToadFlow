@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { partResponses } from '../../../test/clashPart';
-import { renderApp } from '../../../test/renderApp';
+import { navigateTo, renderApp } from '../../../test/renderApp';
 
 vi.mock('../../../api/client', async (original) => ({ ...(await original<typeof import('../../../api/client')>()), downloadFile: vi.fn(async () => {}) }));
 const { downloadFile } = await import('../../../api/client');
@@ -52,6 +52,9 @@ const responses = {
   'POST /api/clash/collisions/c1/status': null,
   '/api/users/u5/card': { id: 'u5', displayName: 'Иванов', position: 'Инженер КР', email: 'ivanov@example.com', phone: '+7 901 000-00-00', disciplines: ['КР'] },
   'POST /api/clash/collisions/c3/merge': null,
+  '/api/clash/parts/p1/approved/facets': { pairs: [{ value: 'АР × ОВ', count: 3 }], levels: [], models: [], categories: [] },
+  'POST /api/clash/collisions/c1/seen': null,
+  'POST /api/clash/collisions/c3/seen': null,
 };
 
 const open = (extra: Record<string, unknown> = {}, path = '/clash/checks/p1') => renderApp(path, { ...responses, ...extra });
@@ -179,5 +182,78 @@ describe('Approved run line', () => {
     expect(url.searchParams.get('status')?.split(',')).toContain('New');
     expect(name).toMatch(/\.xlsx$/);
     expect(screen.getByRole('button', { name: 'HTML' })).toBeTruthy();
+  });
+});
+
+vi.mock('../../../lib/clipboard', () => ({ copyText: vi.fn(async () => true) }));
+const { copyText } = await import('../../../lib/clipboard');
+
+const facets = { pairs: [{ value: 'АР × ОВ', count: 3 }], levels: [{ value: 'Этаж 1', count: 3 }], models: [], categories: [] };
+
+describe('Check page on the shared list', () => {
+  const extra = {
+    '/api/clash/parts/p1/approved/facets': facets,
+    'POST /api/clash/collisions/c1/seen': null,
+    'POST /api/clash/collisions/c3/seen': null,
+  };
+
+  it('Check_FiltersInUrl_SurviveBackNavigation', async () => {
+    open(extra, '/clash/checks/p1?pair=%D0%90%D0%A0%20%C3%97%20%D0%9E%D0%92&status=closed');
+
+    expect(await screen.findByRole('button', { name: 'Коллизия 1' })).toBeTruthy();
+    const listCall = calls().map(([url]) => new URL(url, 'http://x')).find((u) => u.pathname === '/api/clash/parts/p1/approved/collisions')!;
+    expect([listCall.searchParams.get('pair'), listCall.searchParams.get('status')]).toEqual(['АР × ОВ', 'Fixed,GoneByRules,Fake']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Коллизия 1' }));
+    await screen.findByText('сцена 1');
+    navigateTo('/clash/checks/p1?pair=%D0%90%D0%A0%20%C3%97%20%D0%9E%D0%92&status=closed'); // «назад» к списку — фильтр тот же
+    await waitFor(() => expect(screen.getAllByLabelText('Статус').filter((e) => e.tagName === 'INPUT').map((e) => (e as HTMLInputElement).value)).toContain('Закрытые'));
+  });
+
+  it('Card_OpenMarksSeen', async () => {
+    open(extra, '/clash/checks/p1?collision=c1');
+
+    await waitFor(() => expect(posts('/api/clash/collisions/c1/seen')).toHaveLength(1));
+  });
+
+  it('Card_ShowInRevit_CopiesTwoLines', async () => {
+    open(extra, '/clash/checks/p1?collision=c1');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Показать в Revit' }));
+
+    await waitFor(() => expect(copyText).toHaveBeenCalled());
+    expect(vi.mocked(copyText).mock.calls[0][0]).toBe(`ToadClash №1 — Корпус 1\n${window.location.origin}/clash/checks/p1?collision=c1`);
+    expect(await screen.findByText('Номер скопирован. В Revit откройте панель «Коллизии» и нажмите Ctrl+V')).toBeTruthy();
+  });
+
+  it('Card_OtherCollisionsOfElement_Link', async () => {
+    open({
+      ...extra,
+      '/api/clash/parts/p1/approved/collisions': (url: string) => {
+        const p = new URL(url, 'http://x').searchParams;
+        if (p.get('pageSize') === '1') return { total: p.get('element') === 'm1:ua1' ? 4 : 1, items: [] };
+        if (p.get('group') === 'element') return { groups: 1, collisions: 4, items: [] };
+        return { total: 3, items: [row(1), row(2), row(3)] };
+      },
+    }, '/clash/checks/p1?collision=c1');
+
+    fireEvent.click(await screen.findByRole('button', { name: /ещё в 3 коллизиях → показать/ }));
+
+    await waitFor(() => {
+      const grouped = calls().map(([url]) => new URL(url, 'http://x').searchParams).find((p) => p.get('group') === 'element');
+      expect([grouped?.get('element'), grouped?.get('side')]).toEqual(['m1:ua1', 'АР']);
+    });
+  });
+
+  it('Card_FeedBulkLabel', async () => {
+    open({
+      ...extra,
+      '/api/clash/collisions/c1': card(row(1), [
+        { at: '2026-10-29T10:01:00Z', kind: 'Status', userName: 'Иванов', userId: 'u5', text: 'Гильзы есть', fromStatus: 'New', toStatus: 'Fake', version: null, depthMm: null, bulkId: 'b1' },
+      ]),
+    }, '/clash/checks/p1?collision=c1');
+
+    expect(await screen.findByText('Гильзы есть')).toBeTruthy();
+    expect(screen.getByText('массово')).toBeTruthy();
   });
 });
