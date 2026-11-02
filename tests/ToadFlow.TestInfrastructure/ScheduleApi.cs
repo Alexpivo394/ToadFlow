@@ -21,7 +21,8 @@ public sealed record ScheduleView(
     DateTimeOffset? NextRunAt,
     string CreatedBy,
     string UpdatedBy,
-    string[] Warnings);
+    string[] Warnings,
+    DateTimeOffset UpdatedAt = default);
 
 public sealed record RunCreated(Guid RunId);
 

@@ -11,6 +11,10 @@ using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Schedules;
 
+/// <param name="ExpectedUpdatedAt">
+///     При изменении: <see cref="ScheduleView.UpdatedAt" />, которое видела форма. Расписание успели изменить (другой человек или выбор
+///     частей коллизий для регулярного прогона) — 409, ничего не меняется. Не задано — без проверки.
+/// </param>
 public sealed record ScheduleRequest(
     string Name,
     string ModuleKind,
@@ -26,7 +30,8 @@ public sealed record ScheduleRequest(
     int Priority,
     int? ModelTimeoutMinutes,
     int MaxRetries,
-    bool IsEnabled);
+    bool IsEnabled,
+    DateTimeOffset? ExpectedUpdatedAt = null);
 
 public sealed record LastRunView(Guid Id, RunState State, DateTimeOffset CreatedAt, int Succeeded, int Failed, int Total);
 
@@ -115,6 +120,9 @@ public static class ScheduleEndpoints
         {
             schedule = await db.Schedules.SingleOrDefaultAsync(s => s.Id == id) ?? null!;
             if (schedule is null) return Results.NotFound();
+            // Время в базе — до микросекунд, а форма могла получить его из ответа сохранения с точностью до тиков.
+            if (request.ExpectedUpdatedAt is { } expected && (schedule.UpdatedAt - expected).Duration() >= TimeSpan.FromMilliseconds(1))
+                return Results.Json(new { error = "Расписание уже изменили — обновите страницу и повторите" }, statusCode: StatusCodes.Status409Conflict);
             before = Copy(schedule);
             oldSourceName = await db.Sources.Where(s => s.Id == schedule.SourceId).Select(s => s.Name).SingleOrDefaultAsync();
         }

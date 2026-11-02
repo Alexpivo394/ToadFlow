@@ -111,6 +111,33 @@ public class ScheduleTests : ServerTest
         await EventuallyAsync(async () => (await DbAsync(db => db.SystemEvents.ToListAsync())).Any(e => e.Text.Contains("20:00 → 18:00")));
     }
 
+    /// <summary>Форма прислала, какое расписание видела: если его успели изменить (например, часть коллизий добавили в прогон) — 409, а не затирание.</summary>
+    [Test]
+    public async Task Update_StaleExpectedUpdatedAt_409()
+    {
+        var admin = await AdminAsync();
+        var sourceId = await ScheduleApi.SourceAsync(admin);
+        var presetId = await ScheduleApi.DefaultPresetAsync(admin);
+        var schedule = await ScheduleApi.CreateAsync(admin, ScheduleApi.Body(sourceId, presetId));
+        System.Text.Json.Nodes.JsonNode Body(DateTimeOffset expected, string time)
+        {
+            var body = System.Text.Json.JsonSerializer.SerializeToNode(ScheduleApi.Body(sourceId, presetId, timeOfDay: time), TestJson.Options)!;
+            body["expectedUpdatedAt"] = expected;
+            return body;
+        }
+
+        var first = await admin.PutJsonAsync($"/api/schedules/{schedule.Id}", Body(schedule.UpdatedAt, "18:00:00"));
+        first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
+
+        var stale = await admin.PutJsonAsync($"/api/schedules/{schedule.Id}", Body(schedule.UpdatedAt, "19:00:00"));
+        stale.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var listed = (await admin.GetJsonAsync<ScheduleView[]>("/api/schedules")).Single();
+        listed.TimeOfDay.ShouldStartWith("18:00");
+        (await admin.PutJsonAsync($"/api/schedules/{schedule.Id}", Body(listed.UpdatedAt, "19:00:00"))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await admin.PutJsonAsync($"/api/schedules/{schedule.Id}", ScheduleApi.Body(sourceId, presetId))).StatusCode
+            .ShouldBe(HttpStatusCode.OK); // без поля — как раньше
+    }
+
     [Test]
     public async Task Viewer_CannotCreate_403()
     {
