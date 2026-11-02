@@ -134,6 +134,51 @@ public class ClashBulkTests : ServerTest
     }
 
     [Test]
+    public async Task Bulk_FilterWithoutExpectedCount_400()
+    {
+        var (admin, agent, partId) = await SetupAsync(Hit(1));
+        await using var _ = agent;
+
+        var response = await BulkAsync(admin, new { partId, action = "FixedPending", filter = new { pair = "АР × ОВ" } });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Укажите, сколько коллизий выбрано");
+    }
+
+    /// <summary>Действие, которое ничего не меняет («кто правит» уже такой, уже фиктивная, уже отмечена исправленной), — не отказ.</summary>
+    [Test]
+    public async Task Bulk_NoOp_CountedUnchanged()
+    {
+        var (admin, agent, partId) = await SetupAsync(Hit(1), Hit(2));
+        await using var _ = agent;
+        var ids = await IdsAsync(admin, partId);
+        (await admin.PostJsonAsync($"/api/clash/collisions/{ids[1]}/assignee", new { assignee = "SideA" })).EnsureSuccessStatusCode();
+        (await admin.PostJsonAsync($"/api/clash/collisions/{ids[1]}/status", new { status = "Fake", note = "Гильза" })).EnsureSuccessStatusCode();
+
+        foreach (var body in new object[]
+                 {
+                     new { partId, action = "Assignee", assignee = "SideA", ids = ids.Values },
+                     new { partId, action = "Fake", note = "Гильза", ids = ids.Values }
+                 })
+        {
+            var response = await BulkAsync(admin, body);
+            var text = await response.Content.ReadAsStringAsync();
+            response.StatusCode.ShouldBe(HttpStatusCode.OK, text);
+            using var json = JsonDocument.Parse(text);
+            (json.RootElement.GetProperty("done").GetInt32(), json.RootElement.GetProperty("unchanged").GetInt32(),
+                json.RootElement.GetProperty("refused").GetArrayLength()).ShouldBe((1, 1, 0), text);
+        }
+
+        (await admin.PostJsonAsync($"/api/clash/collisions/{ids[1]}/status", new { status = "Active" })).EnsureSuccessStatusCode();
+        (await admin.PostJsonAsync($"/api/clash/collisions/{ids[1]}/status", new { status = "FixedPending" })).EnsureSuccessStatusCode();
+        var pending = await (await BulkAsync(admin, new { partId, action = "FixedPending", ids = new[] { ids[1] } })).Content.ReadAsStringAsync();
+        using var pendingJson = JsonDocument.Parse(pending);
+        (pendingJson.RootElement.GetProperty("done").GetInt32(), pendingJson.RootElement.GetProperty("unchanged").GetInt32()).ShouldBe((0, 1), pending);
+        (await admin.PostJsonAsync($"/api/clash/collisions/{ids[1]}/assignee", new { assignee = "SideA" })).StatusCode
+            .ShouldBe(HttpStatusCode.BadRequest); // поштучно — по-прежнему ошибка
+    }
+
+    [Test]
     public async Task Single_Status_StillWorks()
     {
         var (admin, agent, partId) = await SetupAsync(Hit(1));

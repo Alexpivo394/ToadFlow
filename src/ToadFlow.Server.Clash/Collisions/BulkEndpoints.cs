@@ -50,7 +50,7 @@ public sealed record BulkFilter(
     string? Since = null);
 
 /// <summary>Массовое действие: ровно одно из <see cref="Ids" /> и <see cref="Filter" />.</summary>
-/// <param name="ExpectedCount">С <see cref="Filter" />: сколько коллизий человек видел под фильтром; не совпало — 409, ничего не меняется.</param>
+/// <param name="ExpectedCount">С <see cref="Filter" /> обязательно: сколько коллизий человек видел под фильтром; не совпало — 409, ничего не меняется.</param>
 public sealed record BulkRequest(
     Guid PartId,
     BulkAction Action,
@@ -63,7 +63,8 @@ public sealed record BulkRequest(
 /// <summary>Коллизия, которую действие не изменило, и почему — тот же текст, что у поштучного отказа.</summary>
 public sealed record BulkRefusal(int Number, string Reason);
 
-public sealed record BulkResult(int Done, IReadOnlyList<BulkRefusal> Refused);
+/// <param name="Unchanged">Коллизии, которые уже были такими, как просили (например, «кто правит» уже тот же): не изменены, но и не отказ.</param>
+public sealed record BulkResult(int Done, IReadOnlyList<BulkRefusal> Refused, int Unchanged = 0);
 
 /// <summary>
 ///     Массовые действия: одна транзакция под блокировкой части, права и переходы — по каждой коллизии той же логикой, что поштучно
@@ -80,6 +81,7 @@ public static class BulkEndpoints
         if ((request.Ids is null) == (request.Filter is null)) return Bad("Укажите коллизии: список или фильтр");
         if (request.Ids is { } list && list.Distinct().Count() > MaxCount) return Bad(TooMany);
         if (Invalid(request) is { } error) return Bad(error);
+        if (request.Filter is not null && request.ExpectedCount is null) return Bad("Укажите, сколько коллизий выбрано");
 
         var actor = await CollisionEndpoints.ActorAsync(db, http.User, ct);
         var now = time.GetUtcNow();
@@ -113,7 +115,7 @@ public static class BulkEndpoints
             .GroupBy(e => e.CollisionId).ToDictionary(g => g.Key, g => g.MaxBy(e => e.At)!.UserId);
 
         var bulkId = Guid.CreateVersion7();
-        var (done, refused) = (0, new List<BulkRefusal>());
+        var (done, unchanged, refused) = (0, 0, new List<BulkRefusal>());
         foreach (var collision in collisions)
         {
             try
@@ -133,6 +135,10 @@ public static class BulkEndpoints
                 collision.UpdatedAt = now;
                 done++;
             }
+            catch (CollisionUnchangedException)
+            {
+                unchanged++;
+            }
             catch (Exception exception) when (exception is CollisionTransitionException or CollisionForbiddenException)
             {
                 refused.Add(new BulkRefusal(collision.Number, exception.Message));
@@ -142,7 +148,7 @@ public static class BulkEndpoints
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         if (done > 0) events.Publish(new ClashCollisionsChanged(http.User.Actor(), request.PartId, null));
-        return Results.Ok(new BulkResult(done, refused));
+        return Results.Ok(new BulkResult(done, refused, unchanged));
     }
 
     /// <returns>Почему запрос нельзя выполнить ни для одной коллизии; null — можно.</returns>

@@ -38,7 +38,7 @@ public static class CollisionChanges
         DateTimeOffset now)
     {
         RequireMine(collision, actor);
-        if (collision.Assignee == assignee) throw new CollisionTransitionException("«Кто правит» уже такой");
+        if (collision.Assignee == assignee) throw new CollisionUnchangedException("«Кто правит» уже такой");
         var text = note?.Trim() ?? "";
         if (text.Length > CollisionFeed.MaxNoteLength) throw new CollisionTransitionException($"Примечание — до {CollisionFeed.MaxNoteLength} символов");
         var entry = Event(collision.Id, now, actor.UserId, CollisionEventKind.Assignee,

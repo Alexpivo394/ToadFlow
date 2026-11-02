@@ -19,7 +19,10 @@ public enum ElementPresence
 public sealed record GoneFacts(ElementPresence A, ElementPresence B, bool ModelUnchecked, bool? PreviousConfigWouldHit);
 
 /// <summary>Ручной переход статуса недопустим; текст — для пользователя.</summary>
-public sealed class CollisionTransitionException(string message) : Exception(message);
+public class CollisionTransitionException(string message) : Exception(message);
+
+/// <summary>Коллизия уже такая, какой её хотят сделать: поштучно — та же ошибка, в массовом действии — «без изменений», а не отказ.</summary>
+public sealed class CollisionUnchangedException(string message) : CollisionTransitionException(message);
 
 /// <summary>Переходы статусов коллизии (спек §9): после прогона и по действию человека.</summary>
 public static class CollisionTransitions
@@ -52,11 +55,13 @@ public static class CollisionTransitions
     /// <exception cref="CollisionTransitionException">Переход недопустим.</exception>
     public static CollisionStatus Manual(CollisionStatus current, CollisionStatus target, bool foundNow, string? note) => target switch
     {
-        CollisionStatus.Fake when current == CollisionStatus.Fake => throw new CollisionTransitionException("Коллизия уже фиктивная"),
+        CollisionStatus.Fake when current == CollisionStatus.Fake => throw new CollisionUnchangedException("Коллизия уже фиктивная"),
         CollisionStatus.Fake when string.IsNullOrWhiteSpace(note) =>
             throw new CollisionTransitionException("Для фиктивной коллизии нужно примечание: почему она фиктивная"),
         CollisionStatus.Fake => CollisionStatus.Fake,
         CollisionStatus.FixedPending when current is CollisionStatus.New or CollisionStatus.Active or CollisionStatus.Returned => CollisionStatus.FixedPending,
+        CollisionStatus.FixedPending when current == CollisionStatus.FixedPending =>
+            throw new CollisionUnchangedException("Коллизия уже отмечена исправленной"),
         CollisionStatus.FixedPending => throw new CollisionTransitionException("Исправленной можно отметить только открытую коллизию"),
         CollisionStatus.Active when current == CollisionStatus.Fake => foundNow ? CollisionStatus.Active : CollisionStatus.Fixed,
         _ => throw new CollisionTransitionException("Этот статус ставит прогон, а не человек")
