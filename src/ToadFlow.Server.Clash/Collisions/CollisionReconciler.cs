@@ -163,6 +163,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             var summary = new ApprovedRunSummary(hits.Count, created, counts.GetValueOrDefault(CollisionStatus.Active), returned, fixedNow, goneByRules,
                 uncheckedNow, counts.GetValueOrDefault(CollisionStatus.Fake), stats?.ReusedPairs ?? 0);
             await AddStatsAsync(run, now, moves, ct);
+            AddPairStats(run, hits, moves);
 
             await db.Set<ClashApprovedHit>().Where(h => h.RunId == run.Id).ExecuteDeleteAsync(ct);
             part.ApprovedRunId = run.Id;
@@ -181,6 +182,34 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         {
             await db.Database.CloseConnectionAsync();
         }
+    }
+
+    /// <summary>
+    ///     Счётчики прогона по парам разделов для сравнения прогонов: находки — по паре находки, переходы — по паре коллизии. Строка
+    ///     <see cref="ClashRunPairStat.Marker" /> — итог по всем парам; она пишется всегда и отмечает, что счётчики у прогона есть.
+    /// </summary>
+    private void AddPairStats(EngineRun run, IReadOnlyList<ClashApprovedHit> hits, IReadOnlyList<(ClashCollision Collision, CollisionStatus To)> moves)
+    {
+        var stats = new Dictionary<string, ClashRunPairStat>(StringComparer.Ordinal);
+        IEnumerable<ClashRunPairStat> Of(string pair) => new[] { pair, ClashRunPairStat.Marker }.Distinct().Select(p =>
+            stats.TryGetValue(p, out var stat) ? stat : stats[p] = new ClashRunPairStat { RunId = run.Id, PartId = run.PartId, DisciplinePair = p });
+
+        _ = Of(ClashRunPairStat.Marker).ToList();
+        foreach (var hit in hits)
+        foreach (var stat in Of(hit.DisciplinePair)) stat.Found++;
+        foreach (var (collision, to) in moves)
+        foreach (var stat in Of(collision.DisciplinePair))
+        {
+            switch (to)
+            {
+                case CollisionStatus.New: stat.New++; break;
+                case CollisionStatus.Returned: stat.Returned++; break;
+                case CollisionStatus.Fixed: stat.Fixed++; break;
+                case CollisionStatus.GoneByRules: stat.GoneByRules++; break;
+            }
+        }
+
+        db.Set<ClashRunPairStat>().AddRange(stats.Values);
     }
 
     /// <summary>Закрытая коллизия снова открыта (вернулась): для всех она снова «новая» — <see cref="ClashCollision.OpenedAt" />.</summary>

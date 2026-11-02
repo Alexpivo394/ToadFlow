@@ -134,6 +134,7 @@ public static class CollisionEndpoints
         approved.MapGet("/summary", SummaryAsync);
         approved.MapGet("/collisions", ListAsync);
         approved.MapGet("/facets", FacetsAsync);
+        approved.MapGet("/runs/compare", RunComparison.CompareAsync);
         var approvedWrite = approved.MapGroup("").RequireAuthorization(Policies.Operator);
         approvedWrite.MapPost("/run", StartAsync);
         approvedWrite.MapPost("/run/cancel", CancelAsync);

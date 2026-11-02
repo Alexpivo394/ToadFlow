@@ -11,6 +11,7 @@ namespace ToadFlow.Server.Clash.Reports;
 /// <param name="StartedBy">Расписание или пользователь; null — не известно.</param>
 /// <param name="SearchSeconds">Время поиска движка (широкая и точная фазы).</param>
 /// <param name="Summary">Итог сверки — в списке прогонов; в <see cref="ReportView" /> он отдельным полем.</param>
+/// <param name="Comparable">У прогона есть счётчики по парам (<see cref="Collisions.ClashRunPairStat" />) — его можно сравнить с другим.</param>
 public sealed record ReportRunView(
     Guid RunId,
     Guid PartId,
@@ -19,7 +20,8 @@ public sealed record ReportRunView(
     string Trigger,
     string? StartedBy,
     double SearchSeconds,
-    ApprovedRunSummary? Summary = null);
+    ApprovedRunSummary? Summary = null,
+    bool Comparable = false);
 
 /// <param name="UploadedAt">Когда выгружен слепок, по которому шёл прогон.</param>
 /// <param name="Unchecked">Модель в этом цикле не выгрузилась: её пары «не проверены».</param>
@@ -171,11 +173,14 @@ public sealed class RunReports(ToadFlowDb db, PartModels models, DisciplineOrder
             : await db.Runs.AsNoTracking().Where(r => triggers.Contains(r.Id) && r.ScheduleId != null)
                 .Join(db.Schedules.AsNoTracking(), r => r.ScheduleId, s => s.Id, (r, s) => new { r.Id, s.Name })
                 .ToDictionaryAsync(r => r.Id, r => r.Name, ct);
+        var ids = runs.Select(r => r.Id).ToList();
+        var comparable = (await db.Set<ClashRunPairStat>().AsNoTracking()
+            .Where(s => ids.Contains(s.RunId) && s.DisciplinePair == ClashRunPairStat.Marker).Select(s => s.RunId).ToListAsync(ct)).ToHashSet();
         return runs.Select(r => new ReportRunView(r.Id, r.PartId, r.Version ?? 0, r.FinishedAt ?? r.CreatedAt,
                 r.TriggerRunId is null ? "manual" : "schedule",
                 r.TriggerRunId is { } trigger ? schedules.GetValueOrDefault(trigger) : r.StartedBy,
                 r.Stats is { } stats ? stats.BroadSeconds + stats.NarrowSeconds : 0,
-                r.Summary))
+                r.Summary, comparable.Contains(r.Id)))
             .ToList();
     }
 

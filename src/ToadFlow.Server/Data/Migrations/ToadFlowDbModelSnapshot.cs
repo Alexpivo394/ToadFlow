@@ -703,6 +703,49 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_collision_seen", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashRunPairStat", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
+
+                    b.Property<string>("DisciplinePair")
+                        .HasColumnType("text")
+                        .HasColumnName("discipline_pair");
+
+                    b.Property<int>("Fixed")
+                        .HasColumnType("integer")
+                        .HasColumnName("fixed");
+
+                    b.Property<int>("Found")
+                        .HasColumnType("integer")
+                        .HasColumnName("found");
+
+                    b.Property<int>("GoneByRules")
+                        .HasColumnType("integer")
+                        .HasColumnName("gone_by_rules");
+
+                    b.Property<int>("New")
+                        .HasColumnType("integer")
+                        .HasColumnName("new");
+
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<int>("Returned")
+                        .HasColumnType("integer")
+                        .HasColumnName("returned");
+
+                    b.HasKey("RunId", "DisciplinePair")
+                        .HasName("pk_clash_run_pair_stats");
+
+                    b.HasIndex("PartId")
+                        .HasDatabaseName("ix_clash_run_pair_stats_part_id");
+
+                    b.ToTable("clash_run_pair_stats", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashUserState", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -2263,6 +2306,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_collision_seen_users_user_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashRunPairStat", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_run_pair_stats_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashUserState", b =>
