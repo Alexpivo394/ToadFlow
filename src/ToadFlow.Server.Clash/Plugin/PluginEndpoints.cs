@@ -10,11 +10,11 @@ public static class PluginEndpoints
     {
         var models = members.MapGroup("/clash/models");
         models.MapGet("/resolve", (string? path, string? name, ModelResolver resolver, CancellationToken ct) => resolver.FindAsync(path, name, ct));
-        models.MapGet("/{key}/collisions", async (string key, string? status, string? group, string? pair, string? level, string? q, int? page, int? pageSize,
+        models.MapGet("/{key}/collisions", async (string key, string? status, string? group, string? pair, string? level, string? q, string? since, int? page, int? pageSize,
             ModelCollisions collisions, HttpContext http, CancellationToken ct) =>
         {
             var size = Math.Clamp(pageSize ?? ModelCollisions.DefaultPageSize, 1, Parts.DraftResultEndpoints.MaxPageSize);
-            var result = await collisions.PageAsync(key, new ModelCollisionQuery(status, group, pair, level, q), page ?? 1, size, http.User.UserId(), ct);
+            var result = await collisions.PageAsync(key, new ModelCollisionQuery(status, group, pair, level, q, since), page ?? 1, size, http.User.UserId(), ct);
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
     }

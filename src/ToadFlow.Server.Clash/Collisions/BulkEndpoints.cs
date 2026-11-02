@@ -96,6 +96,14 @@ public static class BulkEndpoints
         if (count > MaxCount) return Bad(TooMany);
 
         var collisions = await selected.OrderBy(c => c.Number).ToListAsync(ct);
+        if (request.Action == BulkAction.Seen)
+        {
+            // Отметка просмотра — личная, без записи в ленту и без события для других.
+            await MyCollisions.MarkSeenAsync(db, actor.UserId, collisions.Select(c => c.Id).ToList(), now, ct);
+            await transaction.CommitAsync(ct);
+            return Results.Ok(new BulkResult(collisions.Count, []));
+        }
+
         var fakeIds = collisions.Where(c => c.Status == CollisionStatus.Fake).Select(c => c.Id).ToList();
         var fakeSetBy = fakeIds.Count == 0
             ? []
@@ -146,7 +154,6 @@ public static class BulkEndpoints
         BulkAction.Note when request.Note?.Trim().Length is null or 0 or > CollisionFeed.MaxNoteLength =>
             $"Примечание — от 1 до {CollisionFeed.MaxNoteLength} символов",
         BulkAction.Assignee when request.Assignee is null => "Выберите, кто правит",
-        BulkAction.Seen => "Отметка просмотра массово пока недоступна",
         _ => null
     };
 
@@ -167,7 +174,7 @@ public static class BulkEndpoints
         var my = await MyEndpoints.ModelKeyAsync(db, new MyFilter(filter.Scope, filter.Status, filter.Object, partId, filter.Pair, filter.Level,
             filter.Model, filter.Since, filter.Element, filter.Category), ct);
         // «Мои» читают без отслеживания; массовое действие меняет коллизии — те же строки по Id, с отслеживанием.
-        var ids = MyCollisions.Query(db, disciplines, parts, my, MyCollisions.Mark(state, now)).Select(c => c.Id);
+        var ids = MyCollisions.Query(db, disciplines, parts, my, MyCollisions.Mark(state, now), actor.UserId).Select(c => c.Id);
         return db.Set<ClashCollision>().Where(c => ids.Contains(c.Id));
     }
 

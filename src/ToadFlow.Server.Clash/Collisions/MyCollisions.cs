@@ -15,7 +15,8 @@ public sealed record MyCollisionRow(
     string? Part,
     bool MineToFix,
     string? TakenBy,
-    DateTimeOffset? TakenAt);
+    DateTimeOffset? TakenAt,
+    bool Unseen = false);
 
 public sealed record MyCollisionPage(int Total, IReadOnlyList<MyCollisionRow> Items);
 
@@ -24,13 +25,15 @@ public sealed record MyCollisionPage(int Total, IReadOnlyList<MyCollisionRow> It
 /// <param name="TakenByOther">Открытые, которые взяла другая сторона.</param>
 /// <param name="NewSinceVisit">Открытые, найденные впервые или вернувшиеся после прошлого захода.</param>
 /// <param name="PreviousSeenAt">Прошлый заход; null — не было, новые — за последние 7 дней.</param>
-public sealed record MySummary(IReadOnlyList<string> Disciplines, int ToFix, int TakenByOther, int NewSinceVisit, DateTimeOffset? PreviousSeenAt);
+/// <param name="NewForMe">Открытые, которые пользователь не открывал с тех пор, как они появились или вернулись.</param>
+public sealed record MySummary(IReadOnlyList<string> Disciplines, int ToFix, int TakenByOther, int NewSinceVisit, DateTimeOffset? PreviousSeenAt,
+    int NewForMe = 0);
 
 /// <param name="Scope"><c>tofix</c> (по умолчанию), <c>taken</c>, <c>all</c>.</param>
 /// <param name="Status"><c>open</c> (по умолчанию), <c>fake</c>, <c>fixed</c>, <c>gone</c>, <c>all</c> или имена статусов через запятую.</param>
 /// <param name="Pair">Пара разделов, как <see cref="ClashCollision.DisciplinePair" />.</param>
 /// <param name="Model">Ключ модели (<c>ClashModel.SnapshotKey</c>): плагин спрашивает коллизии открытой модели.</param>
-/// <param name="Since"><c>visit</c> — только новые с прошлого захода.</param>
+/// <param name="Since"><c>visit</c> — только новые с прошлого захода (плагин до 3.4.0); <c>unseen</c> — новые для меня: не открывал с тех пор, как появилась или вернулась.</param>
 /// <param name="Element">Элемент любой из сторон: <c>{модель:N}:{UniqueId}</c>.</param>
 /// <param name="Category">Категория элемента любой из сторон.</param>
 public sealed record MyFilter(
@@ -65,8 +68,9 @@ public static class MyCollisions
         state?.PreviousSeenAt ?? (state?.SeenAt ?? now) - ClashUserState.FirstVisitWindow;
 
     /// <summary>Мои коллизии утверждённых частей по фильтру, без сортировки.</summary>
+    /// <param name="userId">Чьи отметки просмотра считать для <c>since=unseen</c>.</param>
     public static IQueryable<ClashCollision> Query(ToadFlowDb db, string[] disciplines, IEnumerable<ApprovedPart> parts, MyFilter filter,
-        DateTimeOffset mark)
+        DateTimeOffset mark, Guid userId = default)
     {
         var ids = parts.Where(p => (filter.PartId is not { } partId || p.Id == partId)
                                    && (string.IsNullOrWhiteSpace(filter.Object) || ProjectOf(p.Object) == filter.Object.Trim()))
@@ -101,8 +105,27 @@ public static class MyCollisions
         }
 
         if (string.Equals(filter.Since, "visit", StringComparison.OrdinalIgnoreCase)) query = NewSince(db, query, mark);
+        else if (string.Equals(filter.Since, "unseen", StringComparison.OrdinalIgnoreCase)) query = Unseen(db, query, userId);
         return query;
     }
+
+    /// <summary>Новые для пользователя: открытые, и он не открывал их карточку после того, как они появились или вернулись.</summary>
+    public static IQueryable<ClashCollision> Unseen(ToadFlowDb db, IQueryable<ClashCollision> query, Guid userId) =>
+        query.Where(c => CollisionEndpoints.Open.Contains(c.Status)
+                         && !db.Set<ClashCollisionSeen>().Any(s => s.UserId == userId && s.CollisionId == c.Id && s.SeenAt >= c.OpenedAt));
+
+    /// <summary>Id непросмотренных пользователем среди <paramref name="ids" />.</summary>
+    public static async Task<HashSet<Guid>> UnseenAsync(ToadFlowDb db, IReadOnlyCollection<Guid> ids, Guid userId, CancellationToken ct) =>
+        ids.Count == 0
+            ? []
+            : (await Unseen(db, db.Set<ClashCollision>().AsNoTracking().Where(c => ids.Contains(c.Id)), userId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+
+    /// <summary>Отметка просмотра: вставка или сдвиг <c>seen_at</c> одним запросом — два окна не спорят.</summary>
+    public static Task MarkSeenAsync(ToadFlowDb db, Guid userId, IReadOnlyCollection<Guid> ids, DateTimeOffset now, CancellationToken ct) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO clash_collision_seen (user_id, collision_id, seen_at) SELECT {userId}, id, {now} FROM unnest({ids.ToArray()}) AS id
+            ON CONFLICT (user_id, collision_id) DO UPDATE SET seen_at = EXCLUDED.seen_at
+            """, ct);
 
     /// <summary>Найдены впервые или вернулись после отметки.</summary>
     public static IQueryable<ClashCollision> NewSince(ToadFlowDb db, IQueryable<ClashCollision> query, DateTimeOffset mark) =>

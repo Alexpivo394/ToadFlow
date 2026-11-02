@@ -19,7 +19,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         "id, part_id, number, status, assignee, found_now, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
         "model_b, unique_id_b, element_id_b, discipline_b, sets_b, category_b, family_b, type_b, level_b, discipline_pair, checks, x, y, z, depth_mm, " +
         "fingerprint_a, fingerprint_b, first_version, last_found_version, last_found_run_id, suggested_predecessor_id, created_at, updated_at, " +
-        "first_run_id";
+        "first_run_id, opened_at";
 
     /// <summary>
     ///     Последняя часть утверждённого прогона пришла: сверяет коллизии, закрывает прогон, делает его основой следующего.
@@ -64,6 +64,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                     var newVersion = collision.LastFoundVersion != version;
                     Fill(collision, hit, run, version, now);
                     collision.Status = next;
+                    if (Reopened(was, next)) collision.OpenedAt = now;
                     if (next != was)
                     {
                         feed.Add(StatusEvent(collision.Id, was, next, note, version, run.Id, now));
@@ -86,7 +87,8 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                     Assignee = CollisionAssignee.Both,
                     FirstVersion = version,
                     FirstRunId = run.Id,
-                    CreatedAt = now
+                    CreatedAt = now,
+                    OpenedAt = now
                 };
                 Fill(collision, hit, run, version, now);
                 existing[key] = collision;
@@ -148,7 +150,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
                         discipline_b = t.discipline_b, sets_b = t.sets_b, category_b = t.category_b, family_b = t.family_b, type_b = t.type_b,
                         level_b = t.level_b, discipline_pair = t.discipline_pair, checks = t.checks, x = t.x, y = t.y, z = t.z, depth_mm = t.depth_mm,
                         fingerprint_a = t.fingerprint_a, fingerprint_b = t.fingerprint_b, last_found_version = t.last_found_version,
-                        last_found_run_id = t.last_found_run_id, updated_at = t.updated_at
+                        last_found_run_id = t.last_found_run_id, updated_at = t.updated_at, opened_at = t.opened_at
                     FROM tmp_clash_collisions t WHERE c.id = t.id
                     """, ct);
             }
@@ -180,6 +182,10 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             await db.Database.CloseConnectionAsync();
         }
     }
+
+    /// <summary>Закрытая коллизия снова открыта (вернулась): для всех она снова «новая» — <see cref="ClashCollision.OpenedAt" />.</summary>
+    internal static bool Reopened(CollisionStatus was, CollisionStatus next) =>
+        !CollisionEndpoints.Open.Contains(was) && CollisionEndpoints.Open.Contains(next);
 
     private sealed record StatRow(string Discipline, int Open, int Fake);
 
@@ -327,6 +333,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             await importer.WriteAsync(c.UpdatedAt, NpgsqlDbType.TimestampTz, ct);
             if (c.FirstRunId is { } firstRun) await importer.WriteAsync(firstRun, NpgsqlDbType.Uuid, ct);
             else await importer.WriteNullAsync(ct);
+            await importer.WriteAsync(c.OpenedAt, NpgsqlDbType.TimestampTz, ct);
         }
 
         await importer.CompleteAsync(ct);

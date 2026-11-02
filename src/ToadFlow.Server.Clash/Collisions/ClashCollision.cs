@@ -98,6 +98,9 @@ public sealed class ClashCollision
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>Когда коллизия последний раз стала открытой: появилась или вернулась — от этого считается «новая для меня».</summary>
+    public DateTimeOffset OpenedAt { get; set; }
 }
 
 /// <summary>Глубина и точка коллизии в прогоне: пишется при первой находке и при изменении глубины или геометрии.</summary>

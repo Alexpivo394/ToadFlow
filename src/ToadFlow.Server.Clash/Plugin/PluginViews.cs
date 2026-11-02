@@ -29,10 +29,13 @@ public sealed record ModelCollisionRow(
     string Side,
     bool MineToFix,
     string? TakenBy,
-    DateTimeOffset? TakenAt);
+    DateTimeOffset? TakenAt,
+    bool Unseen = false);
 
 /// <param name="Total">Строки выборки со всеми фильтрами.</param>
 /// <param name="Mine">«Мне править» — без учёта фильтра группы.</param>
 /// <param name="Other">«Взяла другая сторона» — без учёта фильтра группы.</param>
 /// <param name="NewSinceVisit">Открытые коллизии модели, найденные или вернувшиеся после прошлого захода пользователя; без учёта фильтров.</param>
-public sealed record ModelCollisionPage(int Total, int Mine, int Other, IReadOnlyList<ModelCollisionRow> Items, ModelFacets Facets, int NewSinceVisit);
+/// <param name="NewForMe">Открытые коллизии модели, которые пользователь не открывал с тех пор, как они появились или вернулись; без учёта фильтров.</param>
+public sealed record ModelCollisionPage(int Total, int Mine, int Other, IReadOnlyList<ModelCollisionRow> Items, ModelFacets Facets, int NewSinceVisit,
+    int NewForMe = 0);

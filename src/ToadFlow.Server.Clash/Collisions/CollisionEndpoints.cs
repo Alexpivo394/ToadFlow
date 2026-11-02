@@ -146,6 +146,7 @@ public static class CollisionEndpoints
         collision.MapGet("/meshes", ViewerEndpoints.CollisionMeshesAsync);
         collision.MapGet("/image", ImageEndpoints.ImageAsync);
         collision.MapGet("/elements/{modelId}/{uniqueId}", ViewerEndpoints.CollisionElementAsync);
+        collision.MapPost("/seen", SeenAsync);
         var write = collision.MapGroup("").RequireAuthorization(Policies.Designer);
         write.MapPost("/status", StatusAsync);
         write.MapPost("/assignee", AssigneeAsync);
@@ -251,6 +252,14 @@ public static class CollisionEndpoints
             Without(filter with { Model = null }), Without(filter with { Category = null }), _ => Task.FromResult(names), ct));
     }
 
+    /// <summary>Пользователь открыл карточку: коллизия больше не «новая для меня». Любая роль участника.</summary>
+    private static async Task<IResult> SeenAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, CancellationToken ct)
+    {
+        if (!await db.Set<ClashCollision>().AnyAsync(c => c.Id == id, ct)) return Results.NotFound();
+        await MyCollisions.MarkSeenAsync(db, http.User.UserId(), [id], time.GetUtcNow(), ct);
+        return Results.NoContent();
+    }
+
     private static async Task<IResult> CardAsync(Guid id, ToadFlowDb db, CancellationToken ct)
     {
         var collision = await db.Set<ClashCollision>().AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct);
@@ -343,6 +352,7 @@ public static class CollisionEndpoints
                 (entry.FromStatus, entry.ToStatus) = (was, next);
                 db.Set<ClashCollisionEvent>().Add(entry);
                 predecessor.Status = next;
+                if (CollisionReconciler.Reopened(was, next)) predecessor.OpenedAt = now;
             }
         }
 

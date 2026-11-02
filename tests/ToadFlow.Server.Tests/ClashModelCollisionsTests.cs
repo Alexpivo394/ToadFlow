@@ -251,6 +251,24 @@ public class ClashModelCollisionsTests : ServerTest
         (await PageAsync(s.Admin, s.Ar)).NewSinceVisit.ShouldBe(0);
     }
 
+    /// <summary>«Новые для меня» в плагине: по отметке просмотра карточки; <c>since=unseen</c> оставляет только их, строка помечена.</summary>
+    [Test]
+    public async Task ModelCollisions_SinceUnseen_NewForMe()
+    {
+        var s = await SetupAsync();
+        await using var _ = s.Agent;
+        await RunAsync(s, [KrOv(s, 1), ArOv(s, 2)]);
+        _time.Advance(TimeSpan.FromMinutes(1));
+        (await s.Admin.PostAsync($"/api/clash/collisions/{await IdAsync(s, 1)}/seen", null)).EnsureSuccessStatusCode();
+
+        var page = await PageAsync(s.Admin, s.Ov, "?since=unseen");
+
+        page.NewForMe.ShouldBe(1);
+        page.Items.ShouldHaveSingleItem().Collision.Number.ShouldBe(2);
+        page.Items.Single().Unseen.ShouldBeTrue();
+        (await PageAsync(s.Admin, s.Ov)).Items.Single(r => r.Collision.Number == 1).Unseen.ShouldBeFalse();
+    }
+
     [Test]
     public async Task ModelCollisions_UnknownKey_404()
     {

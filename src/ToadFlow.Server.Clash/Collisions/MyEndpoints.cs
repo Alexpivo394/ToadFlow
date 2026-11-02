@@ -32,7 +32,7 @@ public static class MyEndpoints
         if (disciplines.Length == 0) return grouped ? Results.Ok(new ElementGroupPage(0, 0, [])) : Results.Ok(new MyCollisionPage(0, []));
         var parts = await MyCollisions.PartsAsync(db, ct);
         filter = await ModelKeyAsync(db, filter, ct);
-        var query = MyCollisions.Query(db, disciplines, parts, filter, MyCollisions.Mark(state, time.GetUtcNow()));
+        var query = MyCollisions.Query(db, disciplines, parts, filter, MyCollisions.Mark(state, time.GetUtcNow()), http.User.UserId());
         var size = Math.Clamp(pageSize ?? DraftResultEndpoints.DefaultPageSize, 1, DraftResultEndpoints.MaxPageSize);
         if (grouped) return Results.Ok(await ElementGroups.PageAsync(query, disciplines, page ?? 1, size, keys => NamesAsync(db, keys, ct), ct));
 
@@ -49,13 +49,14 @@ public static class MyEndpoints
         var names = await ModelNamesAsync(db, rows, ct);
         var suggested = await CollisionEndpoints.NumbersAsync(db, rows.Select(r => r.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         var taken = await TakenAsync(db, rows.Select(r => r.Id).ToList(), ct);
+        var unseen = await MyCollisions.UnseenAsync(db, rows.Select(r => r.Id).ToList(), http.User.UserId(), ct);
         var byId = parts.ToDictionary(p => p.Id);
         var items = rows.Select(c =>
         {
             var part = byId[c.PartId];
             var who = taken.GetValueOrDefault(c.Id);
             return new MyCollisionRow(CollisionEndpoints.Row(c, names, suggested), part.Id, part.Name, part.Object, part.Part,
-                MyCollisions.MineToFix(c, disciplines), who?.Name, who?.At);
+                MyCollisions.MineToFix(c, disciplines), who?.Name, who?.At, unseen.Contains(c.Id));
         }).ToList();
         return Results.Ok(new MyCollisionPage(total, items));
     }
@@ -68,7 +69,7 @@ public static class MyEndpoints
         var parts = await MyCollisions.PartsAsync(db, ct);
         filter = await ModelKeyAsync(db, filter, ct);
         var mark = MyCollisions.Mark(state, time.GetUtcNow());
-        IQueryable<ClashCollision> Without(MyFilter f) => MyCollisions.Query(db, disciplines, parts, f, mark);
+        IQueryable<ClashCollision> Without(MyFilter f) => MyCollisions.Query(db, disciplines, parts, f, mark, http.User.UserId());
         return Results.Ok(await CollisionFilter.FacetsAsync(Without(filter with { Pair = null }), Without(filter with { Level = null }),
             Without(filter with { Model = null }), Without(filter with { Category = null }), keys => NamesAsync(db, keys, ct), ct));
     }
@@ -91,15 +92,17 @@ public static class MyEndpoints
 
     private static async Task<IResult> SummaryAsync(HttpContext http, ToadFlowDb db, TimeProvider time, CancellationToken ct)
     {
-        var (disciplines, state) = await UserAsync(db, http.User.UserId(), ct);
+        var user = http.User.UserId();
+        var (disciplines, state) = await UserAsync(db, user, ct);
         if (disciplines.Length == 0) return Results.Ok(new MySummary([], 0, 0, 0, state?.PreviousSeenAt));
         var parts = await MyCollisions.PartsAsync(db, ct);
         var mark = MyCollisions.Mark(state, time.GetUtcNow());
 
-        var toFix = await MyCollisions.Query(db, disciplines, parts, new MyFilter(), mark).CountAsync(ct);
-        var takenByOther = await MyCollisions.Query(db, disciplines, parts, new MyFilter(Scope: "taken"), mark).CountAsync(ct);
-        var fresh = await MyCollisions.Query(db, disciplines, parts, new MyFilter(Scope: "all", Since: "visit"), mark).CountAsync(ct);
-        return Results.Ok(new MySummary(disciplines, toFix, takenByOther, fresh, state?.PreviousSeenAt));
+        var toFix = await MyCollisions.Query(db, disciplines, parts, new MyFilter(), mark, user).CountAsync(ct);
+        var takenByOther = await MyCollisions.Query(db, disciplines, parts, new MyFilter(Scope: "taken"), mark, user).CountAsync(ct);
+        var fresh = await MyCollisions.Query(db, disciplines, parts, new MyFilter(Scope: "all", Since: "visit"), mark, user).CountAsync(ct);
+        var newForMe = await MyCollisions.Query(db, disciplines, parts, new MyFilter(Scope: "all", Since: "unseen"), mark, user).CountAsync(ct);
+        return Results.Ok(new MySummary(disciplines, toFix, takenByOther, fresh, state?.PreviousSeenAt, newForMe));
     }
 
     /// <summary>Отметка захода: сдвигается, если с прошлой прошло больше 30 минут. Одним запросом — два открытых окна не спорят.</summary>

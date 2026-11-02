@@ -10,7 +10,9 @@ namespace ToadFlow.Server.Clash.Plugin;
 /// <param name="Pair">Пара разделов, как <see cref="ClashCollision.DisciplinePair" />.</param>
 /// <param name="Level">Ключ уровня (<see cref="CollisionLevel.Key" />); <c>-</c> — без уровня.</param>
 /// <param name="Q">Номер коллизии, ElementId или UniqueId элемента.</param>
-public sealed record ModelCollisionQuery(string? Status = null, string? Group = null, string? Pair = null, string? Level = null, string? Q = null);
+/// <param name="Since"><c>unseen</c> — только новые для пользователя (<see cref="MyCollisions.Unseen" />).</param>
+public sealed record ModelCollisionQuery(string? Status = null, string? Group = null, string? Pair = null, string? Level = null, string? Q = null,
+    string? Since = null);
 
 /// <summary>
 ///     Коллизии открытой в Revit модели по всем утверждённым частям. Своя сторона — та, чей элемент из этой модели, поэтому
@@ -33,6 +35,8 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
         var modelOpen = source.Where(c => open.Contains(c.Status));
         if (!string.IsNullOrWhiteSpace(query.Q))
             source = new CollisionFilter("all", null, null, null, null, null, null, query.Q, null).Apply(source, db, new Dictionary<string, string>(), time.GetUtcNow());
+
+        if (string.Equals(query.Since?.Trim(), "unseen", StringComparison.OrdinalIgnoreCase)) source = MyCollisions.Unseen(db, source, userId);
 
         var statuses = MyCollisions.Statuses(query.Status);
         var group = query.Group?.Trim().ToLowerInvariant();
@@ -125,18 +129,21 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
         var names = await MyEndpoints.ModelNamesAsync(db, rows, ct);
         var suggested = await CollisionEndpoints.NumbersAsync(db, rows.Select(r => r.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         var taken = await MyEndpoints.TakenAsync(db, ids, ct);
+        var unseen = await MyCollisions.UnseenAsync(db, ids, userId, ct);
         var partNames = parts.ToDictionary(p => p.Id, p => p.Name);
         var items = rows.Select(c =>
         {
             var who = taken.GetValueOrDefault(c.Id);
             return new ModelCollisionRow(CollisionEndpoints.Row(c, names, suggested), c.PartId, partNames[c.PartId], SideOf(c, model),
-                MineToFix(c, model), who?.Name, who?.At);
+                MineToFix(c, model), who?.Name, who?.At, unseen.Contains(c.Id));
         }).ToList();
 
         var state = await db.Set<ClashUserState>().AsNoTracking().SingleOrDefaultAsync(s => s.UserId == userId, ct);
         var fresh = await MyCollisions.NewSince(db, modelOpen,MyCollisions.Mark(state, time.GetUtcNow())).CountAsync(ct);
 
-        return new ModelCollisionPage(total, mine, all - mine, items, new ModelFacets(pairFacet, levelFacet, statusFacet), fresh);
+        var newForMe = await MyCollisions.Unseen(db, modelOpen, userId).CountAsync(ct);
+
+        return new ModelCollisionPage(total, mine, all - mine, items, new ModelFacets(pairFacet, levelFacet, statusFacet), fresh, newForMe);
     }
 
     private static string SideOf(ClashCollision c, string model) => (c.ModelA == model, c.ModelB == model) switch

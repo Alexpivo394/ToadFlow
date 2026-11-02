@@ -196,6 +196,15 @@ public sealed class ClashServerModule : IServerModule
             entity.HasOne<ClashCollision>().WithMany().HasForeignKey(e => e.CollisionId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<ClashCollisionSeen>(entity =>
+        {
+            entity.ToTable("clash_collision_seen");
+            entity.HasKey(s => new { s.UserId, s.CollisionId });
+            entity.HasIndex(s => s.CollisionId);
+            entity.HasOne<User>().WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ClashCollision>().WithMany().HasForeignKey(s => s.CollisionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<ClashUserState>(entity =>
         {
             entity.ToTable("clash_user_states");
