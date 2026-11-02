@@ -87,6 +87,27 @@ public class ClashSeenTests : ServerTest
             .ShouldBe([(1, CollisionStatus.Returned), (2, CollisionStatus.Active)]);
     }
 
+    /// <summary>Координатор снял «фиктивную» — коллизия снова открыта и для проектировщика снова новая, как вернувшаяся после прогона.</summary>
+    [Test]
+    public async Task Seen_FakeRemovedByHand_NewAgain()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Hit(1)], approve: true);
+        var ov = await ClientAsync(UserRole.Designer, "ОВ");
+        _time.Advance(TimeSpan.FromMinutes(1));
+        var id = (await UnseenAsync(ov)).Single().Collision.Id;
+        await SeenAsync(ov, id);
+        (await NewForMeAsync(ov)).ShouldBe(0);
+
+        _time.Advance(TimeSpan.FromMinutes(5));
+        (await admin.PostJsonAsync($"/api/clash/collisions/{id}/status", new { status = "Fake", note = "Гильза" })).EnsureSuccessStatusCode();
+        _time.Advance(TimeSpan.FromMinutes(5));
+        (await admin.PostJsonAsync($"/api/clash/collisions/{id}/status", new { status = "Active" })).EnsureSuccessStatusCode();
+
+        (await NewForMeAsync(ov)).ShouldBe(1);
+    }
+
     [Test]
     public async Task Seen_PerUser()
     {

@@ -27,6 +27,8 @@ public static class CollisionChanges
         var entry = Event(collision.Id, now, actor.UserId, CollisionEventKind.Status, note?.Trim() ?? "");
         entry.FromStatus = collision.Status;
         entry.ToStatus = next;
+        // Снятая вручную «фиктивная» снова открыта — для всех снова «новая», как вернувшаяся после прогона.
+        if (CollisionReconciler.Reopened(collision.Status, next)) collision.OpenedAt = now;
         collision.Status = next;
         return [entry];
     }
