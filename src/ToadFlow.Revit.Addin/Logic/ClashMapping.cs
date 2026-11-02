@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Globalization;
 using Alexpivo394.Revit.Clash.Revit;
 using Alexpivo394.Revit.Export.Core;
@@ -58,6 +60,27 @@ public static class ClashMapping
         exception is OperationCanceledException ? "выгрузка отменена" : $"выгрузка не удалась: {exception}";
 
     public static ClashStagedSnapshot ToStaged(string folder, int elements, long triangles, int inventory) => new(folder, elements, triangles, inventory);
+
+    /// <summary>
+    ///     Строки журнала об отчёте выгрузки: пропущенные из-за ошибок Revit элементы (первые 20) и элементы далеко от
+    ///     внутреннего начала. Выгрузка без них строк не добавляет.
+    /// </summary>
+    public static IReadOnlyList<string> DescribeReport(ExtractResult result)
+    {
+        var lines = new List<string>();
+        if (result.Skipped.Count > 0)
+        {
+            lines.Add($"Пропущено элементов: {Number(result.Skipped.Count)}");
+            lines.AddRange(result.Skipped.Take(ListedSkipped).Select(s => $"{s.UniqueId} (ID {s.ElementId}), {s.Stage}: {s.Message}"));
+        }
+
+        if (result.FarElements > 0)
+            lines.Add($"{Number(result.FarElements)} элементов дальше 1 км от внутреннего начала — точность геометрии снижена. " +
+                      "Перенесите модель ближе к внутреннему началу");
+        return lines;
+    }
+
+    private const int ListedSkipped = 20;
 
     private static string Number(long value) => value.ToString("#,0", Thousands);
 }

@@ -25,7 +25,9 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
 
         try
         {
-            var (geometry, parameters) = Extract(application, payload);
+            var result = Extract(application, payload);
+            var (geometry, parameters) = (result.Geometry, result.Parameters);
+            foreach (var line in ClashMapping.DescribeReport(result)) progress.Step(payload.ModelName, line);
 
             progress.Status("Запись слепка");
             var folder = ClashStaging.Folder(job.JobId);
@@ -48,7 +50,7 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
         }
     }
 
-    private (ModelGeometry Geometry, ModelParameters Parameters) Extract(UIApplication application, ClashExtractPayload payload)
+    private ExtractResult Extract(UIApplication application, ClashExtractPayload payload)
     {
         using var temp = TempWorkspace.Create();
         var opened = new ModelOpener(application.Application).Open(ClashMapping.ToModelJob(payload), ClashMapping.ToOpenOptions(payload), temp, progress,
@@ -59,9 +61,7 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
             using var abort = new CancellationTokenSource();
             var reporter = new StepReporter(progress, payload.ModelName, abort);
             if (progress.ShouldAbort) abort.Cancel();
-            var (geometry, parameters, _, _) = GeometryExtractor.Extract(opened.Document, new ExtractOptions(payload.ModelKey, payload.ViewName), reporter,
-                abort.Token);
-            return (geometry, parameters);
+            return GeometryExtractor.Extract(opened.Document, new ExtractOptions(payload.ModelKey, payload.ViewName), reporter, abort.Token);
         }
         finally
         {
