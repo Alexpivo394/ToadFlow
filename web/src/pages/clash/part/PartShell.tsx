@@ -221,7 +221,7 @@ export function PartShell() {
         </Tabs>
       </Panel>
       {draft.conflicts && <ConflictDialog conflicts={draft.conflicts} onResolve={draft.resolve} onClose={draft.dismiss} />}
-      {showVersions && <VersionsDrawer versions={versions.data ?? []} onClose={() => setShowVersions(false)} />}
+      {showVersions && <VersionsDrawer partId={partId} versions={versions.data ?? []} onClose={() => setShowVersions(false)} />}
     </Stack>
   );
 }
