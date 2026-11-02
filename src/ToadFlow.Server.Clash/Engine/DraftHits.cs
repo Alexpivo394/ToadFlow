@@ -13,7 +13,7 @@ namespace ToadFlow.Server.Clash.Engine;
 ///     обрыва заменяет её. Видимы строки только последнего удачного прогона части: прогон, который упал или ещё идёт,
 ///     прошлый результат не трогает.
 /// </summary>
-public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
+public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHits> logger)
 {
     private const string Columns =
         "run_id, number, part_id, discipline_pair, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
@@ -95,7 +95,15 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time)
 
         // Строки прогона пришли COPY, а прошлые удалены: без свежей статистики планировщик оценивает новый run_id в единицы строк и
         // сравнивает находки с коллизиями (предпросмотр утверждения) вложенными циклами — 24 с вместо долей секунды на части DON.
-        await db.Database.ExecuteSqlRawAsync("ANALYZE clash_draft_hits", ct);
+        // Прогон уже сохранён удачным: обрыв запроса или сбой ANALYZE не должны превращать его в ошибку и терять событие для веба.
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("ANALYZE clash_draft_hits", CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Прогон движка {Run}: статистика находок не обновлена (ANALYZE clash_draft_hits)", run.Id);
+        }
     }
 
     /// <summary>Строки прогона, который не дошёл до конца.</summary>
