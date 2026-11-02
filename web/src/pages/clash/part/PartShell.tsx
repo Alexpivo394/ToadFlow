@@ -16,6 +16,7 @@ import { ExclusionsTab } from '../matrix/ExclusionsTab';
 import { MatrixTab } from '../matrix/MatrixTab';
 import { SetsTab } from '../sets/SetsTab';
 import { ModelsTab } from './ModelsTab';
+import { ScheduleLine } from './ScheduleLine';
 import { type Conflicts, useDraft } from './useDraft';
 
 export type PartTab = 'models' | 'sets' | 'matrix' | 'exclusions' | 'draft';
@@ -178,6 +179,7 @@ export function PartShell() {
           </Group>
         )}
       </Group>
+      {versions.data && <ScheduleLine partId={partId} approved={!!approved} canEdit={!readOnly} />}
       {draft.dirty && lastEdit && (
         <Group data-testid="unsaved-banner" gap="sm" px="sm" py={6} bg="var(--mantine-color-orange-light)" style={{ borderRadius: 6 }}>
           <Text size="sm" c="orange">● Есть несохранённые изменения: {lastEdit}</Text>

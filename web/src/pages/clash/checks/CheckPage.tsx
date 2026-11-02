@@ -5,6 +5,7 @@ import type { CheckView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { Panel } from '../../../components/ui';
 import { ApprovedTab } from '../approved/ApprovedTab';
+import { ScheduleLine } from '../part/ScheduleLine';
 
 /** Страница утверждённой проверки: список коллизий, карточка, 3D, лента. Координатору — ссылка «Настроить» и прогоны. */
 export function CheckPage() {
@@ -29,6 +30,7 @@ export function CheckPage() {
           <Button component={RouterLink} to={`/clash/setup/parts/${partId}`} size="xs" variant="default">Настроить</Button>
         )}
       </Group>
+      {check.data && <ScheduleLine partId={partId} approved canEdit={can('Operator')} />}
       <Panel>
         <ApprovedTab partId={partId} canEdit={canWork} canRun={can('Operator')} />
       </Panel>
