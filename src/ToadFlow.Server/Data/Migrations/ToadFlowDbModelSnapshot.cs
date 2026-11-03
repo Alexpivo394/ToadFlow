@@ -1165,6 +1165,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("configuration_json");
 
+                    b.Property<string>("ModelsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("models_json");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");

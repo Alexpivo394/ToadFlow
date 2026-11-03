@@ -82,6 +82,7 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             EngineBasis? basis = null;
             IReadOnlyList<PreviousModel> previous = [];
             ClashConfiguration? previousConfig = null;
+            IReadOnlyDictionary<string, string>? previousDisciplines = null;
             IncrementalBase? incremental = null;
             if (assignment.Kind == EngineApi.Approved)
             {
@@ -91,14 +92,20 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
                 if (basis.PreviousConfigurationJson is { } previousJson)
                 {
                     previous = await ReadPreviousAsync(runId, basis.PreviousModels, folders, token);
-                    // Пары прошлого прогона переиспользуются, только если их искал тот же алгоритм с той же конфигурацией.
+                    // Пары прошлого прогона переиспользуются, только если их искал тот же алгоритм с той же конфигурацией на том же составе
+                    // моделей и разделов: от раздела модели зависит, в какие группы попадают её элементы.
                     if (basis.PreviousEngineVersion == ClashEngine.AlgorithmVersion &&
-                        ApprovedRunFacts.SameConfiguration(previousJson, assignment.ConfigurationJson))
+                        ApprovedRunFacts.SameConfiguration(previousJson, assignment.ConfigurationJson) &&
+                        ApprovedRunFacts.SameComposition(basis.PreviousModels, assignment.Models))
                     {
                         // Без всех прошлых выгрузок неизменность пары не доказать — полный пересчёт.
                         if (previous.Count == basis.PreviousModels.Count) incremental = ApprovedRunFacts.Base(previous, config, basis.Open);
                     }
-                    else previousConfig = ConfigurationJson.Deserialize(previousJson);
+                    else
+                    {
+                        previousConfig = ConfigurationJson.Deserialize(previousJson);
+                        previousDisciplines = basis.PreviousModels.ToDictionary(m => m.ModelId.ToString("N"), m => m.Discipline);
+                    }
                 }
             }
 
@@ -120,7 +127,7 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             if (basis is not null)
             {
                 SetStage("Сверка с прошлым прогоном", $"открытых пар {basis.Open.Count}");
-                gone = ApprovedRunFacts.Gone(basis.Open, result.Hits, models, previousConfig, options.Threads, token);
+                gone = ApprovedRunFacts.Gone(basis.Open, result.Hits, models, previousConfig, options.Threads, token, previousDisciplines);
                 var current = assignment.Models.ToDictionary(m => m.ModelId.ToString("N"), m => ReadIndex(folders[m.SnapshotId]));
                 matches = ApprovedRunFacts.Matches(previous, current, result.Hits, basis.Open,
                     model => logger.LogWarning("Прогон {Run}: модель {Model} слишком плотная для сопоставления пересозданных элементов — предложений нет",

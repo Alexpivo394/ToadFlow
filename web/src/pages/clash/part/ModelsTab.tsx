@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Group, Stack, Table, Text } from '@mantine/core';
+import { Alert, Button, Group, Stack, Table, Text } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
 import type { ClashPartView } from '../../../api/types';
@@ -47,6 +47,11 @@ export function ModelsTab({ part, readOnly }: { part: ClashPartView; readOnly: b
 
   return (
     <Stack gap="sm">
+      {part.compositionPending && (
+        <Alert color="yellow" variant="light" p="xs">
+          <Text size="sm">Изменения состава войдут в проверку после утверждения</Text>
+        </Alert>
+      )}
       <Table>
         <Table.Thead>
           <Table.Tr>

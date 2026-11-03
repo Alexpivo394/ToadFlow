@@ -175,6 +175,38 @@ public class ApprovedRunTests : ServerTest
         (await CollisionsAsync(partId)).ShouldAllBe(c => c.Status == CollisionStatus.GoneByRules);
     }
 
+    /// <summary>
+    ///     Раздел модели ОВ сменён на ВК, а в новой матрице клетки АР × ВК нет: пары ушли из-за правил. Перепроверка прошлой конфигурацией
+    ///     идёт с прошлыми разделами — иначе элементы ВК не попали бы в группу ОВ и пары стали бы «исправленными».
+    /// </summary>
+    [Test]
+    public async Task Worker_Approved_DisciplineChanged_GoneByRules()
+    {
+        var (admin, agent, partId) = await PartAsync();
+        await using var _ = agent;
+        await ApproveAsync(admin, partId);
+        await RunOnceAsync();
+
+        var known = await admin.GetJsonAsync<ClashModelView[]>("/api/clash/models");
+        (await admin.PutJsonAsync($"/api/clash/parts/{partId}/models", new[]
+        {
+            new { modelId = known.Single(m => m.Name == "POL_K1_AR.rvt").Id, disciplineOverride = (string?)null },
+            new { modelId = known.Single(m => m.Name == "POL_K1_OV.rvt").Id, disciplineOverride = (string?)"ВК" }
+        })).EnsureSuccessStatusCode();
+        var disciplines = (await admin.GetJsonAsync<DraftView>($"/api/clash/parts/{partId}/draft")).Disciplines;
+        var any = new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.IsNotEmpty, null);
+        var config = ConfigurationDefaults.FromDisciplines(disciplines.Select(d => new DisciplineSet(Guid.NewGuid(), d, "Все", [new ConditionGroup([any])])).ToList(),
+            [], []);
+        config = config with { Matrix = config.Groups.Select(g => new MatrixCell(g.Id, g.Id, true)).ToList() };
+        (await admin.PutAsync($"/api/clash/parts/{partId}/draft", new StringContent(ConfigurationJson.Serialize(config), Encoding.UTF8, "application/json")))
+            .EnsureSuccessStatusCode();
+
+        await ApproveAsync(admin, partId);
+        await RunOnceAsync();
+
+        (await CollisionsAsync(partId)).ShouldAllBe(c => c.Status == CollisionStatus.GoneByRules);
+    }
+
     [Test]
     public async Task Worker_Approved_RecreatedElement_MatchSuggested()
     {

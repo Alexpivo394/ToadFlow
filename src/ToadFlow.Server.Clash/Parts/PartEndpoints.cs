@@ -179,8 +179,11 @@ public static class PartEndpoints
         part.UpdatedByUserId = http.User.UserId();
     }
 
-    private static async Task<ClashPartView> ViewAsync(ClashPart part, PartModels models, CancellationToken ct) =>
-        new(part.Id, part.Name, part.Object, part.Part, part.UpdatedAt, await models.OfPartAsync(part.Id, ct));
+    private static async Task<ClashPartView> ViewAsync(ClashPart part, PartModels models, CancellationToken ct)
+    {
+        var current = await models.OfPartAsync(part.Id, ct);
+        return new ClashPartView(part.Id, part.Name, part.Object, part.Part, part.UpdatedAt, current, await models.CompositionPendingAsync(part, current, ct));
+    }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

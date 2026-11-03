@@ -25,6 +25,29 @@ public sealed class PartModels(ToadFlowDb db, NamingStore naming)
         return models.Select(m => m.View(links[m.Model.Id].DisciplineOverride)).OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>Отличается ли нынешний состав части от утверждённого: правка войдёт в проверку только после утверждения.</summary>
+    public async Task<bool> CompositionPendingAsync(ClashPart part, IReadOnlyList<PartModelView> current, CancellationToken ct)
+    {
+        if (part.ApprovedVersion is not { } version) return false;
+        var json = await db.Set<ClashPartVersion>().Where(v => v.PartId == part.Id && v.Version == version).Select(v => v.ModelsJson).SingleOrDefaultAsync(ct);
+        return VersionModels.Parse(json) is { } frozen && !VersionModels.Same(frozen, VersionModels.Of(current));
+    }
+
+    /// <summary>
+    ///     Модели утверждённой версии: состав и разделы — из снимка версии, слепки — последние. Модель, удалённая после утверждения,
+    ///     остаётся без слепка (прогон её не возьмёт и скажет почему). Без снимка — нынешний состав части.
+    /// </summary>
+    public async Task<IReadOnlyList<PartModelView>> OfVersionAsync(Guid partId, IReadOnlyList<VersionModel>? frozen, CancellationToken ct)
+    {
+        if (frozen is null) return await OfPartAsync(partId, ct);
+        var ids = frozen.Select(m => m.ModelId).ToList();
+        var found = (await ClassifyAsync(db.Set<ClashModel>().AsNoTracking().Where(m => ids.Contains(m.Id)), ct)).ToDictionary(m => m.Model.Id);
+        return frozen.Select(m => found.TryGetValue(m.ModelId, out var model)
+                ? new PartModelView(m.ModelId, model.Model.Name, model.Model.ModelPath, model.Classification.Discipline, null, m.Discipline, model.Latest)
+                : new PartModelView(m.ModelId, m.ModelName, "", null, null, m.Discipline, null))
+            .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private async Task<IReadOnlyList<ClassifiedModel>> ClassifyAsync(IQueryable<ClashModel> query, CancellationToken ct)
     {
         var models = await query.ToListAsync(ct);

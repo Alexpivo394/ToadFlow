@@ -38,8 +38,11 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
                 .ExecuteUpdateAsync(r => r.SetProperty(x => x.State, EngineRunState.Cancelled).SetProperty(x => x.FinishedAt, time.GetUtcNow()), ct);
         }
 
-        var json = await db.Set<ClashPartVersion>().Where(v => v.PartId == partId && v.Version == version).Select(v => v.ConfigurationJson).SingleAsync(ct);
-        var problems = await DraftRunChecks.ProblemsAsync(partId, ConfigurationJson.Deserialize(json), models, ct);
+        var stored = await db.Set<ClashPartVersion>().AsNoTracking().SingleAsync(v => v.PartId == partId && v.Version == version, ct);
+        var json = stored.ConfigurationJson;
+        // Модели и разделы — утверждённые: правка состава части до нового утверждения на прогоны версии не влияет.
+        var partModels = await models.OfVersionAsync(partId, VersionModels.Parse(stored.ModelsJson), ct);
+        var problems = DraftRunChecks.Problems(partModels, ConfigurationJson.Deserialize(json));
         if (problems.Count > 0)
         {
             logger.LogWarning("Утверждённый прогон части {Part} не поставлен: {Problems}", part.Name, string.Join("; ", problems));
@@ -47,7 +50,6 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
             return null;
         }
 
-        var partModels = await models.OfPartAsync(partId, ct);
         var run = new EngineRun
         {
             Id = Guid.CreateVersion7(),
@@ -78,6 +80,15 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
 
         events.Publish(new ClashDraftChanged(actor, partId));
         return run;
+    }
+
+    /// <summary>Модели, которые прогонит утверждённая версия части; часть не утверждалась — пусто.</summary>
+    public async Task<IReadOnlyList<PartModelView>> ModelsAsync(Guid partId, CancellationToken ct)
+    {
+        var version = await db.Set<ClashPart>().Where(p => p.Id == partId).Select(p => p.ApprovedVersion).SingleOrDefaultAsync(ct);
+        if (version is null) return [];
+        var json = await db.Set<ClashPartVersion>().Where(v => v.PartId == partId && v.Version == version).Select(v => v.ModelsJson).SingleAsync(ct);
+        return await models.OfVersionAsync(partId, VersionModels.Parse(json), ct);
     }
 
     private Task<EngineRun?> QueuedAsync(Guid partId, CancellationToken ct) =>

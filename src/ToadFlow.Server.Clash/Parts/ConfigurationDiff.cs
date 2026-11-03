@@ -17,7 +17,10 @@ public enum ConfigChangeKind
     GroupAdded,
     GroupRemoved,
     GroupSource,
-    GroupRenamed
+    GroupRenamed,
+    ModelAdded,
+    ModelRemoved,
+    ModelDiscipline
 }
 
 /// <param name="Text">Готовая строка для человека: «Клетка АР × КР: допуск 20 → 50 мм».</param>
@@ -39,6 +42,26 @@ public static class ConfigurationDiff
         Cells(before, after, changes);
         Exclusions(before, after, changes);
         return changes;
+    }
+
+    /// <summary>Отличия состава части: модели добавлены, убраны, у модели сменился раздел. Порядок — по имени модели.</summary>
+    public static IReadOnlyList<ConfigChange> CompareModels(IReadOnlyList<VersionModel> before, IReadOnlyList<VersionModel> after)
+    {
+        var old = before.ToDictionary(m => m.ModelId);
+        var current = after.Select(m => m.ModelId).ToHashSet();
+        var changes = new List<(string Name, ConfigChange Change)>();
+        foreach (var model in after)
+        {
+            if (!old.TryGetValue(model.ModelId, out var was))
+                changes.Add((model.ModelName, new ConfigChange(ConfigChangeKind.ModelAdded, $"Модель «{model.ModelName}» добавлена")));
+            else if (!string.Equals(was.Discipline, model.Discipline, StringComparison.OrdinalIgnoreCase))
+                changes.Add((model.ModelName,
+                    new ConfigChange(ConfigChangeKind.ModelDiscipline, $"Раздел модели «{model.ModelName}»: {was.Discipline} → {model.Discipline}")));
+        }
+
+        foreach (var model in before.Where(m => !current.Contains(m.ModelId)))
+            changes.Add((model.ModelName, new ConfigChange(ConfigChangeKind.ModelRemoved, $"Модель «{model.ModelName}» убрана")));
+        return changes.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).Select(c => c.Change).ToList();
     }
 
     /// <summary>Ключи моделей из источников групп обеих конфигураций — чьи имена нужны <see cref="Compare" />.</summary>

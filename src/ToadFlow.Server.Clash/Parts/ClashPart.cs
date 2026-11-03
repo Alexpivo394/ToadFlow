@@ -78,7 +78,9 @@ public sealed record ClashPartSummary(Guid Id, string Name, string? Object, stri
     IReadOnlyList<string> Groups, IReadOnlyList<string> Warnings, Engine.DraftRunSummary? LastRun, int? ApprovedVersion = null,
     Collisions.ApprovedRunSummary? LastApproved = null, IReadOnlyList<string>? ScheduleNames = null);
 
-public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models);
+/// <param name="CompositionPending">Модели или разделы части отличаются от утверждённой версии: изменения войдут в проверку после утверждения.</param>
+public sealed record ClashPartView(Guid Id, string Name, string? Object, string? Part, DateTimeOffset UpdatedAt, IReadOnlyList<PartModelView> Models,
+    bool CompositionPending = false);
 
 /// <summary>Сохранённая версия черновика части — база для слияния правок, начатых с неё. Хранятся последние <see cref="Keep" />.</summary>
 public sealed class ClashDraftVersion

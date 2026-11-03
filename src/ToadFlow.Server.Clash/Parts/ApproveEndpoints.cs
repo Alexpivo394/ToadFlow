@@ -43,12 +43,17 @@ public static class ApproveEndpoints
         var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {id} FOR UPDATE").SingleOrDefaultAsync(ct);
         if (part is null) return Results.NotFound();
 
-        var errors = await DraftRunChecks.ProblemsAsync(id, ConfigurationJson.Deserialize(part.DraftJson), models, ct);
+        var partModels = await models.OfPartAsync(id, ct);
+        var errors = DraftRunChecks.Problems(partModels, ConfigurationJson.Deserialize(part.DraftJson));
         if (errors.Count > 0) return Results.BadRequest(new { error = string.Join("; ", errors), errors });
+        var composition = VersionModels.Of(partModels);
         if (part.ApprovedVersion is { } approved)
         {
-            var current = await db.Set<ClashPartVersion>().Where(v => v.PartId == id && v.Version == approved).Select(v => v.ConfigurationJson).SingleAsync(ct);
-            if (SameConfiguration(current, part.DraftJson)) return Results.BadRequest(new { error = $"Черновик совпадает с утверждённой версией {approved}: изменений нет" });
+            var current = await db.Set<ClashPartVersion>().AsNoTracking().SingleAsync(v => v.PartId == id && v.Version == approved, ct);
+            // Версия без снимка состава считается с нынешним составом: её прогоны берут его.
+            var sameModels = VersionModels.Parse(current.ModelsJson) is not { } frozen || VersionModels.Same(frozen, composition);
+            if (sameModels && SameConfiguration(current.ConfigurationJson, part.DraftJson))
+                return Results.BadRequest(new { error = $"Черновик и модели части совпадают с утверждённой версией {approved}: изменений нет" });
         }
 
         var version = new ClashPartVersion
@@ -56,6 +61,7 @@ public static class ApproveEndpoints
             PartId = id,
             Version = (part.ApprovedVersion ?? 0) + 1,
             ConfigurationJson = part.DraftJson,
+            ModelsJson = VersionModels.Serialize(composition),
             Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim(),
             UserId = http.User.UserId(),
             ApprovedAt = time.GetUtcNow()

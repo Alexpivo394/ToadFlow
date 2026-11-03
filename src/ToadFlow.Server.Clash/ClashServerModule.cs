@@ -119,6 +119,7 @@ public sealed class ClashServerModule : IServerModule
             entity.ToTable("clash_part_versions");
             entity.HasKey(v => new { v.PartId, v.Version });
             entity.Property(v => v.ConfigurationJson).HasColumnType("jsonb");
+            entity.Property(v => v.ModelsJson).HasColumnType("jsonb");
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(v => v.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -308,11 +309,10 @@ public sealed class ClashServerModule : IServerModule
             }
         }
 
-        var models = services.GetRequiredService<PartModels>();
         var approvedRuns = services.GetRequiredService<ApprovedRuns>();
         foreach (var partId in parts)
         {
-            var partModels = await models.OfPartAsync(partId, ct);
+            var partModels = await approvedRuns.ModelsAsync(partId, ct);
             var unchecked_ = partModels.Where(m => failed.Contains(m.ModelId.ToString("N"))).Select(m => m.ModelId).ToList();
             await approvedRuns.EnqueueAsync(partId, run.Id, unchecked_, Actor.System, ct);
         }

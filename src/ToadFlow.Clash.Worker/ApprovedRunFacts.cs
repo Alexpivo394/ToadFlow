@@ -20,6 +20,10 @@ public static class ApprovedRunFacts
     public static bool SameConfiguration(string a, string b) =>
         ConfigurationJson.Serialize(ConfigurationJson.Deserialize(a)) == ConfigurationJson.Serialize(ConfigurationJson.Deserialize(b));
 
+    /// <summary>Один ли состав прогонов: те же модели с теми же разделами (раздел — без учёта регистра, как в правилах).</summary>
+    public static bool SameComposition(IReadOnlyList<EngineRunModel> a, IReadOnlyList<EngineRunModel> b) =>
+        a.Count == b.Count && a.All(m => b.Any(o => o.ModelId == m.ModelId && string.Equals(o.Discipline, m.Discipline, StringComparison.OrdinalIgnoreCase)));
+
     /// <summary>Основа для движка: состояния элементов прошлых выгрузок и коллизии прошлого прогона.</summary>
     public static IncrementalBase Base(IReadOnlyList<PreviousModel> previous, ClashConfiguration config, IReadOnlyList<EngineOpenPair> open)
     {
@@ -39,9 +43,13 @@ public static class ApprovedRunFacts
     ///     Открытые пары основы, которых нет среди найденных: где сейчас каждый элемент и, если конфигурация сменилась, нашла бы
     ///     пару прошлая конфигурация на нынешней геометрии. Элемент модели, которой больше нет в прогоне, — «скрыт».
     /// </summary>
-    /// <param name="previousConfig">Конфигурация прошлого прогона, если она отличается от нынешней; иначе null.</param>
+    /// <param name="previousConfig">Конфигурация прошлого прогона, если она или состав моделей отличаются от нынешних; иначе null.</param>
+    /// <param name="previousDisciplines">
+    ///     Разделы моделей прошлого прогона по ключу: перепроверка идёт с ними, как искал прошлый прогон. Пара с моделью, которой в прошлом
+    ///     прогоне не было, не перепроверяется. null — разделы нынешние.
+    /// </param>
     public static List<EngineGonePair> Gone(IReadOnlyList<EngineOpenPair> open, IReadOnlyList<ClashHit> found, IReadOnlyList<ModelInput> models,
-        ClashConfiguration? previousConfig, int threads, CancellationToken ct)
+        ClashConfiguration? previousConfig, int threads, CancellationToken ct, IReadOnlyDictionary<string, string>? previousDisciplines = null)
     {
         var foundPairs = found.Select(h => (h.A, h.B)).ToHashSet();
         var geometry = new HashSet<ElementRef>();
@@ -61,16 +69,22 @@ public static class ApprovedRunFacts
         var missing = open.Select(p => (A: new ElementRef(p.ModelA, p.UniqueIdA), B: new ElementRef(p.ModelB, p.UniqueIdB)))
             .Where(p => !foundPairs.Contains(p)).ToList();
         HashSet<(ElementRef, ElementRef)>? wouldHit = null;
+        bool Rechecked(ElementRef element) =>
+            geometry.Contains(element) && (previousDisciplines is null || previousDisciplines.ContainsKey(element.ModelKey));
         if (previousConfig is not null)
         {
-            var recheck = missing.Where(p => geometry.Contains(p.A) && geometry.Contains(p.B)).ToList();
-            wouldHit = new ClashEngine(new EngineOptions(threads)).Recheck(models, previousConfig, recheck, ct).Select(h => (h.A, h.B)).ToHashSet();
+            var recheck = missing.Where(p => Rechecked(p.A) && Rechecked(p.B)).ToList();
+            var inputs = previousDisciplines is null
+                ? models
+                : models.Where(m => previousDisciplines.ContainsKey(m.Geometry.Header.ModelKey))
+                    .Select(m => new ModelInput(previousDisciplines[m.Geometry.Header.ModelKey], m.Geometry, m.Parameters)).ToList();
+            wouldHit = new ClashEngine(new EngineOptions(threads)).Recheck(inputs, previousConfig, recheck, ct).Select(h => (h.A, h.B)).ToHashSet();
         }
 
         return missing.Select(p =>
         {
             var (a, b) = (Presence(p.A), Presence(p.B));
-            bool? hit = wouldHit is not null && a == "InGeometry" && b == "InGeometry" ? wouldHit.Contains(p) : null;
+            bool? hit = wouldHit is not null && a == "InGeometry" && b == "InGeometry" && Rechecked(p.A) && Rechecked(p.B) ? wouldHit.Contains(p) : null;
             return new EngineGonePair(p.A.ModelKey, p.A.UniqueId, p.B.ModelKey, p.B.UniqueId, a, b, hit);
         }).ToList();
     }

@@ -798,6 +798,8 @@ export interface ClashPartView {
   part: string | null;
   updatedAt: string;
   models: PartModelView[];
+  /** Модели или разделы отличаются от утверждённой версии: войдут в проверку после утверждения. */
+  compositionPending?: boolean;
 }
 
 export interface PartModelRef {
@@ -1396,7 +1398,8 @@ export interface RunCompare {
 
 export type ConfigChangeKind =
   | 'SetAdded' | 'SetRemoved' | 'SetRenamed' | 'SetConditions' | 'CellEnabled' | 'CellDisabled' | 'CellTolerance'
-  | 'ExclusionAdded' | 'ExclusionRemoved' | 'GroupAdded' | 'GroupRemoved' | 'GroupSource' | 'GroupRenamed';
+  | 'ExclusionAdded' | 'ExclusionRemoved' | 'GroupAdded' | 'GroupRemoved' | 'GroupSource' | 'GroupRenamed'
+  | 'ModelAdded' | 'ModelRemoved' | 'ModelDiscipline';
 
 export interface ConfigChange {
   kind: ConfigChangeKind;

@@ -32,14 +32,19 @@ public static class ApprovePreviews
     ///     Пары элементов сравниваются по ключу (модель A, UniqueId A, модель B, UniqueId B): открытые коллизии части против находок
     ///     последнего удачного прогона черновика. Считает база — запросы NOT EXISTS / EXISTS по ключу с группировкой по паре разделов.
     /// </summary>
-    public static async Task<IResult> PreviewAsync(Guid id, ToadFlowDb db, CancellationToken ct)
+    public static async Task<IResult> PreviewAsync(Guid id, ToadFlowDb db, PartModels models, CancellationToken ct)
     {
         var part = await db.Set<ClashPart>().AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
         if (part is null) return Results.NotFound();
         var draft = ConfigurationJson.Deserialize(part.DraftJson);
-        var changes = part.ApprovedVersion is { } approved
-            ? await CompareAsync(db, ConfigurationJson.Deserialize(await VersionJsonAsync(db, id, approved, ct) ?? part.DraftJson), draft, ct)
-            : [];
+        IReadOnlyList<ConfigChange> changes = [];
+        if (part.ApprovedVersion is { } approved && await VersionAsync(db, id, approved, ct) is { } version)
+        {
+            var composition = VersionModels.Parse(version.ModelsJson) is { } frozen
+                ? ConfigurationDiff.CompareModels(frozen, VersionModels.Of(await models.OfPartAsync(id, ct)))
+                : [];
+            changes = [.. await CompareAsync(db, ConfigurationJson.Deserialize(version.ConfigurationJson), draft, ct), .. composition];
+        }
         var run = part.ResultRunId is { } runId ? await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == runId, ct) : null;
         if (run is null) return Results.Ok(new ApprovePreview(null, false, true, part.ApprovedVersion is null, [], changes));
 
@@ -68,10 +73,13 @@ public static class ApprovePreviews
     /// <summary>Отличия версии от предыдущей; у первой — пусто.</summary>
     public static async Task<IResult> ChangesAsync(Guid id, int version, ToadFlowDb db, CancellationToken ct)
     {
-        if (await VersionJsonAsync(db, id, version, ct) is not { } json) return Results.NotFound();
-        return await VersionJsonAsync(db, id, version - 1, ct) is { } previous
-            ? Results.Ok(await CompareAsync(db, ConfigurationJson.Deserialize(previous), ConfigurationJson.Deserialize(json), ct))
-            : Results.Ok(Array.Empty<ConfigChange>());
+        if (await VersionAsync(db, id, version, ct) is not { } stored) return Results.NotFound();
+        if (await VersionAsync(db, id, version - 1, ct) is not { } previous) return Results.Ok(Array.Empty<ConfigChange>());
+        var composition = (VersionModels.Parse(previous.ModelsJson), VersionModels.Parse(stored.ModelsJson)) is ({ } before, { } after)
+            ? ConfigurationDiff.CompareModels(before, after)
+            : [];
+        return Results.Ok((IReadOnlyList<ConfigChange>)
+            [.. await CompareAsync(db, ConfigurationJson.Deserialize(previous.ConfigurationJson), ConfigurationJson.Deserialize(stored.ConfigurationJson), ct), .. composition]);
     }
 
     /// <summary>Отличия с именами моделей из источников групп.</summary>
@@ -86,6 +94,6 @@ public static class ApprovePreviews
         return ConfigurationDiff.Compare(before, after, names);
     }
 
-    private static Task<string?> VersionJsonAsync(ToadFlowDb db, Guid id, int version, CancellationToken ct) =>
-        db.Set<ClashPartVersion>().AsNoTracking().Where(v => v.PartId == id && v.Version == version).Select(v => v.ConfigurationJson).SingleOrDefaultAsync(ct);
+    private static Task<ClashPartVersion?> VersionAsync(ToadFlowDb db, Guid id, int version, CancellationToken ct) =>
+        db.Set<ClashPartVersion>().AsNoTracking().SingleOrDefaultAsync(v => v.PartId == id && v.Version == version, ct);
 }
