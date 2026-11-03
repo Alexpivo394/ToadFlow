@@ -47,7 +47,7 @@ describe('Profile', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сменить пароль' }));
 
     await waitFor(() => expect(sent('POST', '/api/profile/password')).toHaveLength(1));
-    expect(JSON.parse(String(sent('POST', '/api/profile/password')[0][1]!.body))).toEqual({ current: 'old-pass-1', new: 'new-pass-2' });
+    expect(JSON.parse(String(sent('POST', '/api/profile/password')[0][1]!.body))).toEqual({ current: 'old-pass-1', new: 'new-pass-2', remember: false });
   });
 });
 

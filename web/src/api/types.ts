@@ -30,6 +30,8 @@ export interface UserView {
 export interface LoginResponse {
   token: string;
   user: UserView;
+  /** Только при «Оставаться в системе». */
+  refreshToken?: string | null;
 }
 
 export interface InstalledRevit {

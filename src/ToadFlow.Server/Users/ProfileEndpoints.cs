@@ -10,7 +10,8 @@ namespace ToadFlow.Server.Users;
 /// <summary>Свои имя и контакты. Роли и разделов здесь нет: их меняют координатор и администратор.</summary>
 public sealed record ProfileRequest(string DisplayName, string? Position = null, string? Email = null, string? Phone = null);
 
-public sealed record ChangePasswordRequest(string Current, string New);
+/// <param name="Remember">Сессия «Оставаться в системе»: её refresh-токен отозван вместе с остальными — выдать новый.</param>
+public sealed record ChangePasswordRequest(string Current, string New, bool Remember = false);
 
 /// <summary>Контакты коллеги — для ленты коллизии: по имени в записи видно, как связаться.</summary>
 public sealed record UserCard(Guid Id, string DisplayName, string? Position, string? Email, string? Phone, string[] Disciplines);
@@ -76,6 +77,6 @@ public static class ProfileEndpoints
         await db.SaveChangesAsync(ct);
         cache.ForgetUser(user.Id);
         events.Publish(new UserChanged(http.User.Actor(), user.Id, $"{user.DisplayName} сменил(а) свой пароль"));
-        return Results.Ok(new LoginResponse(tokens.Issue(user), UserView.From(user)));
+        return Results.Ok(new LoginResponse(tokens.Issue(user), UserView.From(user), request.Remember ? await refresh.IssueAsync(user.Id, ct) : null));
     }
 }

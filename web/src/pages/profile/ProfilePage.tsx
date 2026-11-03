@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, Group, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { apiFetch } from '../../api/client';
+import { apiFetch, getRefreshToken, setSession } from '../../api/client';
 import { useApi } from '../../api/queries';
-import type { UserView } from '../../api/types';
+import type { LoginResponse, UserView } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { PageTitle, Panel } from '../../components/ui';
 import { t } from '../../i18n/ru';
@@ -82,7 +82,11 @@ export function ProfilePage() {
             <Group justify="flex-end">
               <Button variant="default" loading={busy} disabled={!password.current || !password.new}
                 onClick={async () => {
-                  if (await run(() => apiFetch('/api/profile/password', { method: 'POST', json: password }), 'Пароль изменён'))
+                  if (await run(async () => {
+                    // Сервер закрыл все сессии, кроме этой: новый токен — ей.
+                    const session = await apiFetch<LoginResponse>('/api/profile/password', { method: 'POST', json: { ...password, remember: getRefreshToken() !== null } });
+                    setSession(session.token, session.refreshToken ?? null);
+                  }, 'Пароль изменён'))
                     setPassword({ current: '', new: '' });
                 }}>
                 Сменить пароль

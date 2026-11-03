@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getToken, handleUnauthorized } from './client';
+import { ApiError, authorizedFetch } from './client';
 
 export interface ImageState {
   url: string | null;
@@ -28,13 +28,9 @@ export function useImage(path: string | null): ImageState {
     let cancelled = false;
     let objectUrl: string | null = null;
     setState({ url: null, isLoading: true, error: null });
-    const token = getToken();
-    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    // 401 после неудачного обновления сессии authorizedFetch сам отправляет на вход.
+    authorizedFetch(path, {})
       .then(async (response) => {
-        if (response.status === 401) {
-          if (!cancelled) handleUnauthorized();
-          return;
-        }
         if (!response.ok) {
           const reason = await response.json().then((body: { error?: unknown }) => (typeof body?.error === 'string' && body.error ? body.error : null), () => null);
           if (!cancelled) setState({ url: null, isLoading: false, error: reason ?? noImage });
@@ -45,7 +41,8 @@ export function useImage(path: string | null): ImageState {
         objectUrl = URL.createObjectURL(blob);
         setState({ url: objectUrl, isLoading: false, error: null });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) return;
         if (!cancelled) setState({ url: null, isLoading: false, error: noImage });
       });
 
