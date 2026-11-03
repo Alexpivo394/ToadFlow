@@ -36,7 +36,7 @@ public abstract class ServerTest
     public async Task StopServerAsync()
     {
         await Server.DisposeAsync();
-        await Postgres.DropDatabaseAsync(_connectionString);
+        Postgres.DropDatabaseLater(_connectionString);
     }
 
     private string _connectionString = "";

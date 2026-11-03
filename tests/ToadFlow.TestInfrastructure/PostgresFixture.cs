@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using MysticMind.PostgresEmbed;
 using Npgsql;
+using ToadFlow.Server.Data;
 using TUnit.Core.Interfaces;
 
 namespace ToadFlow.Server.Tests.Infrastructure;
@@ -37,18 +40,57 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
         await _server.StartAsync();
     }
 
-    /// <summary>Создаёт пустую базу с уникальным именем и возвращает строку подключения к ней.</summary>
+    /// <summary>
+    ///     Создаёт базу с уникальным именем — копию шаблона с накатанными миграциями — и возвращает строку подключения к ней. Сервер теста
+    ///     при старте видит, что миграций накатывать не нужно: на тест уходят миллисекунды вместо секунд.
+    /// </summary>
     public async Task<string> CreateDatabaseAsync()
     {
+        await EnsureTemplateAsync();
         var name = "t_" + Guid.NewGuid().ToString("N");
-        await using (var connection = new NpgsqlConnection(ConnectionString("postgres")))
-        {
-            await connection.OpenAsync();
-            await using var command = new NpgsqlCommand($"create database {name}", connection);
-            await command.ExecuteNonQueryAsync();
-        }
-
+        await ExecuteAsync($"create database {name} template {Template}");
         return ConnectionString(name);
+    }
+
+    private const string Template = "toadflow_template";
+    private readonly SemaphoreSlim _templateLock = new(1, 1);
+    private bool _templateReady;
+
+    /// <summary>
+    ///     Шаблон — пустая база, на которую сервер накатил миграции, и только: остальные фоновые службы (заводящие администратора и т. п.)
+    ///     не запускаются, чтобы их данные с настоящим временем не попали в тесты с подменным. Подключения к шаблону без пула: копировать
+    ///     базу, к которой кто-то подключён, Postgres не даёт.
+    /// </summary>
+    private async Task EnsureTemplateAsync()
+    {
+        if (Volatile.Read(ref _templateReady)) return;
+        await _templateLock.WaitAsync();
+        try
+        {
+            if (_templateReady) return;
+            await ExecuteAsync($"drop database if exists {Template} with (force)");
+            await ExecuteAsync($"create database {Template}");
+            await using (var server = new ServerFactory(ConnectionString(Template) + ";Pooling=false", services: OnlyMigrations)) _ = server.Server;
+            Volatile.Write(ref _templateReady, true);
+        }
+        finally
+        {
+            _templateLock.Release();
+        }
+    }
+
+    private static void OnlyMigrations(IServiceCollection services)
+    {
+        foreach (var hosted in services.Where(s => s.ServiceType == typeof(IHostedService) && s.ImplementationType != typeof(MigrationRunner)).ToList())
+            services.Remove(hosted);
+    }
+
+    private async Task ExecuteAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString("postgres"));
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     /// <summary>
@@ -64,8 +106,37 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
         await command.ExecuteNonQueryAsync();
     }
 
+    private readonly System.Collections.Concurrent.ConcurrentBag<Task> _drops = [];
+    private readonly SemaphoreSlim _dropSlots = new(2, 2);
+
+    /// <summary>
+    ///     Удаляет базу теста в фоне: удаление (около 0.7 с под нагрузкой) не держит слот следующего теста. Одновременно — не больше двух
+    ///     удалений; конец сессии дожидается всех.
+    /// </summary>
+    public void DropDatabaseLater(string connectionString) => _drops.Add(Task.Run(async () =>
+    {
+        await _dropSlots.WaitAsync();
+        try
+        {
+            await DropDatabaseAsync(connectionString);
+        }
+        finally
+        {
+            _dropSlots.Release();
+        }
+    }));
+
     public async ValueTask DisposeAsync()
     {
+        try
+        {
+            await Task.WhenAll(_drops);
+        }
+        catch (Exception exception) when (exception is NpgsqlException or PostgresException)
+        {
+            // Postgres всё равно останавливается, а его папка удаляется при следующем запуске.
+        }
+
         if (_server is not null) await _server.StopAsync();
     }
 
