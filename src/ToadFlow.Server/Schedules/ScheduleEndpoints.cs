@@ -206,7 +206,8 @@ public static class ScheduleEndpoints
         schedule.Name = request.Name.Trim();
         schedule.ModuleKind = request.ModuleKind;
         schedule.SourceId = request.SourceId;
-        schedule.OutputFolderTemplate = request.OutputFolderTemplate.Trim();
+        // Модулю без папки результатов клиент может не прислать шаблон вовсе.
+        schedule.OutputFolderTemplate = request.OutputFolderTemplate?.Trim() ?? "";
         schedule.Selection = request.Selection;
         schedule.ModuleSettingsJson = request.ModuleSettings.GetRawText();
         schedule.RecurrenceKind = request.RecurrenceKind;

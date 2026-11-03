@@ -336,6 +336,34 @@ public class ClashApprovedRunTests : ServerTest
         foreach (var id in kept) (await engine.GetAsync($"/api/engine/snapshots/{id}/geometry")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    ///     Прогон ждёт в очереди, а модели выгрузились заново: тот же прогон берёт новые слепки и запуск нового цикла. Модель, не
+    ///     проверенная раньше и выгрузившаяся теперь, перестаёт быть не проверенной; модель, не выгрузившаяся в новом цикле, — становится.
+    /// </summary>
+    [Test]
+    public async Task Enqueue_QueuedSameVersion_RefreshesSnapshotsUncheckedTrigger()
+    {
+        var (admin, agent, partId, _) = await SetupAsync();
+        await using var __ = agent;
+        var models = (await admin.GetJsonAsync<ClashPartView>($"/api/clash/parts/{partId}")).Models;
+        var (ar, ov) = (models.Single(m => m.Name == "POL_K1_AR.rvt").ModelId, models.Single(m => m.Name == "POL_K1_OV.rvt").ModelId);
+        (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = (string?)null, run = false })).EnsureSuccessStatusCode();
+        var first = await RerunAsync(partId, [ar]);
+
+        var published = await ClashFixtures.PublishAsync(Server, agent, "POL_K1_AR.rvt");
+        await agent.CompleteJobAsync(published.JobId, JobOutcome.Succeeded);
+        var trigger = Guid.NewGuid();
+        EngineRun? second;
+        using (var scope = Server.Services.CreateScope())
+            second = await scope.ServiceProvider.GetRequiredService<ApprovedRuns>().EnqueueAsync(partId, trigger, [ov], Actor.System, CancellationToken.None);
+
+        second.ShouldNotBeNull().Id.ShouldBe(first);
+        var run = await RunAsync(first);
+        run.Models.Single(m => m.ModelId == ar).SnapshotId.ShouldBe(published.Result.SnapshotId);
+        run.UncheckedModels.ShouldBe([ov]);
+        run.TriggerRunId.ShouldBe(trigger);
+    }
+
     [Test]
     [Explicit]
     public async Task Reconcile_200kHits_Under30s()

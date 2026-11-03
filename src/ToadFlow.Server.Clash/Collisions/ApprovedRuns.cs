@@ -30,12 +30,13 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
     {
         var part = await db.Set<ClashPart>().AsNoTracking().SingleOrDefaultAsync(p => p.Id == partId, ct);
         if (part?.ApprovedVersion is not { } version) return null;
-        if (await QueuedAsync(partId, ct) is { } queued)
+        var queued = await QueuedAsync(partId, ct);
+        if (queued is not null && queued.Version != version)
         {
-            if (queued.Version == version) return queued;
             // Ждущий прогон прежней версии не нужен: утверждена новая.
             await db.Set<EngineRun>().Where(r => r.Id == queued.Id && r.State == EngineRunState.Queued)
                 .ExecuteUpdateAsync(r => r.SetProperty(x => x.State, EngineRunState.Cancelled).SetProperty(x => x.FinishedAt, time.GetUtcNow()), ct);
+            queued = null;
         }
 
         var stored = await db.Set<ClashPartVersion>().AsNoTracking().SingleAsync(v => v.PartId == partId && v.Version == version, ct);
@@ -45,10 +46,16 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
         var problems = DraftRunChecks.Problems(partModels, ConfigurationJson.Deserialize(json));
         if (problems.Count > 0)
         {
+            // Ждущий прогон ставился, когда прогнать было можно: пусть идёт на своих слепках.
+            if (queued is not null) return queued;
             logger.LogWarning("Утверждённый прогон части {Part} не поставлен: {Problems}", part.Name, string.Join("; ", problems));
             events.Publish(new ClashApprovedRunSkipped(actor, partId, part.Name, string.Join("; ", problems)));
             return null;
         }
+
+        var latest = partModels.Select(m => new EngineRunModel(m.ModelId, m.Name, m.Discipline!, m.Latest!.Id, m.Latest.GeometryBytes, m.Latest.ParametersBytes))
+            .ToList();
+        if (queued is not null) return await RefreshAsync(queued.Id, triggerRunId, uncheckedModels, latest, ct) ?? await EnqueueAsync(partId, triggerRunId, uncheckedModels, actor, ct);
 
         var run = new EngineRun
         {
@@ -62,8 +69,7 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
             PreviousRunId = part.ApprovedRunId,
             State = EngineRunState.Queued,
             ConfigurationJson = json,
-            Models = partModels.Select(m => new EngineRunModel(m.ModelId, m.Name, m.Discipline!, m.Latest!.Id, m.Latest.GeometryBytes, m.Latest.ParametersBytes))
-                .ToList(),
+            Models = latest,
             CreatedAt = time.GetUtcNow()
         };
         db.Set<EngineRun>().Add(run);
@@ -79,6 +85,32 @@ public sealed class ApprovedRuns(ToadFlowDb db, PartModels models, TimeProvider 
         }
 
         events.Publish(new ClashDraftChanged(actor, partId));
+        return run;
+    }
+
+    /// <summary>
+    ///     Ждущий прогон той же версии получает последние слепки, запуск расписания и «не проверенные» нового цикла. Модель, не проверенная
+    ///     раньше, остаётся такой, только если её слепок с тех пор не сменился. Строка берётся под блокировкой: выдача движку пропускает
+    ///     заблокированные (SKIP LOCKED) и не возьмёт прогон наполовину обновлённым.
+    /// </summary>
+    /// <returns>null — прогон уже не ждёт (его взял движок): надо ставить новый.</returns>
+    private async Task<EngineRun?> RefreshAsync(Guid runId, Guid? triggerRunId, IReadOnlyCollection<Guid> uncheckedModels, List<EngineRunModel> latest,
+        CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var queued = nameof(EngineRunState.Queued);
+        var run = await db.Set<EngineRun>().FromSql($"SELECT * FROM clash_engine_runs WHERE id = {runId} AND state = {queued} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (run is null) return null;
+
+        var snapshots = latest.ToDictionary(m => m.ModelId, m => m.SnapshotId);
+        var stillUnchecked = run.Models.Where(m => run.UncheckedModels.Contains(m.ModelId) && snapshots.GetValueOrDefault(m.ModelId) == m.SnapshotId)
+            .Select(m => m.ModelId);
+        run.UncheckedModels = [.. uncheckedModels.Concat(stillUnchecked).Distinct()];
+        run.Models = latest;
+        if (triggerRunId is not null) run.TriggerRunId = triggerRunId;
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return run;
     }
 

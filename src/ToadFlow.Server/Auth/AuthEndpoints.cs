@@ -43,12 +43,13 @@ public static class AuthEndpoints
             UserView.From(await db.Users.SingleAsync(u => u.Id == http.User.UserId())));
     }
 
-    private static async Task<IResult> LoginAsync(LoginRequest request, ToadFlowDb db, TokenService tokens, TimeProvider time, IDomainEvents events)
+    private static async Task<IResult> LoginAsync(LoginRequest request, ToadFlowDb db, TokenService tokens, TimeProvider time)
     {
         var login = User.NormalizeLogin(request.Login ?? "");
-        await RegistrationEndpoints.DeleteExpiredAsync(db, time, events, CancellationToken.None);
         var user = await db.Users.SingleOrDefaultAsync(u => u.Login == login);
-        if (user is null || user.IsDisabled || string.IsNullOrEmpty(request.Password)) return Results.Unauthorized();
+        // Просроченная заявка — как несуществующий пользователь; удалит её уборка, вход в базу не пишет.
+        if (user is null || user.IsDisabled || string.IsNullOrEmpty(request.Password) || RegistrationEndpoints.Expired(user, time.GetUtcNow()))
+            return Results.Unauthorized();
 
         var hasher = new PasswordHasher<User>();
         var check = hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);

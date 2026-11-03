@@ -65,20 +65,30 @@ public static class RegistrationEndpoints
     }
 
     /// <summary>
-    ///     Удаляет заявки старше <see cref="PendingLifetime" />. Зовётся там, где заявку видно (регистрация, вход, список
-    ///     заявок, подтверждение), и ежедневной уборкой — поэтому просроченная заявка нигде не показывается.
+    ///     Удаляет заявки старше <see cref="PendingLifetime" />. Зовётся там, где заявку видно (регистрация, список заявок,
+    ///     подтверждение), и ежедневной уборкой — поэтому просроченная заявка нигде не показывается. Вход уборку не зовёт: просроченную
+    ///     заявку он отклоняет сам.
     /// </summary>
+    /// <remarks>
+    ///     Каждая заявка удаляется отдельной командой с тем же условием: два запроса в момент истечения не мешают друг другу — удалит
+    ///     и сообщит в журнал тот, у кого команда задела строку.
+    /// </remarks>
     public static async Task DeleteExpiredAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
         var cutoff = time.GetUtcNow() - PendingLifetime;
-        var expired = await db.Users.Where(u => u.IsPending && u.CreatedAt < cutoff).ToListAsync(ct);
-        if (expired.Count == 0) return;
-        db.Users.RemoveRange(expired);
-        await db.SaveChangesAsync(ct);
+        var expired = await db.Users.AsNoTracking().Where(u => u.IsPending && u.CreatedAt < cutoff)
+            .Select(u => new { u.Id, u.DisplayName, u.Login }).ToListAsync(ct);
         foreach (var user in expired)
+        {
+            var deleted = await db.Users.Where(u => u.Id == user.Id && u.IsPending && u.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
+            if (deleted == 0) continue;
             events.Publish(new UserChanged(Actor.System, user.Id,
                 $"Заявка удалена: не подтверждена за {PendingLifetime.TotalDays:0} суток — {user.DisplayName} ({user.Login})"));
+        }
     }
+
+    /// <summary>Заявка просрочена: её нет, даже если уборка ещё не прошла.</summary>
+    public static bool Expired(User user, DateTimeOffset now) => user.IsPending && user.CreatedAt < now - PendingLifetime;
 
     public static string DisciplineText(string[] disciplines) => disciplines.Length == 0 ? "не указаны" : string.Join(", ", disciplines);
 }

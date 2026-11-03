@@ -145,7 +145,8 @@ public class RegistrationTests : ServerTest
 
         (await Server.CreateClient().PostJsonAsync("/api/auth/login", new { login = "kovaleva", password = "secret-123" })).StatusCode
             .ShouldBe(HttpStatusCode.Unauthorized);
-        (await DbAsync(db => db.Users.AnyAsync(u => u.Login == "kovaleva"))).ShouldBeFalse();
+        // Вход в базу не пишет: заявку удалит уборка или список заявок.
+        (await DbAsync(db => db.Users.AnyAsync(u => u.Login == "kovaleva"))).ShouldBeTrue();
     }
 
     /// <summary>Просроченную заявку удаляет и ежедневная уборка, даже если никто не заходил.</summary>

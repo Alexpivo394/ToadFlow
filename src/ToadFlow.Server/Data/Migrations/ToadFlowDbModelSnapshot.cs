@@ -551,6 +551,12 @@ namespace ToadFlow.Server.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Checks"), "gin");
 
+                    b.HasIndex("ModelA")
+                        .HasDatabaseName("ix_clash_collisions_model_a");
+
+                    b.HasIndex("ModelB")
+                        .HasDatabaseName("ix_clash_collisions_model_b");
+
                     b.HasIndex("PartId", "LastFoundRunId")
                         .HasDatabaseName("ix_clash_collisions_part_id_last_found_run_id");
 
@@ -2265,6 +2271,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasConstraintName("fk_clash_snapshots_clash_models_model_id");
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashApprovedHit", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Engine.EngineRun", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_approved_hits_clash_engine_runs_run_id");
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashCollision", b =>
                 {
                     b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
@@ -2330,6 +2346,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_user_states_users_user_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Engine.ClashDraftHit", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_draft_hits_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Engine.EngineRun", b =>

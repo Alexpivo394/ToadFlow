@@ -48,6 +48,9 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
         var snapshotId = Guid.CreateVersion7();
         var target = storage.SnapshotFolder(upload.ModelId, snapshotId);
         Directory.CreateDirectory(storage.ModelFolder(upload.ModelId));
+        // Дальше перенос папки и запись — одно целое: отмена запроса их не разрывает, сбой записи возвращает папку на место,
+        // и повтор «complete» агентом публикует загрузку заново.
+        ct.ThrowIfCancellationRequested();
         Directory.Move(folder, target);
 
         var snapshot = new ClashSnapshot
@@ -69,9 +72,19 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
         db.Set<ClashSnapshot>().Add(snapshot);
         if (db.Entry(upload).State == EntityState.Detached) db.Attach(upload);
         upload.SnapshotId = snapshotId;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch
+        {
+            db.Entry(snapshot).State = EntityState.Detached;
+            upload.SnapshotId = null;
+            Directory.Move(target, folder);
+            throw;
+        }
 
-        await PruneAsync(upload.ModelId, (await settings.StorageAsync(ct)).KeepSnapshots, ct);
+        await PruneAsync(upload.ModelId, (await settings.StorageAsync(CancellationToken.None)).KeepSnapshots, CancellationToken.None);
         return ResultOf(snapshot);
     }
 

@@ -164,12 +164,15 @@ public sealed class ClashServerModule : IServerModule
             entity.HasIndex(h => new { h.PartId, h.DisciplinePair });
             entity.HasIndex(h => h.PartId);
             entity.HasIndex(h => h.Checks).HasMethod("gin");
+            // Удалённая часть забирает находки своих черновиков: их бывают сотни тысяч.
+            entity.HasOne<ClashPart>().WithMany().HasForeignKey(h => h.PartId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<ClashApprovedHit>(entity =>
         {
             entity.ToTable("clash_approved_hits");
             entity.HasKey(h => new { h.RunId, h.Number });
+            entity.HasOne<EngineRun>().WithMany().HasForeignKey(h => h.RunId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<ClashCollision>(entity =>
@@ -180,6 +183,9 @@ public sealed class ClashServerModule : IServerModule
             entity.HasIndex(c => new { c.PartId, c.Number }).IsUnique();
             entity.HasIndex(c => new { c.PartId, c.Status });
             entity.HasIndex(c => new { c.PartId, c.LastFoundRunId });
+            // Плагин и «Мои» ищут коллизии модели: ModelA = @m OR ModelB = @m — по индексу на каждую сторону.
+            entity.HasIndex(c => c.ModelA).HasDatabaseName("ix_clash_collisions_model_a");
+            entity.HasIndex(c => c.ModelB).HasDatabaseName("ix_clash_collisions_model_b");
             entity.HasIndex(c => c.Checks).HasMethod("gin");
             entity.HasOne<ClashPart>().WithMany().HasForeignKey(c => c.PartId).OnDelete(DeleteBehavior.Cascade);
         });
