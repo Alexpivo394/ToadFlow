@@ -19,6 +19,10 @@ jobs:
       - name: Test
         run: dotnet test --project tests/ToadFlow.Server.Tests
 
+      # Явные живые тесты на реальных слепках ([Explicit]) здесь не запускаются.
+      - name: Clash worker tests
+        run: dotnet test --project tests/ToadFlow.Clash.Worker.Tests
+
   web:
     name: Web tests and build
     runs-on: ubuntu-latest
@@ -46,13 +50,19 @@ jobs:
 
       - name: Compose file is valid
         working-directory: deploy
-        run: cp .env.example .env && docker compose config --quiet
+        run: |
+          cp .env.example .env
+          sed -i 's/^CLASH_ENGINE_KEY=.*/CLASH_ENGINE_KEY=ci-key-0123456789abcdef0123456789abcdef/' .env
+          docker compose config --quiet
 
       - name: Build server image
         run: docker build -f deploy/server.Dockerfile -t toadflow-server .
 
       - name: Build web image
         run: docker build -f deploy/web.Dockerfile -t toadflow-web .
+
+      - name: Build clash engine image
+        run: docker build -f deploy/clash-engine.Dockerfile -t toadflow-clash-engine .
 
       - name: nginx config is valid
         run: docker run --rm --add-host server:127.0.0.1 toadflow-web nginx -t
