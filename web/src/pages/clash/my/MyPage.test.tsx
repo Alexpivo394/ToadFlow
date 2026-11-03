@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { renderApp } from '../../../test/renderApp';
+import { act } from '@testing-library/react';
+import { liveHub, renderApp } from '../../../test/renderApp';
 
 // WebGL в jsdom нет: заглушка сцены умеет «щёлкнуть» первый элемент.
 vi.mock('../viewer/ClashViewer', () => ({ default: (props: { onPick: (i: number) => void }) => <button onClick={() => props.onPick(0)}>щёлкнуть элемент</button> }));
@@ -159,5 +160,28 @@ describe('My collisions: unseen mark', () => {
 
     expect(await screen.findByRole('button', { name: 'Коллизия 1' })).toBeTruthy();
     expect(screen.queryAllByRole('checkbox', { name: /^Выделить №/ })).toHaveLength(0);
+  });
+});
+
+describe('My collisions without live updates', () => {
+  /** Проектировщику хаб закрыт: «Мои» перечитываются раз в минуту. */
+  it('My_Designer_PollsEveryMinute', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    liveHub.reset();
+    try {
+      renderApp('/clash/my', responses());
+      await screen.findByRole('button', { name: 'Коллизия 1' });
+      const summaries = () => (fetch as unknown as { mock: { calls: [string][] } }).mock.calls.filter(([url]) => url === '/api/clash/my/summary').length;
+      const before = summaries();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(61_000);
+      });
+
+      expect(summaries()).toBeGreaterThan(before);
+      expect(liveHub.starts).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

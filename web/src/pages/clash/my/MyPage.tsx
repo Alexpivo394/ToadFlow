@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Box, Card, Group, Select, SimpleGrid, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { CheckView, CollisionFacets, MySummary } from '../../../api/types';
@@ -47,8 +48,21 @@ function Counter({ label, value, active, onClick, caption, hint }: {
  * переключают «Мне править», «Взяла другая сторона» и «Новые для меня» (ещё не открытые); фильтры — общая панель списка,
  * выбор запоминается. Справа — 3D и карточка, ↑/↓ листают.
  */
+/** Как часто проектировщику перечитывать «Мои»: живые обновления ему закрыты, сервер их не шлёт. */
+export const DesignerPollMs = 60_000;
+
 export function MyPage() {
-  const { can, canWork } = useAuth();
+  const { can, canWork, isStaff } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Проектировщик не получает живых обновлений: раз в минуту — свежие счётчики, проверки и список.
+  useEffect(() => {
+    if (isStaff) return;
+    const timer = setInterval(() => {
+      for (const key of ['clash-my', 'clash-checks', 'clash-list']) void queryClient.invalidateQueries({ queryKey: [key] });
+    }, DesignerPollMs);
+    return () => clearInterval(timer);
+  }, [isStaff, queryClient]);
   const [search, setSearch] = useSearchParams();
   const [list, setList] = useListParams({ assignee: 'mine' }, 'my-list');
   const [items, setItems] = useState<ListItem[]>([]);
@@ -128,9 +142,12 @@ export function MyPage() {
   const projects = [...new Set((checks.data ?? []).map((c) => c.object ?? NoProject))];
   const parts = (checks.data ?? []).filter((c) => !project || (c.object ?? NoProject) === project);
 
+  const lastRunAt = (checks.data ?? []).map((c) => c.lastRunAt).filter((d): d is string => d !== null).sort().at(-1);
+
   return (
     <Stack gap="sm">
       <PageTitle>{t.clash.myTitle}</PageTitle>
+      {!isStaff && lastRunAt && <Text size="sm" c="dimmed">Последний прогон: {formatDateTime(lastRunAt)}</Text>}
       <SimpleGrid cols={3} spacing="sm" maw={720}>
         <Counter label="Мне править" value={summary.data?.toFix} active={!fresh && list.assignee === 'mine'} onClick={() => switchTo('mine')} />
         <Counter label="Взяла другая сторона" value={summary.data?.takenByOther} active={!fresh && list.assignee === 'taken'} onClick={() => switchTo('taken')} />

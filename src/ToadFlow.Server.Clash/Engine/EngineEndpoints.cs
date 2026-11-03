@@ -104,7 +104,8 @@ public static class EngineEndpoints
         var updated = await db.Set<EngineRun>().Where(r => r.Id == id && r.Attempt == progress.Attempt && r.State == EngineRunState.Running)
             .ExecuteUpdateAsync(r => r.SetProperty(x => x.LeaseUntil, lease).SetProperty(x => x.Stage, stage), ct);
         if (updated == 0) return NotRunning();
-        events.Publish(new ClashDraftChanged(Actor.System, await db.Set<EngineRun>().Where(r => r.Id == id).Select(r => r.PartId).SingleAsync(ct)));
+        // Ход — только ход: списки коллизий и черновик от него не меняются, перечитывать их незачем.
+        events.Publish(new ClashRunProgress(Actor.System, await db.Set<EngineRun>().Where(r => r.Id == id).Select(r => r.PartId).SingleAsync(ct)));
         return Results.Ok();
     }
 

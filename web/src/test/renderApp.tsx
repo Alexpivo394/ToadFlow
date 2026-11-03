@@ -10,7 +10,40 @@ import { appRoutes } from '../App';
 import { setToken } from '../api/client';
 import { theme } from '../theme';
 
+/**
+ * Хаб живых обновлений в тестах: запоминает обработчики, чтобы тест мог «прислать» событие с сервера или переподключение;
+ * <c>failStarts</c> — сколько первых подключений не удастся.
+ */
+type LiveHub = {
+  handlers: Record<string, (...args: unknown[]) => void>;
+  reconnected: (() => void) | null;
+  failStarts: number;
+  starts: number;
+  reset(): void;
+};
+
+// Общий объект — через globalThis: фабрика vi.mock поднимается выше объявлений модуля и выполняется раньше них.
+function liveHubOf(): LiveHub {
+  const holder = globalThis as { __liveHub?: LiveHub };
+  holder.__liveHub ??= {
+    handlers: {},
+    reconnected: null,
+    failStarts: 0,
+    starts: 0,
+    reset() {
+      this.handlers = {};
+      this.reconnected = null;
+      this.failStarts = 0;
+      this.starts = 0;
+    },
+  };
+  return holder.__liveHub;
+}
+
+export const liveHub = liveHubOf();
+
 vi.mock('@microsoft/signalr', () => {
+  const liveHub = (globalThis as { __liveHub?: LiveHub }).__liveHub ?? liveHubOf();
   class Builder {
     withUrl() {
       return this;
@@ -22,7 +55,19 @@ vi.mock('@microsoft/signalr', () => {
       return this;
     }
     build() {
-      return { on: () => {}, start: () => Promise.resolve(), stop: () => Promise.resolve() };
+      return {
+        on: (name: string, handler: (...args: unknown[]) => void) => {
+          liveHub.handlers[name] = handler;
+        },
+        onreconnected: (handler: () => void) => {
+          liveHub.reconnected = handler;
+        },
+        start: () => {
+          liveHub.starts++;
+          return liveHub.starts <= liveHub.failStarts ? Promise.reject(new Error('сервер недоступен')) : Promise.resolve();
+        },
+        stop: () => Promise.resolve(),
+      };
     }
   }
   return { HubConnectionBuilder: Builder, LogLevel: { Warning: 3 } };

@@ -130,3 +130,13 @@ public sealed record ClashDraftChanged(ToadFlow.Server.Events.Actor Actor, Guid 
     public override string UiEntity => "clash-parts";
     public override string UiId => PartId.ToString();
 }
+
+/// <summary>
+///     Ход прогона части (стадия, аренда) — странице нужно перечитать только состояние прогона, не списки. Сигнал раз в несколько
+///     секунд на каждый идущий прогон. В журнал не пишется.
+/// </summary>
+public sealed record ClashRunProgress(ToadFlow.Server.Events.Actor Actor, Guid PartId) : ToadFlow.Server.Events.DomainEvent(Actor)
+{
+    public override string UiEntity => "clash-run-progress";
+    public override string UiId => PartId.ToString();
+}
