@@ -58,6 +58,9 @@ public sealed class FakeAgent : IAsyncDisposable
             new AgentHelloDto(MachineName, version, 65536, revits.Length > 0 ? revits : [new InstalledRevitDto(2022, true)]));
     }
 
+    public Task HeartbeatAsync(InstanceStatusDto[] instances, IReadOnlyList<ActiveJobDto> uploading) =>
+        Hub.InvokeAsync(nameof(IAgentHub.Heartbeat), new AgentHeartbeatDto(42, 30000, instances, uploading));
+
     public Task HeartbeatAsync(params InstanceStatusDto[] instances) =>
         Hub.InvokeAsync(nameof(IAgentHub.Heartbeat), new AgentHeartbeatDto(42, 30000, instances));
 

@@ -72,6 +72,13 @@ public sealed class AgentHub(ToadFlowDb db, AgentRegistry registry, ISettingsSto
                 .ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, now + Lease));
         }
 
+        // Загрузка слепка идёт уже без Revit: аренду держит список загружаемых попыток. Чужая или устаревшая попытка не продлевается.
+        foreach (var uploading in beat.UploadingJobs ?? [])
+        {
+            await db.Jobs.Where(j => j.Id == uploading.JobId && j.Attempt == uploading.Attempt && j.AgentId == AgentId && j.Status == JobStatus.Running)
+                .ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, now + Lease));
+        }
+
         events.Publish(new AgentStatusReceived(Actor.System, AgentId));
     }
 

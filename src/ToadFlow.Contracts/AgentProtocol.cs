@@ -74,7 +74,8 @@ public sealed record InstanceStatusDto(
     string? Stage,
     DateTimeOffset? StageSince);
 
-public sealed record AgentHeartbeatDto(double CpuPercent, long RamUsedMb, InstanceStatusDto[] Instances);
+/// <param name="UploadingJobs">Попытки, которые агент сейчас загружает (Revit уже отпущен): сервер продлевает их аренду. null — агент до 2.0.</param>
+public sealed record AgentHeartbeatDto(double CpuPercent, long RamUsedMb, InstanceStatusDto[] Instances, IReadOnlyList<ActiveJobDto>? UploadingJobs = null);
 
 public sealed record JobRequestDto(int Slot, int Year, bool HasNwcExporter);
 

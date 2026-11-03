@@ -43,6 +43,9 @@ public static class ClashStaging
     public static string Folder(Guid jobId, int attempt) =>
         Path.Combine(Root, attempt > 0 ? $"{jobId:N}-{attempt}" : jobId.ToString("N"));
 
+    /// <summary>Слепок задания, который не удалось загрузить: его загрузит следующая попытка без нового запуска Revit.</summary>
+    public static string Kept(Guid jobId) => Path.Combine(Root, $"{jobId:N}-kept");
+
     /// <summary>Путь лежит внутри <see cref="Root" /> (не сам корень), без выхода наружу через <c>..</c>.</summary>
     public static bool IsInside(string path)
     {

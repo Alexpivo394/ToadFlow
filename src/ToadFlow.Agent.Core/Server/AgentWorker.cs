@@ -22,6 +22,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
     private static readonly TimeSpan StaleStaging = TimeSpan.FromDays(1);
 
     private readonly ConcurrentDictionary<JobAttemptKey, Task> _running = new();
+    private readonly ConcurrentDictionary<JobAttemptKey, bool> _uploading = new();
     private readonly ConcurrentDictionary<int, int> _pending = new(); // задания, под которые ещё запускается Revit
     private readonly SystemLoad _load = new();
     private string? _memoryBlocked;
@@ -47,7 +48,8 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             try
             {
                 await connection.EnsureConnectedAsync(ct);
-                await connection.HeartbeatAsync(new AgentHeartbeatDto(_load.CpuPercent(), _load.RamUsedMb(), instances.Statuses().ToArray()));
+                await connection.HeartbeatAsync(new AgentHeartbeatDto(_load.CpuPercent(), _load.RamUsedMb(), instances.Statuses().ToArray(),
+                    _uploading.Keys.Select(k => new ActiveJobDto(k.JobId, k.Attempt)).ToList()));
                 if (connection.ReconcileNeeded) await ReconcileAsync(ct);
 
                 var now = time.GetUtcNow();
@@ -179,6 +181,14 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
     {
         try
         {
+            if (clash.TakeKept(assignment) is { } kept)
+            {
+                // Прошлая попытка выгрузила слепок, но не загрузила: Revit не нужен.
+                _pending.AddOrUpdate(year, 0, (_, count) => Math.Max(0, count - 1));
+                await UploadAndCompleteAsync(assignment, 0, kept, ct);
+                return;
+            }
+
             JobCompletionDto completion;
             RevitInstance? instance = null;
             try
@@ -226,8 +236,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             else instances.RecordPeak(instance.PeakWorkingSetMb);
 
             // Слепок для коллизий загружается после того, как Revit отпущен: загрузке Revit не нужен, а её сбой — не сбой Revit.
-            completion = await clash.FinishAsync(assignment, instance.Slot, completion, connection, ct);
-            await connection.CompleteJobAsync(completion with { Attempt = assignment.Attempt }, ct);
+            await UploadAndCompleteAsync(assignment, instance.Slot, completion, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -242,6 +251,25 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             runner.Forget(Key(assignment));
             _running.TryRemove(Key(assignment), out _);
         }
+    }
+
+    /// <summary>
+    ///     Загрузка слепка (для заданий коллизий) и сдача итога. Пока идёт загрузка, попытка — в heartbeat: Revit её уже не держит, и
+    ///     аренду задания продлевает сервер по этому списку.
+    /// </summary>
+    private async Task UploadAndCompleteAsync(JobAssignmentDto assignment, int slot, JobCompletionDto completion, CancellationToken ct)
+    {
+        _uploading[Key(assignment)] = true;
+        try
+        {
+            completion = await clash.FinishAsync(assignment, slot, completion, connection, ct);
+        }
+        finally
+        {
+            _uploading.TryRemove(Key(assignment), out _);
+        }
+
+        await connection.CompleteJobAsync(completion with { Attempt = assignment.Attempt }, ct);
     }
 
     private int PredictSlot(int year)

@@ -17,16 +17,53 @@ namespace ToadFlow.Agent.Clash;
 /// <summary>
 ///     Загружает на сервер слепок, который аддин оставил в <see cref="ClashStaging" />, и подменяет итог задания на
 ///     <see cref="ClashExtractResult" />. Части по <see cref="ClashUploads.MaxChunkBytes" />, сжатые gzip; после обрыва
-///     загрузка продолжается с того места, которое назовёт сервер. Папка слепка удаляется в любом случае.
+///     загрузка продолжается с того места, которое назовёт сервер. Повторы идут, пока не выйдет <see cref="RetryBudget" />: этого
+///     хватает на перезапуск сервера. Загруженный слепок удаляется; не загруженный из-за связи — откладывается, и следующая попытка
+///     того же задания на этом агенте загрузит его без нового запуска Revit (<see cref="TakeKept" />).
 /// </summary>
-public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILogger<ClashUploader> logger, IReadOnlyList<TimeSpan>? retryDelays = null)
+/// <param name="retryDelays">Паузы между повторами; дальше — последняя. null — 2, 5, 10, 30, 60 с.</param>
+/// <param name="retryBudget">Сколько повторять одну фазу загрузки после первого сбоя; null — <see cref="RetryBudget" />.</param>
+public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILogger<ClashUploader> logger, IReadOnlyList<TimeSpan>? retryDelays = null,
+    TimeSpan? retryBudget = null)
 {
+    public static readonly TimeSpan RetryBudget = TimeSpan.FromMinutes(30);
+
     private const string Stage = "Загрузка слепка";
-    private static readonly TimeSpan[] DefaultDelays = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30)];
+    private const string StagedFile = "staged.json";
+    private static readonly TimeSpan[] DefaultDelays = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60)];
     private static readonly TimeSpan ProgressEvery = TimeSpan.FromSeconds(5);
     private static readonly JsonSerializerOptions Json = JsonSerializerOptions.Web;
 
-    private readonly IReadOnlyList<TimeSpan> _delays = retryDelays ?? DefaultDelays;
+    private readonly IReadOnlyList<TimeSpan> _delays = retryDelays is { Count: > 0 } ? retryDelays : DefaultDelays;
+    private readonly TimeSpan _budget = retryBudget ?? RetryBudget;
+
+    /// <summary>
+    ///     Слепок, отложенный прошлой попыткой задания (загрузка не удалась из-за связи), — переносится в папку этой попытки. Возвращает
+    ///     итог «выгружено», как его вернул бы аддин; null — отложенного слепка нет, нужен Revit.
+    /// </summary>
+    public JobCompletionDto? TakeKept(JobAssignmentDto assignment)
+    {
+        if (assignment.ModuleKind != ModuleKinds.ClashExtract) return null;
+        var kept = ClashStaging.Kept(assignment.JobId);
+        try
+        {
+            if (!File.Exists(Path.Combine(kept, StagedFile))) return null;
+            var staged = JsonSerializer.Deserialize<ClashStagedSnapshot>(File.ReadAllText(Path.Combine(kept, StagedFile)), Json);
+            if (staged is null) return null;
+            var folder = ClashStaging.Folder(assignment.JobId, assignment.Attempt);
+            Delete(folder);
+            Directory.Move(kept, folder);
+            logger.LogInformation("Задание {Job}, попытка {Attempt}: загружаю слепок, отложенный прошлой попыткой, — Revit не нужен", assignment.JobId,
+                assignment.Attempt);
+            return new JobCompletionDto(assignment.JobId, JobOutcome.Succeeded, "слепок выгружен прошлой попыткой", JsonSerializer.Serialize(staged with { Folder = folder }, Json),
+                assignment.Attempt);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            logger.LogWarning(exception, "Отложенный слепок задания {Job} не прочитан — выгружаю заново", assignment.JobId);
+            return null;
+        }
+    }
 
     /// <summary>Итог задания после загрузки; для заданий другого вида и неуспешных выгрузок — без изменений.</summary>
     /// <param name="slot">Слот экземпляра, в журнал которого идут строки загрузки.</param>
@@ -48,7 +85,7 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
             }
 
             folder = staged.Folder;
-            var log = new UploadLog(assignment.JobId, assignment.Attempt, slot, reporter);
+            var log = new UploadLog(assignment.JobId, assignment.Attempt, slot, reporter, logger);
             try
             {
                 var result = await UploadAsync(assignment.JobId, assignment.Attempt, folder, log, ct);
@@ -63,7 +100,9 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
                                                   && !ct.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Слепок задания {Job} не загружен", assignment.JobId);
-                await log.WriteAsync($"слепок не загружен: {exception.Message}");
+                var kept = Keep(assignment.JobId, staged);
+                await log.WriteAsync($"слепок не загружен: {exception.Message}{(kept ? " — сохранён, повтор загрузит его без Revit" : "")}");
+                if (kept) folder = null;
                 return completion with { Outcome = JobOutcome.InfrastructureFailure, Note = $"не удалось загрузить выгрузку: {exception.Message}", ResultJson = null };
             }
         }
@@ -152,21 +191,44 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
         return (await response.Content.ReadFromJsonAsync<ClashExtractResult>(Json, ct))!;
     }
 
+    /// <summary>
+    ///     Повторяет фазу загрузки, пока после первого сбоя не выйдет бюджет. Тайм-аут запроса <see cref="HttpClient" /> — это
+    ///     <see cref="TaskCanceledException" /> не от токена агента: он тоже повторяется.
+    /// </summary>
     private async Task<T> RetryAsync<T>(Func<Task<T>> call, CancellationToken ct)
     {
+        Stopwatch? failing = null;
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 return await call();
             }
-            catch (Exception exception) when (exception is HttpRequestException or IOException or UploadRetryException
-                                                  or TaskCanceledException { CancellationToken.IsCancellationRequested: false }
-                                              && attempt < _delays.Count && !ct.IsCancellationRequested)
+            catch (Exception exception) when (exception is HttpRequestException or IOException or UploadRetryException or TaskCanceledException
+                                              && !ct.IsCancellationRequested && (failing ??= Stopwatch.StartNew()).Elapsed < _budget)
             {
-                logger.LogWarning("Загрузка слепка: {Error} — повтор через {Delay} с", exception.Message, _delays[attempt].TotalSeconds);
-                await Task.Delay(_delays[attempt], ct);
+                var delay = _delays[Math.Min(attempt, _delays.Count - 1)];
+                logger.LogWarning("Загрузка слепка: {Error} — повтор через {Delay} с", exception.Message, delay.TotalSeconds);
+                await Task.Delay(delay, ct);
             }
+        }
+    }
+
+    /// <summary>Откладывает слепок для следующей попытки того же задания; false — отложить не вышло, папка будет удалена.</summary>
+    private bool Keep(Guid jobId, ClashStagedSnapshot staged)
+    {
+        try
+        {
+            var kept = ClashStaging.Kept(jobId);
+            Delete(kept);
+            Directory.Move(staged.Folder, kept);
+            File.WriteAllText(Path.Combine(kept, StagedFile), JsonSerializer.Serialize(staged with { Folder = kept }, Json));
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Слепок задания {Job} не удалось отложить для повтора", jobId);
+            return false;
         }
     }
 
@@ -242,12 +304,25 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
         }
     }
 
-    /// <summary>Строки загрузки в журнал задания; ход — не чаще раза в 5 с.</summary>
-    private sealed class UploadLog(Guid jobId, int attempt, int slot, IJobReporter reporter)
+    /// <summary>
+    ///     Строки загрузки в журнал задания; ход — не чаще раза в 5 с. Журнал не обязателен: обрыв хаба или ошибка сервера при записи
+    ///     строки не должны обрывать загрузку и итог задания.
+    /// </summary>
+    private sealed class UploadLog(Guid jobId, int attempt, int slot, IJobReporter reporter, ILogger logger)
     {
         private DateTimeOffset _lastProgress = DateTimeOffset.MinValue;
 
-        public Task WriteAsync(string text) => reporter.ProgressAsync(new JobProgressDto(jobId, slot, [new JobLogDto(DateTimeOffset.UtcNow, Stage, text)], attempt));
+        public async Task WriteAsync(string text)
+        {
+            try
+            {
+                await reporter.ProgressAsync(new JobProgressDto(jobId, slot, [new JobLogDto(DateTimeOffset.UtcNow, Stage, text)], attempt));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogDebug(exception, "Строка журнала задания {Job} не дошла: {Text}", jobId, text);
+            }
+        }
 
         public Task ProgressAsync(string text)
         {

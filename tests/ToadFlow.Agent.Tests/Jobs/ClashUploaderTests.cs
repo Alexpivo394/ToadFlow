@@ -175,4 +175,97 @@ public class ClashUploaderTests : ServerTest
         var job = await DbAsync(db => db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId));
         job.LeaseUntil.ShouldNotBeNull().ShouldBeGreaterThan(DateTimeOffset.UtcNow.AddMinutes(1));
     }
+
+    /// <summary>Журнал задания бросает (обрыв хаба, ошибка сервера) — загрузка и итог от этого не страдают.</summary>
+    private sealed class ThrowingReporter(Exception error) : IJobReporter
+    {
+        public Task ProgressAsync(JobProgressDto progress) => Task.FromException(error);
+
+        public Task InstanceKilledAsync(int slot, string reason) => Task.CompletedTask;
+    }
+
+    /// <summary>Первые <paramref name="failures" /> запросов не доходят: сервер лежит (или <paramref name="error" /> — свой сбой).</summary>
+    private sealed class FailingHandler(HttpMessageHandler inner, int failures, Func<Exception>? error = null) : DelegatingHandler(inner)
+    {
+        private int _calls;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Interlocked.Increment(ref _calls) <= failures
+                ? Task.FromException<HttpResponseMessage>(error?.Invoke() ?? new HttpRequestException("сервер недоступен"))
+                : base.SendAsync(request, ct);
+    }
+
+    private ClashUploader Uploader(FakeAgent agent, Func<HttpMessageHandler> handler, TimeSpan budget) =>
+        new(new AgentConfig("http://localhost", agent.Id, agent.Key), new AgentOptions { HttpMessageHandlerFactory = handler }, NullLogger<ClashUploader>.Instance,
+            NoDelays, budget);
+
+    [Test]
+    [Arguments(typeof(TimeoutException))]
+    [Arguments(typeof(Microsoft.AspNetCore.SignalR.HubException))]
+    public async Task UploadLogFailure_DoesNotAbortJob(Type error)
+    {
+        await using var agent = await AgentAsync();
+        var (jobId, model) = await ClashFixtures.RunningJobAsync(Server, agent);
+        var reporter = new ThrowingReporter((Exception)Activator.CreateInstance(error, "журнал не дошёл")!);
+
+        var completion = await Uploader(agent).FinishAsync(Assignment(jobId), 1, Staged(jobId, ClashFixtures.ModelFiles(model.SnapshotKey)), reporter,
+            CancellationToken.None);
+
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
+        (await DbAsync(db => db.Set<ClashSnapshot>().CountAsync())).ShouldBe(1);
+    }
+
+    /// <summary>Сервер лежит дольше прежних пяти повторов (перезапуск с миграциями): загрузка ждёт в пределах бюджета и доходит.</summary>
+    [Test]
+    public async Task ServerDown10Min_UploadResumesAndSucceeds()
+    {
+        await using var agent = await AgentAsync();
+        var (jobId, model) = await ClashFixtures.RunningJobAsync(Server, agent);
+
+        var uploader = Uploader(agent, () => new FailingHandler(Server.Server.CreateHandler(), failures: 12), TimeSpan.FromMinutes(30));
+        var completion = await uploader.FinishAsync(Assignment(jobId), 1, Staged(jobId, ClashFixtures.ModelFiles(model.SnapshotKey)), new Reporter(),
+            CancellationToken.None);
+
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
+    }
+
+    [Test]
+    public async Task HttpClientTimeout_IsRetried()
+    {
+        await using var agent = await AgentAsync();
+        var (jobId, model) = await ClashFixtures.RunningJobAsync(Server, agent);
+
+        var uploader = Uploader(agent, () => new FailingHandler(Server.Server.CreateHandler(), failures: 1,
+            () => new TaskCanceledException("тайм-аут запроса", new TimeoutException())), TimeSpan.FromMinutes(30));
+        var completion = await uploader.FinishAsync(Assignment(jobId), 1, Staged(jobId, ClashFixtures.ModelFiles(model.SnapshotKey)), new Reporter(),
+            CancellationToken.None);
+
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
+    }
+
+    /// <summary>Загрузка так и не дошла: слепок не выбрасывается, следующая попытка того же задания загружает его без Revit.</summary>
+    [Test]
+    public async Task UploadFailedFinally_SnapshotFolderKeptForSameJobRetry()
+    {
+        await using var agent = await AgentAsync();
+        var (jobId, model) = await ClashFixtures.RunningJobAsync(Server, agent);
+        var files = ClashFixtures.ModelFiles(model.SnapshotKey);
+
+        var down = Uploader(agent, () => new FailingHandler(Server.Server.CreateHandler(), failures: int.MaxValue), TimeSpan.Zero);
+        var failed = await down.FinishAsync(Assignment(jobId), 1, Staged(jobId, files), new Reporter(), CancellationToken.None);
+
+        failed.Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        Directory.Exists(ClashStaging.Folder(jobId, 1)).ShouldBeFalse();
+        Directory.Exists(ClashStaging.Kept(jobId)).ShouldBeTrue();
+
+        var retry = Assignment(jobId) with { Attempt = 2 };
+        var kept = Uploader(agent).TakeKept(retry).ShouldNotBeNull();
+        kept.Outcome.ShouldBe(JobOutcome.Succeeded);
+        Directory.Exists(ClashStaging.Kept(jobId)).ShouldBeFalse();
+        Directory.Exists(ClashStaging.Folder(jobId, 2)).ShouldBeTrue();
+        // Сервер ведёт задание на попытке 1: сдаём от её имени — проверка здесь только в том, что слепок цел и загружается.
+        var completion = await Uploader(agent).FinishAsync(Assignment(jobId), 1, kept, new Reporter(), CancellationToken.None);
+        completion.Outcome.ShouldBe(JobOutcome.Succeeded);
+        Uploader(agent).TakeKept(retry).ShouldBeNull();
+    }
 }
