@@ -15,7 +15,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
     public const string AdminPassword = "admin-pass";
 
     /// <summary>Ключ работника движка коллизий (<c>Clash:EngineKey</c>).</summary>
-    public const string EngineKey = "test-engine-key-0123456789";
+    public const string EngineKey = "test-engine-key-0123456789-abcdefghij";
 
     /// <summary>Своё хранилище слепков коллизий у каждого сервера тестов.</summary>
     public string ClashStorageRoot { get; } = Path.Combine(Path.GetTempPath(), "toadflow-clash-tests", Guid.NewGuid().ToString("N"));

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
 using Microsoft.AspNetCore.Authentication;
@@ -42,6 +43,8 @@ public sealed class ClashServerModule : IServerModule
                 : environment.IsDevelopment()
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToadFlow", "clash")
                     : "/data/clash");
+        services.AddOptions<ClashEngineOptions>().BindConfiguration(ClashEngineOptions.Section).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ClashEngineOptions>, ClashEngineOptionsValidator>();
         services.AddScoped<ClashStorage>();
         services.AddScoped<ClashSettingsStore>();
         services.AddScoped<SnapshotPublisher>();
