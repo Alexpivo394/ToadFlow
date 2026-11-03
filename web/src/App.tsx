@@ -1,6 +1,7 @@
-import { Navigate, Route, Routes } from 'react-router';
+import type { ReactNode } from 'react';
+import { Navigate, Route, Routes, type RouteObject } from 'react-router';
 import { Center, Loader } from '@mantine/core';
-import { useAuth } from './auth/AuthContext';
+import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
 import { RegisterPage } from './auth/RegisterPage';
 import { AppShell } from './layout/AppShell';
@@ -18,6 +19,27 @@ import { HistoryPage } from './pages/history/HistoryPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
 import { SchedulesPage } from './pages/schedules/SchedulesPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+
+/**
+ * Маршруты data router (createBrowserRouter в приложении, createMemoryRouter в тестах): вход и страницы — внутри <c>App</c>, data
+ * router нужен ради useBlocker — остановить уход со страницы с несохранённым черновиком при любом переходе, в том числе «Назад».
+ * <c>before</c> — что отрисовать рядом (в тестах — щуп навигации).
+ */
+export function appRoutes(before?: ReactNode): RouteObject[] {
+  return [
+    {
+      path: '*',
+      element: (
+        <>
+          {before}
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </>
+      ),
+    },
+  ];
+}
 
 export function App() {
   const { user, loading } = useAuth();

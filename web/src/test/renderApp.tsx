@@ -1,14 +1,13 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { MemoryRouter, useNavigate } from 'react-router';
+import { createMemoryRouter, RouterProvider, useNavigate } from 'react-router';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { ModalsProvider } from '@mantine/modals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
-import { App } from '../App';
+import { appRoutes } from '../App';
 import { setToken } from '../api/client';
-import { AuthProvider } from '../auth/AuthContext';
 import { theme } from '../theme';
 
 vi.mock('@microsoft/signalr', () => {
@@ -29,17 +28,22 @@ vi.mock('@microsoft/signalr', () => {
   return { HubConnectionBuilder: Builder, LogLevel: { Warning: 3 } };
 });
 
-let navigateFn: ((to: string) => void) | null = null;
+let navigateFn: ((to: string | number) => void) | null = null;
 
 function NavigateProbe() {
   const navigate = useNavigate();
-  navigateFn = (to) => { void navigate(to); };
+  navigateFn = (to) => { void (typeof to === 'number' ? navigate(to) : navigate(to)); };
   return null;
 }
 
 /** Переход внутри отрисованного приложения (как по ссылке): для проверки, что страница следует за адресом. */
 export function navigateTo(to: string) {
   act(() => navigateFn?.(to));
+}
+
+/** Кнопка браузера «Назад». */
+export function goBack() {
+  act(() => navigateFn?.(-1));
 }
 
 /** Ответ сервера с ошибкой: статус и текст в поле <c>error</c>, как у API. */
@@ -55,22 +59,18 @@ export class Failure {
 /**
  * Ответы сервера по пути (без query) или по «МЕТОД путь» — он важнее; `null` — ответ 204; `ArrayBuffer` — двоичный ответ;
  * `Failure` — ошибка; функция — ответ по адресу запроса с параметрами;
- * /api/auth/me — вошедший администратор.
+ * /api/auth/me — вошедший администратор. <c>history</c> — адреса, открытые до <c>path</c> (для «Назад»).
  */
-export function renderApp(path: string, responses: Record<string, unknown>) {
+export function renderApp(path: string, responses: Record<string, unknown>, history: string[] = []) {
   stubFetch(responses);
+  const router = createMemoryRouter(appRoutes(<NavigateProbe />), { initialEntries: [...history, path] });
 
   return render(
     <MantineProvider theme={theme}>
       <DatesProvider settings={{ locale: 'ru' }}>
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <ModalsProvider>
-            <MemoryRouter initialEntries={[path]}>
-              <NavigateProbe />
-              <AuthProvider>
-                <App />
-              </AuthProvider>
-            </MemoryRouter>
+            <RouterProvider router={router} />
           </ModalsProvider>
         </QueryClientProvider>
       </DatesProvider>
@@ -85,7 +85,7 @@ export function renderUi(ui: ReactNode, responses: Record<string, unknown>, path
     <MantineProvider theme={theme}>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <ModalsProvider>
-          <MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>
+          <RouterProvider router={createMemoryRouter([{ path: '*', element: ui }], { initialEntries: [path] })} />
         </ModalsProvider>
       </QueryClientProvider>
     </MantineProvider>,

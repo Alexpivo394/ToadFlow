@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { ModalsProvider } from '@mantine/modals';
@@ -12,11 +12,13 @@ import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/notifications/styles.css';
-import { App } from './App';
-import { AuthProvider } from './auth/AuthContext';
+import { appRoutes } from './App';
 import { theme } from './theme';
 
 dayjs.locale('ru');
+
+// Data router: без него нельзя остановить уход со страницы с несохранённым черновиком (useBlocker).
+const router = createBrowserRouter(appRoutes());
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, retry: 1, refetchOnWindowFocus: true } },
@@ -29,11 +31,7 @@ createRoot(document.getElementById('root')!).render(
         <Notifications position="top-right" />
         <QueryClientProvider client={queryClient}>
           <ModalsProvider>
-          <BrowserRouter>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
-          </BrowserRouter>
+            <RouterProvider router={router} />
           </ModalsProvider>
         </QueryClientProvider>
       </DatesProvider>

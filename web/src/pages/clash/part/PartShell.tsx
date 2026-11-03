@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link as RouterLink, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Anchor, Avatar, Badge, Breadcrumbs, Button, Group, List, Menu, Modal, SegmentedControl, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
+import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
@@ -107,9 +108,31 @@ export function PartShell() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [draft.dirty]);
 
+  // Уход на другую страницу — меню, ссылка, «Назад» браузера — с несохранёнными правками спрашивает. Вкладки части меняют только
+  // параметры адреса и не останавливаются.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => draft.dirty && currentLocation.pathname !== nextLocation.pathname);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    // Закрытие окна крестиком или Esc — «Остаться»; после «Уйти» окно тоже закрывается, и сбрасывать переход тогда нельзя.
+    let decided = false;
+    modals.openConfirmModal({
+      title: 'Несохранённые правки',
+      children: <Text size="sm">Есть несохранённые правки. Уйти без сохранения?</Text>,
+      labels: { confirm: 'Уйти', cancel: 'Остаться' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => {
+        decided = true;
+        blocker.proceed?.();
+      },
+      onClose: () => {
+        if (!decided) blocker.reset?.();
+      },
+    });
+  }, [blocker]);
+
   if (!part.data || !draft.view || !draft.local) return null;
   const config = draft.local;
-  const leave = (to: string) => (draft.dirty ? askConfirm('Есть несохранённые изменения. Уйти без сохранения?', () => navigate(to)) : navigate(to));
+  const leave = (to: string) => navigate(to);
 
   async function act(path: string, success: string, body?: unknown) {
     try {

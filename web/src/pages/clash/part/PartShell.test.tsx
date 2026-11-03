@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { focusManager } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { configuration, draft, ducts, partResponses, walls } from '../../../test/clashPart';
-import { Failure, renderApp } from '../../../test/renderApp';
+import { Failure, goBack, renderApp } from '../../../test/renderApp';
 
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const calls = () => (fetch as unknown as FetchMock).mock.calls;
@@ -87,7 +87,40 @@ describe('Part shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Части' }));
 
-    expect(await screen.findByText('Есть несохранённые изменения. Уйти без сохранения?')).toBeTruthy();
+    expect(await screen.findByText('Есть несохранённые правки. Уйти без сохранения?')).toBeTruthy();
+  });
+
+  it('Draft_Dirty_NavigateViaMenu_AsksConfirm', async () => {
+    const name = await openSets();
+    fireEvent.change(name, { target: { value: 'Стены наружные' } });
+
+    fireEvent.click(screen.getByRole('link', { name: 'Сводка' }));
+
+    expect(await screen.findByText('Есть несохранённые правки. Уйти без сохранения?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться' }));
+    await waitFor(() => expect(screen.queryByText('Есть несохранённые правки. Уйти без сохранения?')).toBeNull());
+    expect((screen.getByLabelText('Имя набора') as HTMLInputElement).value).toBe('Стены наружные');
+  });
+
+  it('Draft_Dirty_BrowserBack_AsksConfirm', async () => {
+    renderApp('/clash/setup/parts/p1?tab=sets', partResponses, ['/clash/setup/parts']);
+    const name = (await screen.findByLabelText('Имя набора')) as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'Стены наружные' } });
+
+    goBack();
+
+    expect(await screen.findByText('Есть несохранённые правки. Уйти без сохранения?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Уйти' }));
+    await waitFor(() => expect(screen.queryByLabelText('Имя набора')).toBeNull());
+  });
+
+  it('Draft_Clean_NavigatesFreely', async () => {
+    await openSets();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Сводка' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Имя набора')).toBeNull());
+    expect(screen.queryByText('Есть несохранённые правки. Уйти без сохранения?')).toBeNull();
   });
 
   const approved = [
