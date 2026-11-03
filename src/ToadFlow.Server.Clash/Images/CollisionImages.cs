@@ -12,6 +12,7 @@ namespace ToadFlow.Server.Clash.Images;
 
 /// <summary>Что нужно для картинки коллизии: пара элементов и точка, прогон, последним нашедший коллизию, и модели этого прогона.</summary>
 /// <param name="Models">Модели прогона со слепками; в версию не входят — их определяет прогон.</param>
+/// <param name="FingerprintA">Отпечаток геометрии элемента A; 0 — неизвестен (строки до отпечатков), тогда версия — по прогону.</param>
 public sealed record ImageTarget(
     Guid CollisionId,
     Guid PartId,
@@ -23,22 +24,32 @@ public sealed record ImageTarget(
     double X,
     double Y,
     double Z,
-    IReadOnlyList<EngineRunModel> Models)
+    IReadOnlyList<EngineRunModel> Models,
+    long FingerprintA = 0,
+    long FingerprintB = 0)
 {
     /// <summary>
-    ///     Версия картинки — адрес файла в кеше и <c>?v=</c> в адресе картинки. Новый прогон, объединение или правка рисовальщика
-    ///     дают новую версию.
+    ///     Версия картинки — адрес файла в кеше и <c>?v=</c> в адресе картинки. Меняется, когда меняется то, что на картинке: геометрия
+    ///     элементов пары (отпечатки), точка коллизии или рисовальщик. Ночной прогон с теми же отпечатками даёт ту же версию — кеш
+    ///     картинок не сбрасывается каждым прогоном.
     /// </summary>
-    public string Version => VersionOf(RunId, ModelA, UniqueIdA, ModelB, UniqueIdB, X, Y, Z);
+    public string Version => VersionOf(RunId, ModelA, UniqueIdA, FingerprintA, ModelB, UniqueIdB, FingerprintB, X, Y, Z);
 
     /// <summary>Версия картинки коллизии по её строке, без загрузки моделей прогона.</summary>
-    public static string VersionOf(ClashCollision c) => VersionOf(c.LastFoundRunId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.X, c.Y, c.Z);
+    public static string VersionOf(ClashCollision c) =>
+        VersionOf(c.LastFoundRunId, c.ModelA, c.UniqueIdA, c.FingerprintA, c.ModelB, c.UniqueIdB, c.FingerprintB, c.X, c.Y, c.Z);
 
-    /// <summary>Первые 16 hex SHA-256 строки <c>"{рисовальщик}|{прогон:N}|{A}|{UniqueId A}|{B}|{UniqueId B}|{X:R}|{Y:R}|{Z:R}"</c>.</summary>
-    private static string VersionOf(Guid runId, string modelA, string uniqueIdA, string modelB, string uniqueIdB, double x, double y, double z)
+    /// <summary>
+    ///     Первые 16 hex SHA-256 строки <c>"{рисовальщик}|{A}|{UniqueId A}|{отпечаток A}|{B}|{UniqueId B}|{отпечаток B}|{X:R}|{Y:R}|{Z:R}"</c>.
+    ///     Без отпечатков вместо них — прогон: картинка тогда, как раньше, новая с каждым прогоном.
+    /// </summary>
+    private static string VersionOf(Guid runId, string modelA, string uniqueIdA, long fingerprintA, string modelB, string uniqueIdB, long fingerprintB,
+        double x, double y, double z)
     {
-        var text = string.Create(CultureInfo.InvariantCulture,
-            $"{CollisionImages.RendererVersion}|{runId:N}|{modelA}|{uniqueIdA}|{modelB}|{uniqueIdB}|{x:R}|{y:R}|{z:R}");
+        var geometry = fingerprintA != 0 && fingerprintB != 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{modelA}|{uniqueIdA}|{fingerprintA:x}|{modelB}|{uniqueIdB}|{fingerprintB:x}")
+            : $"{runId:N}|{modelA}|{uniqueIdA}|{modelB}|{uniqueIdB}";
+        var text = string.Create(CultureInfo.InvariantCulture, $"{CollisionImages.RendererVersion}|{geometry}|{x:R}|{y:R}|{z:R}");
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)), 0, 8);
     }
 }

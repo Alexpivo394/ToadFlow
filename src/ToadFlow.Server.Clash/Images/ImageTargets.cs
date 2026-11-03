@@ -15,7 +15,7 @@ internal static class ImageTargets
     {
         if (collisionIds.Count == 0) return [];
         var collisions = await db.Set<ClashCollision>().AsNoTracking().Where(c => collisionIds.Contains(c.Id))
-            .Select(c => new { c.Id, c.PartId, c.LastFoundRunId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.X, c.Y, c.Z })
+            .Select(c => new { c.Id, c.PartId, c.LastFoundRunId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.X, c.Y, c.Z, c.FingerprintA, c.FingerprintB })
             .ToListAsync(ct);
         var runIds = collisions.Select(c => c.LastFoundRunId).Distinct().ToList();
         var models = await db.Set<EngineRun>().AsNoTracking().Where(r => runIds.Contains(r.Id)).Select(r => new { r.Id, r.Models }).ToDictionaryAsync(r => r.Id, r => r.Models, ct);
@@ -24,7 +24,8 @@ internal static class ImageTargets
         foreach (var c in collisions)
         {
             if (!models.TryGetValue(c.LastFoundRunId, out var runModels)) continue;
-            targets[c.Id] = new ImageTarget(c.Id, c.PartId, c.LastFoundRunId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.X, c.Y, c.Z, runModels);
+            targets[c.Id] = new ImageTarget(c.Id, c.PartId, c.LastFoundRunId, c.ModelA, c.UniqueIdA, c.ModelB, c.UniqueIdB, c.X, c.Y, c.Z, runModels,
+                c.FingerprintA, c.FingerprintB);
         }
 
         return targets;
