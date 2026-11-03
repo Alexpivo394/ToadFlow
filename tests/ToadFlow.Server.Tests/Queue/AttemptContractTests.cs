@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using ToadFlow.Contracts;
+using ToadFlow.Contracts.Clash;
+using ToadFlow.Server.Clash;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Queue;
 using ToadFlow.Server.Tests.Infrastructure;
@@ -64,6 +66,24 @@ public class AttemptContractTests : ServerTest
 
         (await client.PostJsonAsync("/api/agent/clash/uploads", files.Request(jobId, 1))).StatusCode.ShouldBe(HttpStatusCode.Conflict);
         (await client.PostJsonAsync("/api/agent/clash/uploads", files.Request(jobId, 2))).StatusCode.ShouldBe(HttpStatusCode.Created);
+    }
+
+    [Test]
+    public async Task Upload_StartedBeforeReclaim_Complete409()
+    {
+        await using var agent = await AgentAsync();
+        var (jobId, model) = await ClashFixtures.RunningJobAsync(Server, agent);
+        var files = ClashFixtures.ModelFiles(model.SnapshotKey);
+        var client = ClashFixtures.AgentClient(Server, agent);
+        var started = await client.PostJsonAsync("/api/agent/clash/uploads", files.Request(jobId, 1));
+        var upload = await started.ReadJsonAsync<ClashUploadState>();
+        // Задание вернули в очередь и снова выдали этому же агенту: загрузка принадлежит прежней попытке.
+        await DbAsync(db => db.Jobs.Where(j => j.Id == jobId).ExecuteUpdateAsync(j => j
+            .SetProperty(x => x.Attempt, 2).SetProperty(x => x.StartedAt, DateTimeOffset.UtcNow.AddMinutes(1))));
+
+        (await client.PostAsync($"/api/agent/clash/uploads/{upload.UploadId}/complete", null)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var put = await client.PutAsync($"/api/agent/clash/uploads/{upload.UploadId}/{ClashUploads.Geometry}?offset=0", new ByteArrayContent(files.Geometry));
+        put.StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
 
     [Test]
@@ -132,17 +152,15 @@ public class AttemptContractTests : ServerTest
     }
 
     [Test]
-    public async Task Hello_ReturnsActiveJobs()
+    public async Task GetActiveJobs_ReturnsRunningWithAttempt()
     {
         await using var agent = await AgentAsync();
-        var jobId = await SeedJobAsync();
-        var other = await SeedJobAsync();
-        var assignment = (await agent.RequestJobAsync(1, 2022)).ShouldNotBeNull();
-        var running = assignment.JobId;
+        await SeedJobAsync();
+        await SeedJobAsync();
+        var running = (await agent.RequestJobAsync(1, 2022)).ShouldNotBeNull().JobId;
 
         var active = await agent.GetActiveJobsAsync();
 
         active.ShouldBe([new ActiveJobDto(running, 1)]);
-        (running == jobId || running == other).ShouldBeTrue();
     }
 }

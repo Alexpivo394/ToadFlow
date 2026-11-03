@@ -118,7 +118,7 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
     public async Task ExtendLeasesAfterStartAsync(CancellationToken ct)
     {
         var until = time.GetUtcNow() + LeaseOptions.StartupGrace;
-        await db.Jobs.Where(j => j.Status == JobStatus.Running).ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, until), ct);
+        await db.Jobs.Where(j => j.Status == JobStatus.Running && (j.LeaseUntil == null || j.LeaseUntil < until)).ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, until), ct);
     }
 
     private async Task NotifyModulesAsync(Job job)
@@ -141,7 +141,7 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
     ///     Ошибки самой модели сюда не попадают — они не повторяются. Переход условный: если задание уже сдано, отменено или
     ///     перешло на другую попытку, ничего не меняется и возвращается <c>false</c>.
     /// </summary>
-    public async Task<bool> FailInfrastructureAsync(Job job, string reason, Actor actor)
+    public async Task<bool> FailInfrastructureAsync(Job job, string reason, Actor actor, DateTimeOffset? expiredBefore = null)
     {
         var now = time.GetUtcNow();
         var current = job;
@@ -149,7 +149,8 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         {
             var attempt = current.Attempt;
             var cancel = current.CancelRequested;
-            var scope = db.Jobs.Where(j => j.Id == current.Id && j.Status == JobStatus.Running && j.Attempt == attempt && j.CancelRequested == cancel);
+            var scope = db.Jobs.Where(j => j.Id == current.Id && j.Status == JobStatus.Running && j.Attempt == attempt && j.CancelRequested == cancel
+                                                 && (expiredBefore == null || j.LeaseUntil < expiredBefore));
             int rows;
             if (cancel)
             {
@@ -197,6 +198,7 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
             // Не сошлись данные: возможно, пока считали, пришла отмена. Перечитываем; если задание всё ещё той же попытки — повтор.
             var fresh = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == current.Id);
             if (fresh is not { Status: JobStatus.Running } || fresh.Attempt != attempt) return false;
+            if (expiredBefore is not null && !(fresh.LeaseUntil < expiredBefore)) return false;
             current = fresh;
         }
 

@@ -82,4 +82,28 @@ public class LeaseAfterRestartTests : ServerTest
         (await DbAsync(db => db.JobLogLines.CountAsync(l => l.JobId == jobId))).ShouldBe(0);
     }
 
+    [Test]
+    public async Task Sweeper_LeaseRenewedAfterRead_StaysRunning()
+    {
+        await using var agent = await FakeAgent.RegisterAsync(Server, await AdminAsync());
+        await agent.ConnectAsync(new InstalledRevitDto(2022, true));
+        var jobId = await DbAsync(async db =>
+        {
+            var job = Seed.Job(db, Seed.Run(db).Id, maxAttempts: 2);
+            await db.SaveChangesAsync();
+            return job.Id;
+        });
+        await agent.RequestJobAsync(1, 2022);
+        await DbAsync(db => db.Jobs.Where(j => j.Id == jobId).ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, _time.GetUtcNow().AddMinutes(-1))));
+        var stale = await JobAsync(jobId);
+
+        // Heartbeat продлил аренду уже после того, как sweeper прочитал список истёкших.
+        await agent.HeartbeatAsync(new InstanceStatusDto(1, 2022, 100, InstanceState.Busy, jobId, "NWC", _time.GetUtcNow()));
+        await using var scope = Server.Services.CreateAsyncScope();
+        var written = await scope.ServiceProvider.GetRequiredService<JobQueue>()
+            .FailInfrastructureAsync(stale, "агент потерял связь во время задания", ToadFlow.Server.Events.Actor.System, _time.GetUtcNow());
+
+        written.ShouldBeFalse();
+        (await JobAsync(jobId)).Status.ShouldBe(JobStatus.Running);
+    }
 }

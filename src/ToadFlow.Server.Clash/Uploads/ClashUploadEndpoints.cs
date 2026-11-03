@@ -74,7 +74,7 @@ public static class ClashUploadEndpoints
         var upload = await UploadAsync(db, id, http);
         if (upload is null) return Results.NotFound();
         if (upload.SnapshotId is not null) return Results.Conflict(StateOf(storage, upload));
-        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, time, http.RequestAborted) is null) return NotRunning();
+        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, time, http.RequestAborted, startedBy: upload.CreatedAt) is null) return NotRunning();
 
         var declared = file == ClashUploads.Geometry ? upload.GeometryBytes : upload.ParametersBytes;
         var path = Path.Combine(storage.UploadFolder(upload.Id), fileName);
@@ -115,7 +115,7 @@ public static class ClashUploadEndpoints
             return snapshot is null ? Results.Conflict(new { error = "Слепок этой загрузки уже удалён" }) : Results.Ok(SnapshotPublisher.ResultOf(snapshot));
         }
 
-        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, time, http.RequestAborted) is null) return NotRunning();
+        if (await RunningJobAsync(db, upload.JobId, upload.AgentId, time, http.RequestAborted, startedBy: upload.CreatedAt) is null) return NotRunning();
 
         try
         {
@@ -131,11 +131,13 @@ public static class ClashUploadEndpoints
     ///     Задание, если оно выполняется у этого агента, — с продлённой арендой: агент загружает слепок, уже отпустив Revit,
     ///     и heartbeat экземпляра аренду больше не продлевает. Загрузка идёт — значит, агент жив.
     /// </summary>
-    private static async Task<Job?> RunningJobAsync(ToadFlowDb db, Guid jobId, Guid agentId, TimeProvider time, CancellationToken ct, int? attempt = null)
+    private static async Task<Job?> RunningJobAsync(ToadFlowDb db, Guid jobId, Guid agentId, TimeProvider time, CancellationToken ct, int? attempt = null,
+        DateTimeOffset? startedBy = null)
     {
         var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId && j.AgentId == agentId && j.Status == JobStatus.Running
                                                                          && j.ModuleKind == ModuleKinds.ClashExtract
-                                                                         && (attempt == null || j.Attempt == attempt), ct);
+                                                                         && (attempt == null || j.Attempt == attempt)
+                                                                         && (startedBy == null || j.StartedAt <= startedBy), ct);
         if (job is null) return null;
 
         var leaseUntil = time.GetUtcNow() + AgentHub.Lease;
