@@ -1,9 +1,17 @@
 name: toadflow
 
+# Логи контейнеров — с ротацией: без неё json-file растёт, пока не кончится диск.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:17
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_DB: toadflow
       POSTGRES_USER: toadflow
@@ -21,6 +29,7 @@ services:
       context: ..
       dockerfile: deploy/server.Dockerfile
     restart: unless-stopped
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,6 +50,7 @@ services:
       context: ..
       dockerfile: deploy/clash-engine.Dockerfile
     restart: unless-stopped
+    logging: *logging
     depends_on:
       - server
     mem_limit: 8g
@@ -56,6 +66,7 @@ services:
       context: ..
       dockerfile: deploy/web.Dockerfile
     restart: unless-stopped
+    logging: *logging
     depends_on:
       - server
     ports:
