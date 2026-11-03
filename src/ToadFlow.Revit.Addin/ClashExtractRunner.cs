@@ -30,7 +30,7 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
             foreach (var line in ClashMapping.DescribeReport(result)) progress.Step(payload.ModelName, line);
 
             progress.Status("Запись слепка");
-            var folder = ClashStaging.Folder(job.JobId);
+            var folder = ClashStaging.Folder(job.JobId, job.Attempt);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); // осталась от прошлой попытки в этом Revit
             ModelSnapshotFiles.Write(folder, geometry, parameters);
 

@@ -101,7 +101,7 @@ public class AgentEndToEndTests : ServerTest
         {
             var payload = JsonSerializer.Deserialize<ClashExtractPayload>(job.PayloadJson, TestJson.Options)!;
             var files = ClashFixtures.ModelFiles(payload.ModelKey);
-            var folder = ClashStaging.Folder(job.JobId);
+            var folder = ClashStaging.Folder(job.JobId, job.Attempt);
             Directory.CreateDirectory(folder);
             await File.WriteAllBytesAsync(Path.Combine(folder, "model.tcg"), files.Geometry);
             await File.WriteAllBytesAsync(Path.Combine(folder, "model.tcp"), files.Parameters);
@@ -135,7 +135,7 @@ public class AgentEndToEndTests : ServerTest
         var snapshot = await DbAsync(db => db.Set<ClashSnapshot>().SingleAsync());
         snapshot.Id.ShouldBe(result.SnapshotId);
         snapshot.JobId.ShouldBe(job.Id);
-        Directory.Exists(ClashStaging.Folder(job.Id)).ShouldBeFalse();
+        Directory.Exists(ClashStaging.Folder(job.Id, job.Attempt)).ShouldBeFalse();
     }
 
     [Test]

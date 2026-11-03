@@ -34,7 +34,7 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
     {
         if (assignment.ModuleKind != ModuleKinds.ClashExtract) return completion;
 
-        var folder = ClashStaging.Folder(assignment.JobId);
+        var folder = ClashStaging.Folder(assignment.JobId, assignment.Attempt);
         try
         {
             if (completion.Outcome is not (JobOutcome.Succeeded or JobOutcome.Warning)) return completion;
@@ -48,10 +48,10 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
             }
 
             folder = staged.Folder;
-            var log = new UploadLog(assignment.JobId, slot, reporter);
+            var log = new UploadLog(assignment.JobId, assignment.Attempt, slot, reporter);
             try
             {
-                var result = await UploadAsync(assignment.JobId, folder, log, ct);
+                var result = await UploadAsync(assignment.JobId, assignment.Attempt, folder, log, ct);
                 return completion with { ResultJson = JsonSerializer.Serialize(result, Json) };
             }
             catch (UploadRejectedException rejected)
@@ -83,14 +83,14 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
         }
     }
 
-    private async Task<ClashExtractResult> UploadAsync(Guid jobId, string folder, UploadLog log, CancellationToken ct)
+    private async Task<ClashExtractResult> UploadAsync(Guid jobId, int attempt, string folder, UploadLog log, CancellationToken ct)
     {
         var geometry = Path.Combine(folder, ClashUploads.FileName(ClashUploads.Geometry)!);
         var parameters = Path.Combine(folder, ClashUploads.FileName(ClashUploads.Parameters)!);
         if (!File.Exists(geometry) || !File.Exists(parameters)) throw new UploadRejectedException("в папке слепка нет файлов model.tcg и model.tcp");
 
         var request = new ClashUploadRequest(jobId, new FileInfo(geometry).Length, await ShaAsync(geometry, ct), new FileInfo(parameters).Length,
-            await ShaAsync(parameters, ct));
+            await ShaAsync(parameters, ct), attempt);
         var stopwatch = Stopwatch.StartNew();
         using var http = new HttpClient(options.HttpMessageHandlerFactory?.Invoke() ?? new HttpClientHandler(), disposeHandler: true)
         {
@@ -243,11 +243,11 @@ public sealed class ClashUploader(AgentConfig config, AgentOptions options, ILog
     }
 
     /// <summary>Строки загрузки в журнал задания; ход — не чаще раза в 5 с.</summary>
-    private sealed class UploadLog(Guid jobId, int slot, IJobReporter reporter)
+    private sealed class UploadLog(Guid jobId, int attempt, int slot, IJobReporter reporter)
     {
         private DateTimeOffset _lastProgress = DateTimeOffset.MinValue;
 
-        public Task WriteAsync(string text) => reporter.ProgressAsync(new JobProgressDto(jobId, slot, [new JobLogDto(DateTimeOffset.UtcNow, Stage, text)]));
+        public Task WriteAsync(string text) => reporter.ProgressAsync(new JobProgressDto(jobId, slot, [new JobLogDto(DateTimeOffset.UtcNow, Stage, text)], attempt));
 
         public Task ProgressAsync(string text)
         {

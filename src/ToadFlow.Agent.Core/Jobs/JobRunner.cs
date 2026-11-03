@@ -31,22 +31,44 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
     private static readonly TimeSpan CancelGrace = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PipeDrain = TimeSpan.FromSeconds(1);
 
-    private readonly ConcurrentDictionary<Guid, bool> _cancelled = new();
+    private readonly ConcurrentDictionary<JobAttemptKey, bool> _active = new();
+    private readonly ConcurrentDictionary<JobAttemptKey, bool> _cancelled = new();
 
-    /// <summary>Попросить бросить задание: аддин получит отмену и ответит «отменено».</summary>
-    public void Cancel(Guid jobId) => _cancelled[jobId] = true;
+    /// <summary>Попытки, которые агент сейчас ведёт: от выдачи до сдачи итога.</summary>
+    public IReadOnlyCollection<JobAttemptKey> Active => _active.Keys.ToList();
 
-    /// <summary>Задание отменили — в том числе пока под него запускался Revit.</summary>
-    public bool IsCancelled(Guid jobId) => _cancelled.ContainsKey(jobId);
+    /// <summary>Попытка выдана агенту: с этого момента её можно отменить, в том числе пока под неё запускается Revit.</summary>
+    public void Track(JobAttemptKey key) => _active[key] = true;
 
-    /// <summary>Задание закончилось, не дойдя до <see cref="RunAsync" />: отмена ему больше не нужна.</summary>
-    public void Forget(Guid jobId) => _cancelled.TryRemove(jobId, out _);
+    /// <summary>
+    ///     Попросить бросить задание (так просит сервер — без номера попытки): аддин получит отмену и ответит «отменено». Отменяются все
+    ///     попытки задания на этом агенте.
+    /// </summary>
+    public void Cancel(Guid jobId)
+    {
+        foreach (var key in _active.Keys.Where(k => k.JobId == jobId)) _cancelled[key] = true;
+    }
+
+    /// <summary>Бросить одну попытку: сервер её больше не числит за агентом.</summary>
+    public void Cancel(JobAttemptKey key) => _cancelled[key] = true;
+
+    /// <summary>Попытку отменили — в том числе пока под неё запускался Revit.</summary>
+    public bool IsCancelled(JobAttemptKey key) => _cancelled.ContainsKey(key);
+
+    /// <summary>Попытка закончилась: ни отмена, ни учёт ей больше не нужны. Другие попытки того же задания не трогаются.</summary>
+    public void Forget(JobAttemptKey key)
+    {
+        _active.TryRemove(key, out _);
+        _cancelled.TryRemove(key, out _);
+    }
 
     /// <param name="silenceOverride">Только для тестов и диагностики: молчание вместо минут из настроек.</param>
     public async Task<JobCompletionDto> RunAsync(RevitInstance instance, JobAssignmentDto assignment, AgentSettingsDto settings, IJobReporter reporter,
         CancellationToken ct, TimeSpan? silenceOverride = null)
     {
         var jobId = assignment.JobId;
+        var key = new JobAttemptKey(jobId, assignment.Attempt);
+        Track(key);
         var watch = new HangWatch(silenceOverride ?? TimeSpan.FromMinutes(settings.SilenceTimeoutMinutes));
         var quietAfter = UnresponsiveAfter < watch.SilenceLimit ? UnresponsiveAfter : watch.SilenceLimit / 2;
         var started = time.GetUtcNow();
@@ -70,7 +92,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
             await instance.Pipe.SendAsync(new JobMessage
             {
                 JobId = jobId, ModuleKind = assignment.ModuleKind, PayloadJson = assignment.PayloadJson, TimeoutMinutes = assignment.TimeoutMinutes,
-                CanRetry = assignment.Attempt < assignment.MaxAttempts
+                CanRetry = assignment.Attempt < assignment.MaxAttempts, Attempt = assignment.Attempt
             });
 
             while (true)
@@ -158,7 +180,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
                 if (now - started > TimeSpan.FromMinutes(assignment.TimeoutMinutes))
                     return await KillAsync($"превышен таймаут {assignment.TimeoutMinutes} мин на модель (этап «{stages.Current}», {watch.DescribeActivity()})");
 
-                if (_cancelled.ContainsKey(jobId))
+                if (IsCancelled(key))
                 {
                     if (cancelSentAt is null)
                     {
@@ -186,7 +208,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
         }
         finally
         {
-            _cancelled.TryRemove(jobId, out _);
+            _cancelled.TryRemove(key, out _);
         }
 
         // Шаг — в журнал и в этап; итог — вернуть вызывающему.
@@ -277,7 +299,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
             buffer.Clear();
             try
             {
-                await reporter.ProgressAsync(new JobProgressDto(jobId, instance.Slot, lines));
+                await reporter.ProgressAsync(new JobProgressDto(jobId, instance.Slot, lines, assignment.Attempt));
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

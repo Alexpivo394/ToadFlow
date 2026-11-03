@@ -62,7 +62,7 @@ public class ClashUploaderTests : ServerTest
     /// <summary>Слепок там, куда его кладёт аддин, и ответ аддина агенту.</summary>
     private static JobCompletionDto Staged(Guid jobId, ClashFiles files, string? folder = null)
     {
-        folder ??= ClashStaging.Folder(jobId);
+        folder ??= ClashStaging.Folder(jobId, 1);
         Directory.CreateDirectory(folder);
         File.WriteAllBytes(Path.Combine(folder, "model.tcg"), files.Geometry);
         File.WriteAllBytes(Path.Combine(folder, "model.tcp"), files.Parameters);
@@ -86,7 +86,7 @@ public class ClashUploaderTests : ServerTest
         result.Elements.ShouldBe(files.Elements);
         result.GeometryBytes.ShouldBe(files.Geometry.Length);
         (await DbAsync(db => db.Set<ClashSnapshot>().SingleAsync())).Id.ShouldBe(result.SnapshotId);
-        Directory.Exists(ClashStaging.Folder(jobId)).ShouldBeFalse();
+        Directory.Exists(ClashStaging.Folder(jobId, 1)).ShouldBeFalse();
         reporter.Lines.ShouldContain(line => line.Text.Contains("слепок загружен"));
     }
 
@@ -119,7 +119,7 @@ public class ClashUploaderTests : ServerTest
 
         completion.Outcome.ShouldBe(JobOutcome.Failed);
         completion.Note.ShouldNotBeNull().ShouldContain("слепок другой модели");
-        Directory.Exists(ClashStaging.Folder(jobId)).ShouldBeFalse();
+        Directory.Exists(ClashStaging.Folder(jobId, 1)).ShouldBeFalse();
     }
 
     [Test]
@@ -160,7 +160,7 @@ public class ClashUploaderTests : ServerTest
         var completion = await Uploader(agent).FinishAsync(Assignment(jobId), 1, failed, new Reporter(), CancellationToken.None);
 
         completion.ShouldBe(failed);
-        Directory.Exists(ClashStaging.Folder(jobId)).ShouldBeFalse();
+        Directory.Exists(ClashStaging.Folder(jobId, 1)).ShouldBeFalse();
     }
 
     [Test]

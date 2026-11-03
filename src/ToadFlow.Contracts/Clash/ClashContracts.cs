@@ -36,7 +36,12 @@ public static class ClashStaging
     public static string Root =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToadFlow", "clash-staging");
 
-    public static string Folder(Guid jobId) => Path.Combine(Root, jobId.ToString("N"));
+    /// <summary>
+    ///     Папка слепка попытки: две попытки одного задания на одной машине не пишут и не удаляют одну папку. Попытка 0 (агент до 2.0)
+    ///     — прежняя папка по заданию.
+    /// </summary>
+    public static string Folder(Guid jobId, int attempt) =>
+        Path.Combine(Root, attempt > 0 ? $"{jobId:N}-{attempt}" : jobId.ToString("N"));
 
     /// <summary>Путь лежит внутри <see cref="Root" /> (не сам корень), без выхода наружу через <c>..</c>.</summary>
     public static bool IsInside(string path)

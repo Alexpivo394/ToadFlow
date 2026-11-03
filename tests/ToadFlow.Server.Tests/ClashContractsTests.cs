@@ -26,8 +26,8 @@ public class ClashContractsTests
     {
         var job = Guid.NewGuid();
 
-        ClashStaging.IsInside(ClashStaging.Folder(job)).ShouldBeTrue();
-        ClashStaging.Folder(job).ShouldEndWith(job.ToString("N"));
+        ClashStaging.IsInside(ClashStaging.Folder(job, 0)).ShouldBeTrue();
+        ClashStaging.Folder(job, 0).ShouldEndWith(job.ToString("N"));
         ClashStaging.IsInside(Path.Combine(ClashStaging.Root, "..", "x")).ShouldBeFalse();
         ClashStaging.IsInside(ClashStaging.Root).ShouldBeFalse();
         ClashStaging.IsInside(ClashStaging.Root + "-evil" + Path.DirectorySeparatorChar + "x").ShouldBeFalse();

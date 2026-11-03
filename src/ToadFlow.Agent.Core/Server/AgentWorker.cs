@@ -21,7 +21,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
     /// <summary>Слепки старше этого — от заданий, которые агент не успел загрузить до остановки.</summary>
     private static readonly TimeSpan StaleStaging = TimeSpan.FromDays(1);
 
-    private readonly ConcurrentDictionary<Guid, Task> _running = new();
+    private readonly ConcurrentDictionary<JobAttemptKey, Task> _running = new();
     private readonly ConcurrentDictionary<int, int> _pending = new(); // задания, под которые ещё запускается Revit
     private readonly SystemLoad _load = new();
     private string? _memoryBlocked;
@@ -48,6 +48,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             {
                 await connection.EnsureConnectedAsync(ct);
                 await connection.HeartbeatAsync(new AgentHeartbeatDto(_load.CpuPercent(), _load.RamUsedMb(), instances.Statuses().ToArray()));
+                if (connection.ReconcileNeeded) await ReconcileAsync(ct);
 
                 var now = time.GetUtcNow();
                 if (now - lastPoll >= options.PollInterval)
@@ -76,6 +77,38 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
         await Task.WhenAll(_running.Values).WaitAsync(TimeSpan.FromSeconds(5), ct).ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
+    /// <summary>
+    ///     Сверка с сервером: попытки, которые сервер за агентом больше не числит, бросаются (их итог сервер всё равно не примет), а
+    ///     выданные, но не дошедшие до агента, сразу сдаются сбоем — задание не ждёт конца аренды. Идёт в рабочем цикле между запросами
+    ///     заданий, поэтому только что выданное задание уже учтено.
+    /// </summary>
+    private async Task ReconcileAsync(CancellationToken ct)
+    {
+        if (await connection.ActiveJobsAsync() is not { } active)
+        {
+            // Сервер до 2.0 списка не даёт — сверять не с чем; нет ответа — попробуем на следующем круге.
+            if (connection.IsConnected) connection.ReconcileNeeded = false;
+            return;
+        }
+
+        connection.ReconcileNeeded = false;
+        var plan = JobReconciliation.Plan(runner.Active, active);
+        foreach (var key in plan.Cancel)
+        {
+            logger.LogWarning("Задание {Job}, попытка {Attempt}: сервер его больше не числит за агентом — бросаю", key.JobId, key.Attempt);
+            runner.Cancel(key);
+        }
+
+        foreach (var key in plan.Unknown)
+        {
+            logger.LogWarning("Задание {Job}, попытка {Attempt}: сервер выдал его, но ответ не дошёл — сдаю сбоем, чтобы его выдали снова", key.JobId,
+                key.Attempt);
+            _ = Task.Run(() => connection.CompleteJobAsync(JobReconciliation.LostAssignment(key), ct), CancellationToken.None);
+        }
+    }
+
+    private static JobAttemptKey Key(JobAssignmentDto assignment) => new(assignment.JobId, assignment.Attempt);
+
     private async Task TakeJobsAsync(CancellationToken ct)
     {
         if (!connection.IsConnected || connection.Settings is not { Draining: false } settings) return;
@@ -89,7 +122,9 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
                 if (assignment is null) break;
 
                 _pending.AddOrUpdate(limit.Year, 1, (_, count) => count + 1);
-                _running[assignment.JobId] = Task.Run(() => RunJobAsync(assignment, limit.Year, settings, ct), CancellationToken.None);
+                var key = new JobAttemptKey(assignment.JobId, assignment.Attempt);
+                runner.Track(key);
+                _running[key] = Task.Run(() => RunJobAsync(assignment, limit.Year, settings, ct), CancellationToken.None);
             }
         }
     }
@@ -148,15 +183,15 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             RevitInstance? instance = null;
             try
             {
-                instance = await instances.AcquireAsync(year, ct, assignment, () => runner.IsCancelled(assignment.JobId));
+                instance = await instances.AcquireAsync(year, ct, assignment, () => runner.IsCancelled(Key(assignment)));
             }
             catch (RevitStartException exception)
             {
                 logger.LogWarning("Задание {Job}: {Error}", assignment.JobId, exception.Message);
-                completion = runner.IsCancelled(assignment.JobId)
+                completion = runner.IsCancelled(Key(assignment))
                     ? new JobCompletionDto(assignment.JobId, JobOutcome.Cancelled, "отменено пользователем, пока запускался Revit", null)
                     : new JobCompletionDto(assignment.JobId, JobOutcome.InfrastructureFailure, exception.Message, null);
-                await connection.CompleteJobAsync(completion, ct);
+                await connection.CompleteJobAsync(completion with { Attempt = assignment.Attempt }, ct);
                 return;
             }
             finally
@@ -192,7 +227,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
 
             // Слепок для коллизий загружается после того, как Revit отпущен: загрузке Revit не нужен, а её сбой — не сбой Revit.
             completion = await clash.FinishAsync(assignment, instance.Slot, completion, connection, ct);
-            await connection.CompleteJobAsync(completion, ct);
+            await connection.CompleteJobAsync(completion with { Attempt = assignment.Attempt }, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -204,8 +239,8 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
         }
         finally
         {
-            runner.Forget(assignment.JobId);
-            _running.TryRemove(assignment.JobId, out _);
+            runner.Forget(Key(assignment));
+            _running.TryRemove(Key(assignment), out _);
         }
     }
 

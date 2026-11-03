@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -72,6 +73,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
         {
             _logger.LogInformation("Связь с сервером восстановлена");
             await HelloAsync(CancellationToken.None);
+            ReconcileNeeded = true;
         };
         _hub.Closed += exception =>
         {
@@ -85,6 +87,27 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
 
     public bool IsConnected => _hub.State == HubConnectionState.Connected && Settings is not null;
 
+    /// <summary>
+    ///     Пора сверить задания с сервером: агент только что представился (подключение, переподключение) или ответ на запрос задания не
+    ///     дошёл. Сверяет рабочий цикл — между запросами заданий, чтобы не принять только что выданное за чужое.
+    /// </summary>
+    public bool ReconcileNeeded { get; set; }
+
+    /// <summary>Задания, которые сервер числит за агентом; null — сервер до 2.0 (такого метода нет) или ответа нет.</summary>
+    public async Task<IReadOnlyList<ActiveJobDto>?> ActiveJobsAsync()
+    {
+        if (!IsConnected) return null;
+        try
+        {
+            return await CallAsync(token => _hub.InvokeAsync<ActiveJobDto[]>(nameof(IAgentHub.GetActiveJobs), token), CallTimeout);
+        }
+        catch (HubException exception)
+        {
+            _logger.LogDebug(exception, "Сервер не отдаёт список активных заданий");
+            return null;
+        }
+    }
+
     /// <summary>Подключиться и представиться; повторяет, пока сервер не ответит.</summary>
     public async Task StartAsync(CancellationToken ct)
     {
@@ -94,6 +117,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
             {
                 if (_hub.State == HubConnectionState.Disconnected) await _hub.StartAsync(ct);
                 await HelloAsync(ct);
+                ReconcileNeeded = true;
                 _logger.LogInformation("Подключён к серверу");
                 return;
             }
@@ -125,8 +149,20 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
         }
     }
 
-    public async Task<JobAssignmentDto?> RequestJobAsync(JobRequestDto request) =>
-        IsConnected ? await CallAsync(token => _hub.InvokeAsync<JobAssignmentDto?>(nameof(IAgentHub.RequestJob), request, token), CallTimeout) : null;
+    public async Task<JobAssignmentDto?> RequestJobAsync(JobRequestDto request)
+    {
+        if (!IsConnected) return null;
+        try
+        {
+            return await CallAsync(token => _hub.InvokeAsync<JobAssignmentDto?>(nameof(IAgentHub.RequestJob), request, token), CallTimeout);
+        }
+        catch (TimeoutException)
+        {
+            // Сервер мог выдать задание, а ответ потерялся: о нём скажет сверка.
+            ReconcileNeeded = true;
+            throw;
+        }
+    }
 
     /// <summary>Сдать результат; при обрыве — повторять, пока не дойдёт. Если сервер уже вернул задание в очередь, он ответ проигнорирует.</summary>
     public async Task CompleteJobAsync(JobCompletionDto completion, CancellationToken ct)

@@ -51,6 +51,9 @@ public sealed class JobMessage : PipeMessage
 
     /// <summary>У задания остались попытки: сбой, который в новом Revit может не повториться, лучше вернуть повтором. false — агент до 1.7.1.</summary>
     public bool CanRetry { get; set; }
+
+    /// <summary>Номер попытки задания: у каждой попытки своя папка слепка. 0 — агент до 2.0.</summary>
+    public int Attempt { get; set; }
 }
 
 /// <summary>Аддин → агент: шаг выгрузки или строка журнала.</summary>
