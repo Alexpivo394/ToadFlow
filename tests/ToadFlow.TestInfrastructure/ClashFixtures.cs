@@ -14,7 +14,8 @@ namespace ToadFlow.Server.Tests.Infrastructure;
 /// <summary>Слепок модели в памяти: те же файлы, что пишет аддин.</summary>
 public sealed record ClashFiles(byte[] Geometry, byte[] Parameters, int Elements, long Triangles, int Inventory)
 {
-    public ClashUploadRequest Request(Guid jobId) => new(jobId, Geometry.Length, Sha(Geometry), Parameters.Length, Sha(Parameters));
+    public ClashUploadRequest Request(Guid jobId, int? attempt = null) =>
+        new(jobId, Geometry.Length, Sha(Geometry), Parameters.Length, Sha(Parameters), attempt);
 
     public static string Sha(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 }

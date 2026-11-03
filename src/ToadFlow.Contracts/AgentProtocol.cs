@@ -17,6 +17,12 @@ public interface IAgentHub
 
     Task CompleteJob(JobCompletionDto completion);
 
+    /// <summary>
+    ///     Задания, которые сервер считает выполняющимися у этого агента, с номерами попыток. Агент зовёт сразу после
+    ///     (пере)подключения: чего сервер не назвал, того у агента уже нет, а названное можно доделывать и сдавать.
+    /// </summary>
+    Task<ActiveJobDto[]> GetActiveJobs();
+
     /// <summary>Агент сам убил экземпляр Revit (таймаут, молчание, не запустился) — для «Событий системы».</summary>
     Task ReportInstanceKilled(int slot, string reason);
 }
@@ -84,9 +90,14 @@ public sealed record JobAssignmentDto(
 
 public sealed record JobLogDto(DateTimeOffset At, string Stage, string Text);
 
-public sealed record JobProgressDto(Guid JobId, int Slot, JobLogDto[] Lines);
+/// <param name="Attempt">Номер попытки из выдачи; null — агент до 2.0, сервер ведёт себя как раньше.</param>
+public sealed record JobProgressDto(Guid JobId, int Slot, JobLogDto[] Lines, int? Attempt = null);
 
-public sealed record JobCompletionDto(Guid JobId, JobOutcome Outcome, string? Note, string? ResultJson);
+/// <param name="Attempt">Номер попытки из выдачи; null — агент до 2.0, сервер ведёт себя как раньше.</param>
+public sealed record JobCompletionDto(Guid JobId, JobOutcome Outcome, string? Note, string? ResultJson, int? Attempt = null);
+
+/// <summary>Задание, которое сервер числит за агентом, и текущая попытка.</summary>
+public sealed record ActiveJobDto(Guid JobId, int Attempt);
 
 public static class ModuleKinds
 {

@@ -47,9 +47,10 @@ public static class RunCommandEndpoints
 
         run.CancelRequested = true;
         var jobs = await db.Jobs.Where(j => j.RunId == id && (j.Status == JobStatus.Queued || j.Status == JobStatus.Running)).ToListAsync();
-        foreach (var job in jobs) Cancel(job, time);
+        var cancelled = new List<Job>();
+        foreach (var job in jobs) cancelled.Add(await CancelAsync(db, job.Id, time));
         await db.SaveChangesAsync();
-        await SignalAgentsAsync(jobs, registry);
+        await SignalAgentsAsync(cancelled, registry);
         await progress.UpdateAsync(id);
         events.Publish(new RunChanged(http.User.Actor(), id));
         return Results.NoContent();
@@ -62,8 +63,7 @@ public static class RunCommandEndpoints
         if (job is null) return Results.NotFound();
         if (Job.IsFinal(job.Status)) return Results.Conflict(new { error = "Модель уже обработана" });
 
-        Cancel(job, time);
-        await db.SaveChangesAsync();
+        job = await CancelAsync(db, job.Id, time);
         await SignalAgentsAsync([job], registry);
         await progress.UpdateAsync(job.RunId);
         events.Publish(new JobChanged(http.User.Actor(), job.Id, job.RunId));
@@ -129,19 +129,21 @@ public static class RunCommandEndpoints
         return run;
     }
 
-    /// <summary>Задание в очереди отменяется сразу; выполняющееся — просьбой агенту, итог пришлёт он.</summary>
-    private static void Cancel(Job job, TimeProvider time)
+    /// <summary>
+    ///     Задание в очереди отменяется сразу; выполняющееся — просьбой агенту, итог пришлёт он. Оба перехода условные:
+    ///     если параллельно задание взяли в работу или закончили, отмена не затирает чужое состояние.
+    /// </summary>
+    private static async Task<Job> CancelAsync(ToadFlowDb db, Guid jobId, TimeProvider time)
     {
-        if (job.Status == JobStatus.Queued)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.FinishedAt = time.GetUtcNow();
-            job.Note = "отменено пользователем";
-        }
-        else
-        {
-            job.CancelRequested = true;
-        }
+        var now = time.GetUtcNow();
+        var cancelled = await db.Jobs.Where(j => j.Id == jobId && j.Status == JobStatus.Queued).ExecuteUpdateAsync(j => j
+            .SetProperty(x => x.Status, JobStatus.Cancelled)
+            .SetProperty(x => x.FinishedAt, now)
+            .SetProperty(x => x.Note, "отменено пользователем"));
+        if (cancelled == 0)
+            await db.Jobs.Where(j => j.Id == jobId && j.Status == JobStatus.Running).ExecuteUpdateAsync(j => j.SetProperty(x => x.CancelRequested, true));
+
+        return await db.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
     }
 
     private static async Task SignalAgentsAsync(IEnumerable<Job> jobs, AgentRegistry registry)

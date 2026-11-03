@@ -12,6 +12,16 @@ public sealed class LeaseSweeper(IServiceScopeFactory scopes, TimeProvider time,
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        try
+        {
+            // Сервер простоял, пока агенты доделывали задания: до их переподключения аренды не считаются истёкшими.
+            await ExtendLeasesAsync(ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(exception, "Не удалось продлить аренды заданий после запуска");
+        }
+
         using var timer = new PeriodicTimer(Period, time);
         while (await timer.WaitForNextTickAsync(ct))
         {
@@ -26,7 +36,13 @@ public sealed class LeaseSweeper(IServiceScopeFactory scopes, TimeProvider time,
         }
     }
 
-    private async Task SweepAsync(CancellationToken ct)
+    public async Task ExtendLeasesAsync(CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<JobQueue>().ExtendLeasesAfterStartAsync(ct);
+    }
+
+    public async Task SweepAsync(CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
@@ -47,4 +63,17 @@ public static class QueueSetup
         services.AddScoped<Agents.IAgentJobs>(provider => provider.GetRequiredService<JobQueue>());
         services.AddHostedService<LeaseSweeper>();
     }
+}
+
+/// <summary>Сроки аренды заданий.</summary>
+public static class LeaseOptions
+{
+    /// <summary>На сколько продлевается аренда каждым heartbeat.</summary>
+    public static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    ///     Аренда выполняющихся заданий после запуска сервера: срок аренды плюс три минуты на переподключение агентов
+    ///     (они повторяют подключение раз в 30 с).
+    /// </summary>
+    public static readonly TimeSpan StartupGrace = Lease + TimeSpan.FromMinutes(3);
 }

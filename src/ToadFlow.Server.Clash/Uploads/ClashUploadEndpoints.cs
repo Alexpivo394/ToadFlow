@@ -35,7 +35,7 @@ public static class ClashUploadEndpoints
             return Results.BadRequest(new { error = "Контрольная сумма — SHA-256 в шестнадцатеричном виде" });
 
         var agentId = http.User.AgentId();
-        var job = await RunningJobAsync(db, request.JobId, agentId, time, http.RequestAborted);
+        var job = await RunningJobAsync(db, request.JobId, agentId, time, http.RequestAborted, request.Attempt);
         if (job is null) return NotRunning();
         if (ModelIdOf(job) is not { } modelId) return Results.UnprocessableEntity(new { error = "В задании нет ключа модели" });
 
@@ -131,10 +131,11 @@ public static class ClashUploadEndpoints
     ///     Задание, если оно выполняется у этого агента, — с продлённой арендой: агент загружает слепок, уже отпустив Revit,
     ///     и heartbeat экземпляра аренду больше не продлевает. Загрузка идёт — значит, агент жив.
     /// </summary>
-    private static async Task<Job?> RunningJobAsync(ToadFlowDb db, Guid jobId, Guid agentId, TimeProvider time, CancellationToken ct)
+    private static async Task<Job?> RunningJobAsync(ToadFlowDb db, Guid jobId, Guid agentId, TimeProvider time, CancellationToken ct, int? attempt = null)
     {
         var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId && j.AgentId == agentId && j.Status == JobStatus.Running
-                                                                         && j.ModuleKind == ModuleKinds.ClashExtract, ct);
+                                                                         && j.ModuleKind == ModuleKinds.ClashExtract
+                                                                         && (attempt == null || j.Attempt == attempt), ct);
         if (job is null) return null;
 
         var leaseUntil = time.GetUtcNow() + AgentHub.Lease;

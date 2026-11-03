@@ -6,6 +6,7 @@ using ToadFlow.Contracts;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Queue;
 using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Agents;
@@ -16,7 +17,7 @@ public sealed class AgentHub(ToadFlowDb db, AgentRegistry registry, ISettingsSto
     IAgentJobs jobs) : Hub<IAgentClient>, IAgentHub
 {
     /// <summary>На сколько продлевается аренда задания каждым heartbeat.</summary>
-    public static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
+    public static TimeSpan Lease => LeaseOptions.Lease;
 
     private Guid AgentId => Guid.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -76,6 +77,8 @@ public sealed class AgentHub(ToadFlowDb db, AgentRegistry registry, ISettingsSto
 
     public Task<JobAssignmentDto?> RequestJob(JobRequestDto request) => jobs.ClaimAsync(AgentId, request);
 
+    public Task<ActiveJobDto[]> GetActiveJobs() => jobs.ActiveAsync(AgentId);
+
     public Task ReportProgress(JobProgressDto progress) => jobs.AppendLogAsync(AgentId, progress);
 
     public Task CompleteJob(JobCompletionDto completion) => jobs.CompleteAsync(AgentId, completion);
@@ -97,6 +100,8 @@ public interface IAgentJobs
     Task AppendLogAsync(Guid agentId, JobProgressDto progress);
 
     Task CompleteAsync(Guid agentId, JobCompletionDto completion);
+
+    Task<ActiveJobDto[]> ActiveAsync(Guid agentId);
 }
 
 public static class AgentSettingsFactory

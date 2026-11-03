@@ -70,8 +70,13 @@ public sealed class FakeAgent : IAsyncDisposable
     public Task ReportProgressAsync(Guid jobId, int slot, params JobLogDto[] lines) =>
         Hub.InvokeAsync(nameof(IAgentHub.ReportProgress), new JobProgressDto(jobId, slot, lines));
 
-    public Task CompleteJobAsync(Guid jobId, JobOutcome outcome, string? note = null, string? resultJson = null) =>
-        Hub.InvokeAsync(nameof(IAgentHub.CompleteJob), new JobCompletionDto(jobId, outcome, note, resultJson));
+    public Task ReportProgressAsync(Guid jobId, int slot, int? attempt, params JobLogDto[] lines) =>
+        Hub.InvokeAsync(nameof(IAgentHub.ReportProgress), new JobProgressDto(jobId, slot, lines, attempt));
+
+    public Task<ActiveJobDto[]> GetActiveJobsAsync() => Hub.InvokeAsync<ActiveJobDto[]>(nameof(IAgentHub.GetActiveJobs));
+
+    public Task CompleteJobAsync(Guid jobId, JobOutcome outcome, string? note = null, string? resultJson = null, int? attempt = null) =>
+        Hub.InvokeAsync(nameof(IAgentHub.CompleteJob), new JobCompletionDto(jobId, outcome, note, resultJson, attempt));
 
     /// <summary>Второе соединение тем же ключом — например, чтобы проверить, что сервер его не пустит.</summary>
     public HubConnection NewConnection(string? key = null) => Connect(_server, Id, key ?? Key);

@@ -24,7 +24,7 @@ public sealed record ClashStagedSnapshot(string Folder, int Elements, long Trian
 public sealed record ClashExtractResult(Guid SnapshotId, int Elements, long Triangles, int Inventory, long GeometryBytes, long ParametersBytes);
 
 /// <summary>Начать загрузку слепка задания: размеры и SHA-256 (hex) обоих файлов.</summary>
-public sealed record ClashUploadRequest(Guid JobId, long GeometryBytes, string GeometrySha256, long ParametersBytes, string ParametersSha256);
+public sealed record ClashUploadRequest(Guid JobId, long GeometryBytes, string GeometrySha256, long ParametersBytes, string ParametersSha256, int? Attempt = null);
 
 /// <summary>Сколько байт каждого файла сервер уже принял: с этого места продолжается загрузка.</summary>
 public sealed record ClashUploadState(Guid UploadId, long GeometryReceived, long ParametersReceived);
