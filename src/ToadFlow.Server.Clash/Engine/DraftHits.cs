@@ -77,9 +77,21 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHit
     }
 
     /// <summary>Последняя часть пришла: прогон удачен, его строки становятся результатом части, строки прошлых прогонов удаляются.</summary>
-    public async Task CompleteAsync(EngineRun run, EngineRunStats? stats, CancellationToken ct)
+    /// <remarks>
+    ///     Состояние прогона проверяется под блокировкой строки: отмена и уборщик аренды берут ту же, поэтому отменённый или
+    ///     возвращённый в очередь прогон результатом части не становится.
+    /// </remarks>
+    /// <returns>false — прогон уже не в работе (отменён, сдан, возвращён в очередь), ничего не записано.</returns>
+    public async Task<bool> CompleteAsync(EngineRun run, EngineRunStats? stats, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var state = await db.Database.SqlQuery<string>($"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} FOR UPDATE").SingleAsync(ct);
+        if (state != nameof(EngineRunState.Running))
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            return false;
+        }
+
         var count = await db.Set<ClashDraftHit>().CountAsync(h => h.RunId == run.Id, ct);
         await db.Set<ClashPart>().Where(p => p.Id == run.PartId).ExecuteUpdateAsync(p => p.SetProperty(x => x.ResultRunId, run.Id), ct);
         await db.Set<ClashDraftHit>().Where(h => h.PartId == run.PartId && h.RunId != run.Id).ExecuteDeleteAsync(ct);
@@ -104,6 +116,8 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHit
         {
             logger.LogWarning(exception, "Прогон движка {Run}: статистика находок не обновлена (ANALYZE clash_draft_hits)", run.Id);
         }
+
+        return true;
     }
 
     /// <summary>Строки прогона, который не дошёл до конца.</summary>

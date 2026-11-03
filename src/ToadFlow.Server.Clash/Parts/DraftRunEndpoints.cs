@@ -62,9 +62,16 @@ public static class DraftRunEndpoints
     private static async Task<IResult> CancelAsync(Guid id, ToadFlowDb db, DraftHits hits, TimeProvider time, HttpContext http, IDomainEvents events,
         CancellationToken ct)
     {
-        var active = await db.Set<EngineRun>()
-            .Where(r => r.PartId == id && r.Kind == EngineRunKind.Draft && (r.State == EngineRunState.Queued || r.State == EngineRunState.Running))
-            .ToListAsync(ct);
+        // Блокировка строк прогонов — та же, что берёт финиш последней части: одно из двух идёт первым, и второе видит итог.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var queued = nameof(EngineRunState.Queued);
+        var running = nameof(EngineRunState.Running);
+        var draft = nameof(EngineRunKind.Draft);
+        var active = await db.Set<EngineRun>().FromSql($"""
+            SELECT * FROM clash_engine_runs
+            WHERE part_id = {id} AND kind = {draft} AND state IN ({queued}, {running})
+            FOR UPDATE
+            """).ToListAsync(ct);
         foreach (var run in active)
         {
             await hits.DiscardAsync(run.Id, ct);
@@ -74,6 +81,7 @@ public static class DraftRunEndpoints
         }
 
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         if (active.Count > 0) events.Publish(new ClashDraftChanged(http.User.Actor(), id));
         return active.Count == 0 ? Results.NotFound(new { error = "Прогона нет" }) : Results.Ok(DraftRunSummary.Of(active[^1]));
     }

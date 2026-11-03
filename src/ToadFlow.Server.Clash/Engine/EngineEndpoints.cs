@@ -124,7 +124,13 @@ public static class EngineEndpoints
         }
         else if (last)
         {
-            await hits.CompleteAsync(run, result.Stats, ct);
+            if (!await hits.CompleteAsync(run, result.Stats, ct))
+            {
+                // Прогон отменили или вернули в очередь, пока писалась последняя часть: она никому не нужна.
+                await hits.DiscardAsync(run.Id, ct);
+                return Results.Conflict(new { error = "Прогон уже отменён или завершён" });
+            }
+
             events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         }
         else await db.SaveChangesAsync(ct);
