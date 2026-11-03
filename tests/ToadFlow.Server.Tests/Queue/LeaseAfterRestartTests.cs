@@ -54,6 +54,26 @@ public class LeaseAfterRestartTests : ServerTest
         (await JobAsync(jobId)).Status.ShouldBe(JobStatus.Succeeded);
     }
 
+    /// <summary>Задание, выданное уже после запуска сервера, продление запуска не трогает: его аренда свежая.</summary>
+    [Test]
+    public async Task ExtendLeases_JobIssuedAfterStart_Untouched()
+    {
+        await using var agent = await FakeAgent.RegisterAsync(Server, await AdminAsync());
+        await agent.ConnectAsync(new InstalledRevitDto(2022, true));
+        var jobId = await DbAsync(async db =>
+        {
+            var job = Seed.Job(db, Seed.Run(db).Id, maxAttempts: 2);
+            await db.SaveChangesAsync();
+            return job.Id;
+        });
+        (await agent.RequestJobAsync(1, 2022)).ShouldNotBeNull();
+        var lease = (await JobAsync(jobId)).LeaseUntil.ShouldNotBeNull();
+
+        await Sweeper().ExtendLeasesAsync(CancellationToken.None, _time.GetUtcNow() - TimeSpan.FromMinutes(1));
+
+        (await JobAsync(jobId)).LeaseUntil.ShouldBe(lease);
+    }
+
     [Test]
     public async Task Sweeper_CompleteRace_NoOverwrite()
     {

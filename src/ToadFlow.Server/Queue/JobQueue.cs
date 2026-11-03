@@ -115,10 +115,12 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
             .Select(j => new ActiveJobDto(j.Id, j.Attempt)).ToArrayAsync();
 
     /// <summary>После перезапуска сервера аренды всех выполняющихся заданий продлеваются: агентам нужно время переподключиться.</summary>
-    public async Task ExtendLeasesAfterStartAsync(CancellationToken ct)
+    /// <param name="started">Момент запуска сервера: задания, выданные после него, уже имеют свежую аренду (<c>started + Lease</c> и позже).</param>
+    public async Task ExtendLeasesAfterStartAsync(DateTimeOffset started, CancellationToken ct)
     {
-        var until = time.GetUtcNow() + LeaseOptions.StartupGrace;
-        await db.Jobs.Where(j => j.Status == JobStatus.Running && (j.LeaseUntil == null || j.LeaseUntil < until)).ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, until), ct);
+        var until = started + LeaseOptions.StartupGrace;
+        var issuedBefore = started + LeaseOptions.Lease;
+        await db.Jobs.Where(j => j.Status == JobStatus.Running && (j.LeaseUntil == null || j.LeaseUntil < issuedBefore)).ExecuteUpdateAsync(j => j.SetProperty(x => x.LeaseUntil, until), ct);
     }
 
     private async Task NotifyModulesAsync(Job job)

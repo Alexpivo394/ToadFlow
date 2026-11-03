@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data.Entities;
+using ToadFlow.Server.Queue;
 using ToadFlow.Server.Tests.Infrastructure;
 
 namespace ToadFlow.Server.Tests;
@@ -11,7 +14,14 @@ public class QueueTests : ServerTest
 {
     private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
 
-    public QueueTests() => Time = _time;
+    /// <remarks>Хостовый уборщик заменён ручным: уборка по таймеру против сдвига времени теста даёт гонки.</remarks>
+    public QueueTests()
+    {
+        Time = _time;
+        Services = services => services.Remove(services.Single(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(LeaseSweeper)));
+    }
+
+    private Task SweepAsync() => ActivatorUtilities.CreateInstance<LeaseSweeper>(Server.Services).SweepAsync(CancellationToken.None);
 
     private async Task<FakeAgent> AgentAsync(string name = "FARM-01", params InstalledRevitDto[] revits)
     {
@@ -238,7 +248,8 @@ public class QueueTests : ServerTest
 
         _time.Advance(TimeSpan.FromMinutes(3));
 
-        await EventuallyAsync(async () => (await JobAsync(jobId)).Status == JobStatus.Queued);
+        await SweepAsync();
+        (await JobAsync(jobId)).Status.ShouldBe(JobStatus.Queued);
     }
 
     [Test]
@@ -250,7 +261,8 @@ public class QueueTests : ServerTest
 
         _time.Advance(TimeSpan.FromMinutes(3));
 
-        await EventuallyAsync(async () => (await JobAsync(jobId)).Status == JobStatus.Failed);
+        await SweepAsync();
+        (await JobAsync(jobId)).Status.ShouldBe(JobStatus.Failed);
         (await JobAsync(jobId)).Note.ShouldNotBeNull().ShouldContain("потерял связь");
     }
 
@@ -265,7 +277,8 @@ public class QueueTests : ServerTest
         _time.Advance(TimeSpan.FromMinutes(3));
 
         // В очередь отменённое не вернуть: оттуда оно не выдаётся, и запуск висел бы вечно.
-        await EventuallyAsync(async () => (await JobAsync(jobId)).Status == JobStatus.Cancelled);
+        await SweepAsync();
+        (await JobAsync(jobId)).Status.ShouldBe(JobStatus.Cancelled);
         var run = await DbAsync(async db => await db.Runs.SingleAsync(r => r.Id == db.Jobs.Single(j => j.Id == jobId).RunId));
         run.State.ShouldBe(RunState.Cancelled);
     }

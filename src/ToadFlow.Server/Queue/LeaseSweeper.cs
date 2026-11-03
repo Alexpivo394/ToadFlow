@@ -12,17 +12,19 @@ public sealed class LeaseSweeper(IServiceScopeFactory scopes, TimeProvider time,
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        // Момент запуска и таймер — до первого запроса к базе: холодный запрос не должен ни сдвигать "старые" аренды, ни терять тики.
+        var started = time.GetUtcNow();
+        using var timer = new PeriodicTimer(Period, time);
         try
         {
             // Сервер простоял, пока агенты доделывали задания: до их переподключения аренды не считаются истёкшими.
-            await ExtendLeasesAsync(ct);
+            await ExtendLeasesAsync(ct, started);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogError(exception, "Не удалось продлить аренды заданий после запуска");
         }
 
-        using var timer = new PeriodicTimer(Period, time);
         while (await timer.WaitForNextTickAsync(ct))
         {
             try
@@ -36,10 +38,11 @@ public sealed class LeaseSweeper(IServiceScopeFactory scopes, TimeProvider time,
         }
     }
 
-    public async Task ExtendLeasesAsync(CancellationToken ct)
+    /// <param name="started">Момент запуска сервера; null — сейчас. Аренды заданий, выданных позже, не продлеваются.</param>
+    public async Task ExtendLeasesAsync(CancellationToken ct, DateTimeOffset? started = null)
     {
         await using var scope = scopes.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<JobQueue>().ExtendLeasesAfterStartAsync(ct);
+        await scope.ServiceProvider.GetRequiredService<JobQueue>().ExtendLeasesAfterStartAsync(started ?? time.GetUtcNow(), ct);
     }
 
     public async Task SweepAsync(CancellationToken ct)
