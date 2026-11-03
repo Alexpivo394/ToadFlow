@@ -56,6 +56,9 @@ public sealed class CollisionImageOptions
 {
     public int Threads { get; set; }
 
+    /// <summary>Сколько интерактивных отрисовок может ждать в очереди; дальше — 429.</summary>
+    public int InteractiveCapacity { get; set; } = 64;
+
     internal int ResolvedThreads => Threads > 0 ? Threads : Math.Max(1, Environment.ProcessorCount / 2);
 }
 
@@ -71,9 +74,8 @@ public sealed class CollisionImages
     /// <summary>Версия рисовальщика: увеличить, когда картинки должны перерисоваться (другой ракурс, цвета, размер).</summary>
     public const int RendererVersion = 2;
 
-    private readonly ConcurrentDictionary<(Guid, string), Lazy<Task<ImageResult>>> _pending = new();
+    private readonly RenderQueue<(Guid, string), ImageResult> _queue;
     private readonly PartElementsCache _cache;
-    private readonly SemaphoreSlim _gate;
     private readonly string _root;
     private readonly ILogger<CollisionImages> _logger;
     private int _renders;
@@ -87,11 +89,15 @@ public sealed class CollisionImages
         _cache = cache;
         _logger = logger;
         Threads = options.Value.ResolvedThreads;
-        _gate = new SemaphoreSlim(Threads, Threads);
+        ArchiveWindow = Math.Max(1, Threads / 2);
+        _queue = new RenderQueue<(Guid, string), ImageResult>(Threads, ArchiveWindow, options.Value.InteractiveCapacity);
     }
 
     /// <summary>Сколько картинок рисуется одновременно.</summary>
     public int Threads { get; }
+
+    /// <summary>Сколько из них могут занять выгрузки (отчёт, архив): остальные — людям.</summary>
+    public int ArchiveWindow { get; }
 
     /// <summary>Сколько раз рисовал (для тестов).</summary>
     public int Renders => Volatile.Read(ref _renders);
@@ -103,23 +109,30 @@ public sealed class CollisionImages
     internal int MaxConcurrentRenders => Volatile.Read(ref _maxActive);
 
     /// <param name="ct">Отменяет только ожидание этого запроса; отрисовку, которую ждут другие, он не отменяет.</param>
-    public async Task<ImageResult> GetAsync(ImageTarget target, CancellationToken ct)
+    /// <param name="priority">Выгрузки (отчёт, архив) рисуются в своём окне потоков и уступают людям.</param>
+    /// <returns>Итог; при полной очереди интерактивных — 429 (клиент повторит через несколько секунд).</returns>
+    public async Task<ImageResult> GetAsync(ImageTarget target, CancellationToken ct, ImagePriority priority = ImagePriority.Interactive)
     {
         var path = ClashStorage.ImagePath(_root, target.PartId, target.CollisionId, target.Version);
         if (File.Exists(path)) return Ok(path);
 
-        var key = (target.CollisionId, target.Version);
-        var render = _pending.GetOrAdd(key, _ => new Lazy<Task<ImageResult>>(() => Task.Run(() => RenderOnceAsync(key, target, path))));
-        return await render.Value.WaitAsync(ct);
+        try
+        {
+            return await _queue.RunAsync((target.CollisionId, target.Version), priority, token => RenderOnceAsync(target, path, token), ct);
+        }
+        catch (RenderQueueFullException full)
+        {
+            return new ImageResult(StatusCodes.Status429TooManyRequests, null, full.Message);
+        }
     }
 
-    /// <summary>Общая отрисовка ключа; по завершении — и при ошибке — ключ снимается, следующий запрос начнёт заново или найдёт файл.</summary>
-    private async Task<ImageResult> RenderOnceAsync((Guid, string) key, ImageTarget target, string path)
+    /// <summary>Отрисовка ключа; ошибка не кешируется — следующий запрос начнёт заново или найдёт файл.</summary>
+    private async Task<ImageResult> RenderOnceAsync(ImageTarget target, string path, CancellationToken ct)
     {
         Interlocked.Increment(ref _renderStarts);
         try
         {
-            return await RenderAsync(target, path);
+            return await RenderAsync(target, path, ct);
         }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -131,19 +144,15 @@ public sealed class CollisionImages
             _logger.LogError(exception, "Картинка коллизии {Collision} (прогон {Run}) не нарисована", target.CollisionId, target.RunId);
             return new ImageResult(StatusCodes.Status500InternalServerError, null, "картинку не удалось нарисовать");
         }
-        finally
-        {
-            _pending.TryRemove(key, out _);
-        }
     }
 
-    private async Task<ImageResult> RenderAsync(ImageTarget target, string path)
+    /// <param name="ct">Все ждущие ушли: отрисовка бросается на ближайшей проверке (сцена ещё не собрана или ещё не нарисована).</param>
+    private async Task<ImageResult> RenderAsync(ImageTarget target, string path, CancellationToken ct)
     {
-        await _gate.WaitAsync();
-        try
         {
-            // Файл мог появиться, пока запрос шёл к общей отрисовке: прежняя закончилась и сняла ключ.
+            // Файл мог появиться, пока запрос стоял в очереди: прежняя отрисовка закончилась и сняла ключ.
             if (File.Exists(path)) return Ok(path);
+            ct.ThrowIfCancellationRequested();
 
             var models = new List<SceneModel>(target.Models.Count);
             foreach (var model in target.Models)
@@ -172,8 +181,9 @@ public sealed class CollisionImages
                         return null;
                     }
 
+                    ct.ThrowIfCancellationRequested();
                     return CollisionRenderer.Render(scene).Png;
-                });
+                }, ct);
             }
             finally
             {
@@ -185,10 +195,6 @@ public sealed class CollisionImages
             Interlocked.Increment(ref _renders);
             await ClashStorage.WriteImageAsync(_root, target.PartId, target.CollisionId, target.Version, new MemoryStream(png), CancellationToken.None);
             return Ok(path);
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 

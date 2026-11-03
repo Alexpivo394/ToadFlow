@@ -20,6 +20,7 @@ public static class ImageEndpoints
         for (var attempt = 0; ; attempt++)
         {
             var result = await images.GetAsync(target, ct);
+            if (result.Status == StatusCodes.Status429TooManyRequests) http.Response.Headers.RetryAfter = "5";
             if (result.Status != StatusCodes.Status200OK) return Results.Json(new { error = result.Error }, statusCode: result.Status);
             FileStream file;
             try

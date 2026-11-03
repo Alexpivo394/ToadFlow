@@ -8,8 +8,9 @@ namespace ToadFlow.Server.Clash.Reports;
 
 /// <summary>
 ///     Картинки HTML-выгрузки первых <see cref="ReportHtml.MaxImages" /> строк. Строка, попав в окно перед записью, начинает
-///     рисоваться: впереди пишущего не больше 2 × <see cref="CollisionImages.Threads" /> картинок, поэтому выгрузка не занимает все
-///     потоки отрисовки надолго и пишется по мере готовности. В памяти — пути к файлам; байты читаются, когда строка пишется.
+///     рисоваться: впереди пишущего не больше 2 × <see cref="CollisionImages.ArchiveWindow" /> картинок. Выгрузка рисует в своём окне
+///     потоков, уступает картинкам, которые ждут люди, и пишется по мере готовности. В памяти — пути к файлам; байты читаются, когда
+///     строка пишется.
 /// </summary>
 internal sealed class ReportImages
 {
@@ -25,7 +26,7 @@ internal sealed class ReportImages
         _ct = ct;
     }
 
-    private int Window => 2 * _images.Threads;
+    private int Window => 2 * _images.ArchiveWindow;
 
     /// <summary>Цели картинок первых строк выборки — до записи, пока соединение с базой не занято потоком строк.</summary>
     public static async Task<ReportImages> LoadAsync(IQueryable<ReportRowSource> rows, ToadFlowDb db, CollisionImages images, CancellationToken ct)
@@ -69,7 +70,7 @@ internal sealed class ReportImages
     {
         try
         {
-            var result = await _images.GetAsync(target, _ct);
+            var result = await _images.GetAsync(target, _ct, ImagePriority.Archive);
             return result.Status == StatusCodes.Status200OK ? result.Path : null;
         }
         catch (OperationCanceledException)
