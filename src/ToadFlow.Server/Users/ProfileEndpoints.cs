@@ -47,7 +47,7 @@ public static class ProfileEndpoints
 
     private static async Task<IResult> UpdateAsync(ProfileRequest request, HttpContext http, ToadFlowDb db, IDomainEvents events, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "Укажите имя" });
+        if (UserEndpoints.DisplayNameError(request.DisplayName) is { } nameError) return Results.BadRequest(new { error = nameError });
         if (Contacts(request.Position, request.Email, request.Phone, out var contacts) is { } error) return Results.BadRequest(new { error });
 
         var user = await db.Users.SingleAsync(u => u.Id == http.User.UserId(), ct);
@@ -58,8 +58,12 @@ public static class ProfileEndpoints
         return Results.Ok(UserView.From(user));
     }
 
+    /// <summary>
+    ///     Смена своего пароля закрывает все сессии пользователя (другие браузеры, плагин), а этой выдаёт новый JWT — человек
+    ///     продолжает работать, не входя заново.
+    /// </summary>
     private static async Task<IResult> ChangePasswordAsync(ChangePasswordRequest request, HttpContext http, ToadFlowDb db, IDomainEvents events,
-        CancellationToken ct)
+        RefreshTokens refresh, TokenService tokens, Microsoft.Extensions.Caching.Memory.IMemoryCache cache, CancellationToken ct)
     {
         var user = await db.Users.SingleAsync(u => u.Id == http.User.UserId(), ct);
         var hasher = new PasswordHasher<User>();
@@ -68,8 +72,10 @@ public static class ProfileEndpoints
         if (UserEndpoints.PasswordError(request.New) is { } error) return Results.BadRequest(new { error });
 
         user.PasswordHash = hasher.HashPassword(user, request.New);
+        await UserSessions.EndAllAsync(user, refresh, ct);
         await db.SaveChangesAsync(ct);
+        cache.ForgetUser(user.Id);
         events.Publish(new UserChanged(http.User.Actor(), user.Id, $"{user.DisplayName} сменил(а) свой пароль"));
-        return Results.NoContent();
+        return Results.Ok(new LoginResponse(tokens.Issue(user), UserView.From(user)));
     }
 }

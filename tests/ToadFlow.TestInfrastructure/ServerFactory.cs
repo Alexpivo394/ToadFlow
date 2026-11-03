@@ -26,10 +26,16 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         builder.UseSetting("Database:Embedded", "false");
         builder.UseSetting("ConnectionStrings:Postgres", connectionString);
         builder.UseSetting("Auth:JwtKey", "test-jwt-key-0123456789abcdef0123456789abcdef");
+        // Тесты входят часто и с одного адреса: лимиты частоты проверяет свой тест (RateLimitTests).
+        builder.UseSetting("Auth:Limits:LoginPerMinute", "100000");
+        builder.UseSetting("Auth:Limits:RegisterPer10Minutes", "100000");
         builder.UseSetting("Admin:Login", AdminLogin);
         builder.UseSetting("Admin:Password", AdminPassword);
         builder.UseSetting("Clash:StorageRoot", ClashStorageRoot);
         builder.UseSetting("Clash:EngineKey", EngineKey);
+        // Тесты входят часто и с одного адреса: лимиты частоты проверяет свой тест (RateLimitTests).
+        builder.UseSetting("Auth:Limits:LoginPerMinute", "100000");
+        builder.UseSetting("Auth:Limits:RegisterPer10Minutes", "100000");
         if (time is not null) builder.ConfigureServices(collection => collection.Replace(ServiceDescriptor.Singleton(time)));
         if (services is not null) builder.ConfigureServices(services);
     }

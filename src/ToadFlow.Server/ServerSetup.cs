@@ -49,9 +49,11 @@ public static class ServerSetup
 
     public static void UseToadFlowServer(this WebApplication app)
     {
+        app.UseForwardedHeaders(); // адрес клиента за nginx — для лимитов входа и регистрации
         app.UseRequestDecompression();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseRateLimiter();
 
         // Участники — любая роль, в том числе проектировщик; всё остальное ядра и модулей — от наблюдателя и старше.
         var members = app.MapGroup("/api").RequireAuthorization(Policies.Member);

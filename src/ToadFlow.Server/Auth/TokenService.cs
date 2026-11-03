@@ -11,6 +11,9 @@ public sealed class TokenService(IOptions<AuthOptions> options, TimeProvider tim
 {
     public const string Issuer = "toadflow";
 
+    /// <summary>Штамп безопасности пользователя на момент выдачи (<see cref="User.SecurityStamp" />).</summary>
+    public const string StampClaim = "stamp";
+
     public static SymmetricSecurityKey Key(string jwtKey) => new(Encoding.UTF8.GetBytes(jwtKey));
 
     public string Issue(User user)
@@ -19,7 +22,8 @@ public sealed class TokenService(IOptions<AuthOptions> options, TimeProvider tim
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.DisplayName),
-            new Claim(ClaimTypes.Role, user.Role.ToString())
+            new Claim(ClaimTypes.Role, user.Role.ToString()),
+            new Claim(StampClaim, user.SecurityStamp.ToString())
         };
         var now = time.GetUtcNow().UtcDateTime;
         var token = new JwtSecurityToken(Issuer, Issuer, claims, now, now.AddHours(options.Value.TokenLifetimeHours),

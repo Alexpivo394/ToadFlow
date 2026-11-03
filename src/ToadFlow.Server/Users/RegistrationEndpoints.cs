@@ -34,7 +34,7 @@ public static class RegistrationEndpoints
     {
         members.MapGet("/auth/disciplines", (NamingStore naming, IEnumerable<IDisciplineSource> sources, CancellationToken ct) =>
             Disciplines.ListAsync(naming, sources, ct)).AllowAnonymous();
-        members.MapPost("/auth/register", RegisterAsync).AllowAnonymous();
+        members.MapPost("/auth/register", RegisterAsync).AllowAnonymous().RequireRateLimiting(Auth.AuthRateLimits.Register);
     }
 
     private static async Task<IResult> RegisterAsync(RegisterRequest request, ToadFlowDb db, NamingStore naming, IEnumerable<IDisciplineSource> sources,

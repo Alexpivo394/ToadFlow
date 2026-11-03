@@ -27,6 +27,12 @@ public sealed class User
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 
+    /// <summary>
+    ///     Меняется при смене пароля, роли и отключении: выданные раньше JWT (claim <c>stamp</c>) перестают действовать сразу, а не через
+    ///     12 часов, и refresh-токены пользователя отзываются.
+    /// </summary>
+    public Guid SecurityStamp { get; set; } = Guid.NewGuid();
+
     public static string NormalizeLogin(string login) => login.Trim().ToLowerInvariant();
 
     public static User Create(string login, string displayName, UserRole role, string passwordHash, DateTimeOffset now) => new()

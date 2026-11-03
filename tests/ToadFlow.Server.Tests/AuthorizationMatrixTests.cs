@@ -13,7 +13,7 @@ namespace ToadFlow.Server.Tests;
 /// <summary>Наблюдатель ничего не меняет: все изменяющие маршруты API ему запрещены. Новые маршруты попадают сюда сами.</summary>
 public class AuthorizationMatrixTests : ServerTest
 {
-    private static readonly string[] Open = ["/api/auth/login", "/api/auth/register", "/api/agents/register"];
+    private static readonly string[] Open = ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout", "/api/auth/register", "/api/agents/register"];
 
     /// <summary>
     ///     Доступно и наблюдателю: свой профиль, своя отметка захода в «Мои коллизии», свои токены доступа и предпросмотры разбора имён и

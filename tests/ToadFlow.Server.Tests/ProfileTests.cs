@@ -39,7 +39,7 @@ public class ProfileTests : ServerTest
 
         (await viewer.PostJsonAsync("/api/profile/password", new { current = "wrong-pass", @new = "new-pass-456" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await viewer.PostJsonAsync("/api/profile/password", new { current = UserPassword, @new = "123" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await viewer.PostJsonAsync("/api/profile/password", new { current = UserPassword, @new = "new-pass-456" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await viewer.PostJsonAsync("/api/profile/password", new { current = UserPassword, @new = "new-pass-456" })).StatusCode.ShouldBe(HttpStatusCode.OK); // с новым токеном этой сессии
 
         (await LoginAsync(me.Login, "new-pass-456")).ShouldNotBeNull();
     }

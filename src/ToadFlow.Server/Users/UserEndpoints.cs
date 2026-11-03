@@ -100,14 +100,19 @@ public static class UserEndpoints
         return Results.Ok(UserView.From(user));
     }
 
-    /// <summary>Имя и контакты — координатор правит их из карточки пользователя, как сам человек в профиле.</summary>
+    /// <summary>
+    ///     Имя и контакты — координатор правит их из карточки пользователя, как сам человек в профиле. Имя администратора и другого
+    ///     координатора координатор не меняет: имя — подпись в журнале событий.
+    /// </summary>
     private static async Task<IResult> SetContactsAsync(Guid id, ProfileRequest request, ToadFlowDb db, IMemoryCache cache, HttpContext http,
         IDomainEvents events, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "Укажите имя" });
+        if (DisplayNameError(request.DisplayName) is { } nameError) return Results.BadRequest(new { error = nameError });
         if (ProfileEndpoints.Contacts(request.Position, request.Email, request.Phone, out var contacts) is { } error) return Results.BadRequest(new { error });
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound();
+        if (!http.User.IsInRole(nameof(UserRole.Admin)) && user.Id != http.User.UserId() && user.Role is UserRole.Admin or UserRole.Operator)
+            return Results.Json(new { error = "Данные администратора и координатора меняет администратор" }, statusCode: StatusCodes.Status403Forbidden);
 
         user.DisplayName = request.DisplayName.Trim();
         (user.Position, user.Email, user.Phone) = contacts;
@@ -132,7 +137,7 @@ public static class UserEndpoints
         return Results.Created($"/api/users/{user.Id}", UserView.From(user));
     }
 
-    private static async Task<IResult> UpdateAsync(Guid id, UpdateUserRequest request, ToadFlowDb db, IMemoryCache cache, HttpContext http, IDomainEvents events)
+    private static async Task<IResult> UpdateAsync(Guid id, UpdateUserRequest request, ToadFlowDb db, IMemoryCache cache, HttpContext http, IDomainEvents events, RefreshTokens tokens)
     {
         if (string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "Укажите имя" });
         var user = await db.Users.FindAsync(id);
@@ -141,6 +146,8 @@ public static class UserEndpoints
         var losesAdmin = user is { Role: UserRole.Admin, IsDisabled: false } && (request.Role != UserRole.Admin || request.IsDisabled);
         if (losesAdmin && await IsLastActiveAdminAsync(db, id)) return Results.Conflict(new { error = LastAdmin });
 
+        // Новая роль или отключение действуют сразу: старые сессии закрываются.
+        if (user.Role != request.Role || (request.IsDisabled && !user.IsDisabled)) await UserSessions.EndAllAsync(user, tokens, CancellationToken.None);
         user.DisplayName = request.DisplayName.Trim();
         user.Role = request.Role;
         user.IsDisabled = request.IsDisabled;
@@ -151,7 +158,7 @@ public static class UserEndpoints
         return Results.Ok(UserView.From(user));
     }
 
-    private static async Task<IResult> SetPasswordAsync(Guid id, PasswordRequest request, ToadFlowDb db, HttpContext http, IDomainEvents events)
+    private static async Task<IResult> SetPasswordAsync(Guid id, PasswordRequest request, ToadFlowDb db, HttpContext http, IDomainEvents events, RefreshTokens tokens, IMemoryCache cache)
     {
         if (string.IsNullOrEmpty(request.Password) || request.Password.Length < MinPasswordLength)
             return Results.BadRequest(new { error = $"Пароль — не короче {MinPasswordLength} символов" });
@@ -159,7 +166,10 @@ public static class UserEndpoints
         if (user is null) return Results.NotFound();
 
         user.PasswordHash = new PasswordHasher<User>().HashPassword(user, request.Password);
+        // Сброс пароля закрывает все сессии: тот, кто знал старый, больше не войдёт и со старым токеном.
+        await UserSessions.EndAllAsync(user, tokens, CancellationToken.None);
         await db.SaveChangesAsync();
+        cache.ForgetUser(id);
         events.Publish(new UserChanged(http.User.Actor(), id, $"Сброшен пароль пользователя {user.DisplayName}"));
         return Results.NoContent();
     }
@@ -181,12 +191,22 @@ public static class UserEndpoints
     private static Task<bool> IsLastActiveAdminAsync(ToadFlowDb db, Guid id) =>
         db.Users.AllAsync(u => u.Id == id || u.Role != UserRole.Admin || u.IsDisabled);
 
+    public const int MaxLoginLength = 64;
+    public const int MaxNameLength = 200;
+
+    /// <summary>Новый логин, имя и пароль. Набор символов логина проверяется только у новых: прежние логины остаются как есть.</summary>
     public static string? Validate(string login, string displayName, string password)
     {
         if (string.IsNullOrWhiteSpace(login)) return "Укажите логин";
-        if (string.IsNullOrWhiteSpace(displayName)) return "Укажите имя";
-        return PasswordError(password);
+        var normalized = User.NormalizeLogin(login);
+        if (normalized.Length > MaxLoginLength) return $"Логин — не длиннее {MaxLoginLength} символов";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, "^[a-z0-9._-]+$"))
+            return "Логин — латинские буквы, цифры, точка, дефис и подчёркивание";
+        return DisplayNameError(displayName) ?? PasswordError(password);
     }
+
+    public static string? DisplayNameError(string? displayName) =>
+        string.IsNullOrWhiteSpace(displayName) ? "Укажите имя" : displayName.Trim().Length > MaxNameLength ? $"Имя — не длиннее {MaxNameLength} символов" : null;
 
     public static string? PasswordError(string? password) =>
         string.IsNullOrEmpty(password) || password.Length < MinPasswordLength ? $"Пароль — не короче {MinPasswordLength} символов" : null;

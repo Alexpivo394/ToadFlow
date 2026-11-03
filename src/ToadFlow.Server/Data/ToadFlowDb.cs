@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Modules;
 
@@ -23,6 +24,7 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
     public DbSet<JobLogLine> JobLogLines => Set<JobLogLine>();
     public DbSet<SystemEvent> SystemEvents => Set<SystemEvent>();
     public DbSet<Setting> Settings => Set<Setting>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configuration)
     {
@@ -36,6 +38,15 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
         {
             user.HasIndex(u => u.Login).IsUnique();
             user.Property(u => u.Disciplines).HasDefaultValueSql("'{}'::text[]");
+            user.Property(u => u.SecurityStamp).HasDefaultValueSql("gen_random_uuid()");
+        });
+
+        model.Entity<RefreshToken>(token =>
+        {
+            token.ToTable("refresh_tokens");
+            token.HasIndex(t => t.TokenHash).IsUnique();
+            token.HasIndex(t => t.UserId);
+            token.HasOne<User>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<ApiToken>(token =>
