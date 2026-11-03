@@ -163,7 +163,7 @@ public class ClashEngineQueueTests : ServerTest
         (await RunAsync(run.RunId)).State.ShouldBe(EngineRunState.Queued);
         (await ClaimAsync(engine)).ShouldNotBeNull().Attempt.ShouldBe(2);
         _time.Advance(TimeSpan.FromMinutes(1));
-        (await engine.PostJsonAsync($"/api/engine/runs/{run.RunId}/progress", new EngineProgress(run.RunId, "Поиск", "пары"))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await engine.PostJsonAsync($"/api/engine/runs/{run.RunId}/progress", new EngineProgress(run.RunId, "Поиск", "пары", 2))).StatusCode.ShouldBe(HttpStatusCode.OK);
         _time.Advance(TimeSpan.FromMinutes(1.5));
         await sweeper.SweepAsync(CancellationToken.None);
         (await RunAsync(run.RunId)).State.ShouldBe(EngineRunState.Running); // ход продлил аренду
@@ -221,7 +221,7 @@ public class ClashEngineQueueTests : ServerTest
         await ClaimAsync(engine);
         await PostResultAsync(engine, second.RunId, 0, false, [Hit(2)]);
 
-        (await engine.PostJsonAsync($"/api/engine/runs/{second.RunId}/fail", new EngineFailure(second.RunId, "слепок повреждён", false))).StatusCode
+        (await engine.PostJsonAsync($"/api/engine/runs/{second.RunId}/fail", new EngineFailure(second.RunId, "слепок повреждён", false, 1))).StatusCode
             .ShouldBe(HttpStatusCode.OK);
 
         var run = await RunAsync(second.RunId);
@@ -241,7 +241,7 @@ public class ClashEngineQueueTests : ServerTest
         var engine = EngineClient(Server);
         await ClaimAsync(engine);
 
-        await engine.PostJsonAsync($"/api/engine/runs/{run.RunId}/fail", new EngineFailure(run.RunId, "сеть", true));
+        await engine.PostJsonAsync($"/api/engine/runs/{run.RunId}/fail", new EngineFailure(run.RunId, "сеть", true, 1));
 
         (await RunAsync(run.RunId)).State.ShouldBe(EngineRunState.Queued);
     }
@@ -259,7 +259,7 @@ public class ClashEngineQueueTests : ServerTest
         (await admin.PostAsync($"/api/clash/parts/{partId}/draft/run/cancel", null)).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await RunAsync(run.RunId)).State.ShouldBe(EngineRunState.Cancelled);
-        (await engine.PostJsonAsync($"/api/engine/runs/{run.RunId}/progress", new EngineProgress(run.RunId, "Поиск", "пары"))).StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await engine.PostJsonAsync($"/api/engine/runs/{run.RunId}/progress", new EngineProgress(run.RunId, "Поиск", "пары", 1))).StatusCode.ShouldBe(HttpStatusCode.Conflict);
         (await PostResultAsync(engine, run.RunId, 0, true, [Hit(1)], Stats)).StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
 

@@ -37,7 +37,8 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {run.PartId} FOR UPDATE").SingleAsync(ct);
             // Отмена и возврат в очередь могли пройти, пока писалась последняя часть: найденные пары уже удалены.
-            var state = await db.Database.SqlQuery<string>($"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} FOR UPDATE").SingleAsync(ct);
+            var state = await db.Database.SqlQuery<string>($"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} AND attempt = {run.Attempt} FOR UPDATE")
+                .SingleOrDefaultAsync(ct);
             if (state != nameof(EngineRunState.Running)) return null;
             var hits = await db.Set<ClashApprovedHit>().AsNoTracking().Where(h => h.RunId == run.Id).OrderBy(h => h.Number).ToListAsync(ct);
             var existing = (await db.Set<ClashCollision>().AsNoTracking().Where(c => c.PartId == run.PartId).ToListAsync(ct))

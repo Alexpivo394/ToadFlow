@@ -14,6 +14,9 @@ namespace ToadFlow.Server.Clash.Engine;
 /// </summary>
 public static class EngineEndpoints
 {
+    /// <summary>Ключ advisory-блокировки выдачи прогонов.</summary>
+    internal const long ClaimLockKey = 0x544F4144_434C4153;
+
     public static void MapClashEngine(this IEndpointRouteBuilder app)
     {
         var engine = app.MapGroup("/api/engine").RequireAuthorization(EngineAuthHandler.Policy);
@@ -27,12 +30,16 @@ public static class EngineEndpoints
 
     /// <summary>
     ///     Следующий прогон очереди, если сейчас ни один не идёт: движок считает по одному прогону. Основа утверждённого
-    ///     прогона — утверждённый прогон части на момент выдачи: пока прогон ждал, мог закончиться другой.
+    ///     прогона — утверждённый прогон части на момент выдачи: пока прогон ждал, мог закончиться другой. Выдачи идут по очереди
+    ///     (advisory-блокировка): иначе два работника под READ COMMITTED оба увидели бы «ничего не идёт». Строки прежней попытки
+    ///     стираются тут же: новая попытка пишет все части заново, а лишние части старой попали бы в сверку.
     /// </summary>
     private static async Task<IResult> ClaimAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var lease = now + EngineRun.Lease;
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({ClaimLockKey})", ct);
         var queued = nameof(EngineRunState.Queued);
         var running = nameof(EngineRunState.Running);
         var approved = nameof(EngineRunKind.Approved);
@@ -50,6 +57,9 @@ public static class EngineEndpoints
         if (claimed.Count == 0) return Results.NoContent();
 
         var run = claimed[0];
+        await db.Set<ClashDraftHit>().Where(h => h.RunId == run.Id).ExecuteDeleteAsync(ct);
+        await db.Set<ClashApprovedHit>().Where(h => h.RunId == run.Id).ExecuteDeleteAsync(ct);
+        await transaction.CommitAsync(ct);
         events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         return Results.Ok(new EngineRunAssignment(run.Id, run.ConfigurationJson, run.Models, run.Attempt,
             run.Kind == EngineRunKind.Approved ? EngineApi.Approved : EngineApi.Draft));
@@ -59,9 +69,10 @@ public static class EngineEndpoints
     ///     Основа утверждённого прогона: конфигурация и слепки прошлого удачного прогона и все коллизии части, кроме исправленных.
     ///     Прошлого прогона нет — пустая основа.
     /// </summary>
-    private static async Task<IResult> BasisAsync(Guid id, ToadFlowDb db, CancellationToken ct)
+    private static async Task<IResult> BasisAsync(Guid id, [FromQuery(Name = EngineApi.AttemptQuery)] int attempt, ToadFlowDb db, CancellationToken ct)
     {
-        var run = await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
+        var run = await db.Set<EngineRun>().AsNoTracking()
+            .SingleOrDefaultAsync(r => r.Id == id && r.Attempt == attempt && r.State == EngineRunState.Running, ct);
         if (run is null) return NotRunning();
         var previous = run.PreviousRunId is { } previousId
             ? await db.Set<EngineRun>().AsNoTracking().SingleOrDefaultAsync(r => r.Id == previousId && r.State == EngineRunState.Succeeded, ct)
@@ -90,7 +101,7 @@ public static class EngineEndpoints
     {
         var lease = time.GetUtcNow() + EngineRun.Lease;
         var stage = string.IsNullOrWhiteSpace(progress.Text) ? progress.Stage : $"{progress.Stage}: {progress.Text}";
-        var updated = await db.Set<EngineRun>().Where(r => r.Id == id && r.State == EngineRunState.Running)
+        var updated = await db.Set<EngineRun>().Where(r => r.Id == id && r.Attempt == progress.Attempt && r.State == EngineRunState.Running)
             .ExecuteUpdateAsync(r => r.SetProperty(x => x.LeaseUntil, lease).SetProperty(x => x.Stage, stage), ct);
         if (updated == 0) return NotRunning();
         events.Publish(new ClashDraftChanged(Actor.System, await db.Set<EngineRun>().Where(r => r.Id == id).Select(r => r.PartId).SingleAsync(ct)));
@@ -100,53 +111,50 @@ public static class EngineEndpoints
     private static async Task<IResult> ResultAsync(Guid id, int part, bool last, HttpRequest request, ToadFlowDb db, DraftHits hits,
         CollisionReconciler reconciler, TimeProvider time, IDomainEvents events, CancellationToken ct)
     {
-        var run = await db.Set<EngineRun>().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
-        if (run is null) return NotRunning();
         if (part < 0) return Results.BadRequest(new { error = "Номер части — от 0" });
 
         var result = await JsonSerializer.DeserializeAsync<EngineRunResult>(request.Body, ToadFlowDb.Json, ct);
         if (result is null || result.Hits.Count > EngineApi.ResultChunkHits)
             return Results.BadRequest(new { error = $"Часть результата — до {EngineApi.ResultChunkHits} коллизий" });
 
-        await hits.WriteChunkAsync(run, part, result.Hits, ct);
-        run.LeaseUntil = time.GetUtcNow() + EngineRun.Lease;
+        var run = await db.Set<EngineRun>().SingleOrDefaultAsync(r => r.Id == id && r.Attempt == result.Attempt && r.State == EngineRunState.Running, ct);
+        if (run is null) return NotRunning();
+
+        // Запись, сверка и финиш проверяют попытку и состояние под блокировкой строки прогона. Если проверка не прошла, прогон
+        // отменили или отдали другой попытке: строки стёрла отмена или выдача, а чужую попытку трогать нельзя.
+        if (!await hits.WriteChunkAsync(run, part, result.Hits, ct)) return NotRunning();
         if (last && run.Kind == EngineRunKind.Approved)
         {
-            if (await reconciler.ApplyAsync(run, result.Gone ?? [], result.Matches ?? [], result.Stats, ct) is null)
-            {
-                // Прогон отменили, пока писалась эта часть: она уже никому не нужна.
-                await hits.DiscardAsync(run.Id, ct);
-                return NotRunning();
-            }
+            if (await reconciler.ApplyAsync(run, result.Gone ?? [], result.Matches ?? [], result.Stats, ct) is null) return NotRunning();
 
             events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
             events.Publish(new ClashCollisionsChanged(Actor.System, run.PartId, null));
         }
         else if (last)
         {
-            if (!await hits.CompleteAsync(run, result.Stats, ct))
-            {
-                // Прогон отменили или вернули в очередь, пока писалась последняя часть: она никому не нужна.
-                await hits.DiscardAsync(run.Id, ct);
-                return Results.Conflict(new { error = "Прогон уже отменён или завершён" });
-            }
+            if (!await hits.CompleteAsync(run, result.Stats, ct)) return Results.Conflict(new { error = "Прогон уже отменён или завершён" });
 
             events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         }
-        else await db.SaveChangesAsync(ct);
+
         return Results.Ok();
     }
 
     private static async Task<IResult> FailAsync(Guid id, EngineFailure failure, ToadFlowDb db, DraftHits hits, TimeProvider time, IDomainEvents events,
         CancellationToken ct)
     {
-        var run = await db.Set<EngineRun>().SingleOrDefaultAsync(r => r.Id == id && r.State == EngineRunState.Running, ct);
-        if (run is null) return NotRunning();
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var running = nameof(EngineRunState.Running);
+        var locked = await db.Set<EngineRun>().FromSql($"SELECT * FROM clash_engine_runs WHERE id = {id} AND attempt = {failure.Attempt} AND state = {running} FOR UPDATE")
+            .ToListAsync(ct);
+        if (locked.Count == 0) return NotRunning();
 
+        var run = locked[0];
         await hits.DiscardAsync(run.Id, ct);
         Release(run, failure.Retry, failure.Error, time.GetUtcNow());
-        events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        events.Publish(new ClashDraftChanged(Actor.System, run.PartId));
         return Results.Ok();
     }
 

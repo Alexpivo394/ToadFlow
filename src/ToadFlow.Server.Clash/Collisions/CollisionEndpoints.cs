@@ -177,9 +177,14 @@ public static class CollisionEndpoints
         // Сверка идёт под той же блокировкой: отмена либо успевает до неё, либо видит прогон законченным.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockPartAsync(db, id, ct);
-        var active = await db.Set<EngineRun>()
-            .Where(r => r.PartId == id && r.Kind == EngineRunKind.Approved && (r.State == EngineRunState.Queued || r.State == EngineRunState.Running))
-            .ToListAsync(ct);
+        var queued = nameof(EngineRunState.Queued);
+        var running = nameof(EngineRunState.Running);
+        var approved = nameof(EngineRunKind.Approved);
+        var active = await db.Set<EngineRun>().FromSql($"""
+            SELECT * FROM clash_engine_runs
+            WHERE part_id = {id} AND kind = {approved} AND state IN ({queued}, {running})
+            FOR UPDATE
+            """).ToListAsync(ct);
         foreach (var run in active)
         {
             await hits.DiscardAsync(run.Id, ct);

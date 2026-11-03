@@ -15,6 +15,7 @@ builder.Services.AddSingleton(provider =>
     http.DefaultRequestHeaders.Add(EngineApi.KeyHeader, options.EngineKey);
     return new EngineClient(http);
 });
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<EngineWorker>();
 builder.Services.AddHostedService<WorkerLoop>();

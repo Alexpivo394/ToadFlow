@@ -22,8 +22,11 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHit
     /// <summary>
     ///     Пишет часть результата: номера коллизий — <c>part * ResultChunkHits + i + 1</c>. Утверждённый прогон пишет в
     ///     <c>clash_approved_hits</c> с отпечатками — оттуда коллизии сверяются с базой после последней части.
+    ///     Попытка и состояние проверяются под блокировкой строки прогона: выдача новой попытки, отмена и уборщик берут ту же.
+    ///     Заодно под блокировкой продлевается аренда.
     /// </summary>
-    public async Task WriteChunkAsync(EngineRun run, int part, IReadOnlyList<EngineHit> hits, CancellationToken ct)
+    /// <returns>false — прогон уже не в работе у этой попытки, ничего не записано.</returns>
+    public async Task<bool> WriteChunkAsync(EngineRun run, int part, IReadOnlyList<EngineHit> hits, CancellationToken ct)
     {
         var first = part * EngineApi.ResultChunkHits + 1;
         var last = first + EngineApi.ResultChunkHits - 1;
@@ -32,6 +35,17 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHit
         try
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var running = nameof(EngineRunState.Running);
+            var current = await db.Database.SqlQuery<string>(
+                $"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} AND attempt = {run.Attempt} AND state = {running} FOR UPDATE").ToListAsync(ct);
+            if (current.Count == 0)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return false;
+            }
+
+            var lease = time.GetUtcNow() + EngineRun.Lease;
+            await db.Database.ExecuteSqlAsync($"UPDATE clash_engine_runs SET lease_until = {lease} WHERE id = {run.Id}", ct);
             if (approved)
                 await db.Set<ClashApprovedHit>().Where(h => h.RunId == run.Id && h.Number >= first && h.Number <= last).ExecuteDeleteAsync(ct);
             else
@@ -69,6 +83,7 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHit
             }
 
             await transaction.CommitAsync(ct);
+            return true;
         }
         finally
         {
@@ -85,7 +100,8 @@ public sealed class DraftHits(ToadFlowDb db, TimeProvider time, ILogger<DraftHit
     public async Task<bool> CompleteAsync(EngineRun run, EngineRunStats? stats, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var state = await db.Database.SqlQuery<string>($"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} FOR UPDATE").SingleAsync(ct);
+        var state = await db.Database.SqlQuery<string>($"SELECT state AS \"Value\" FROM clash_engine_runs WHERE id = {run.Id} AND attempt = {run.Attempt} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
         if (state != nameof(EngineRunState.Running))
         {
             await transaction.RollbackAsync(CancellationToken.None);

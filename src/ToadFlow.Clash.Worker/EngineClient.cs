@@ -35,7 +35,10 @@ public sealed class WorkerOptions
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToadFlow", "clash-engine-cache");
 }
 
-/// <summary>Протокол работника с сервером (<c>/api/engine</c>). Ответ 409 — прогон больше не идёт: его отменили или отдали другой попытке.</summary>
+/// <summary>
+///     Протокол работника с сервером (<c>/api/engine</c>). Каждый запрос о прогоне несёт номер попытки. Ответ 409 — прогон больше не идёт:
+///     его отменили или отдали другой попытке.
+/// </summary>
 public sealed class EngineClient(HttpClient http)
 {
     private static readonly JsonSerializerOptions Json = JsonSerializerOptions.Web;
@@ -53,9 +56,9 @@ public sealed class EngineClient(HttpClient http)
     }
 
     /// <returns>false — прогон больше не идёт.</returns>
-    public async Task<bool> ProgressAsync(Guid runId, string stage, string text, CancellationToken ct)
+    public async Task<bool> ProgressAsync(Guid runId, int attempt, string stage, string text, CancellationToken ct)
     {
-        using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/progress", new EngineProgress(runId, stage, text), Json, ct);
+        using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/progress", new EngineProgress(runId, stage, text, attempt), Json, ct);
         if (response.StatusCode == HttpStatusCode.Conflict) return false;
         response.EnsureSuccessStatusCode();
         return true;
@@ -80,9 +83,9 @@ public sealed class EngineClient(HttpClient http)
 
     /// <summary>Основа утверждённого прогона: прошлый прогон и открытые коллизии.</summary>
     /// <returns>null — прогон больше не идёт.</returns>
-    public async Task<EngineBasis?> BasisAsync(Guid runId, CancellationToken ct)
+    public async Task<EngineBasis?> BasisAsync(Guid runId, int attempt, CancellationToken ct)
     {
-        using var response = await http.GetAsync($"api/engine/runs/{runId}/basis", ct);
+        using var response = await http.GetAsync($"api/engine/runs/{runId}/basis?{EngineApi.AttemptQuery}={attempt}", ct);
         if (response.StatusCode == HttpStatusCode.Conflict) return null;
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<EngineBasis>(Json, ct);
@@ -91,24 +94,46 @@ public sealed class EngineClient(HttpClient http)
     /// <param name="gone">Только в последней части утверждённого прогона: открытые пары, которых нет среди найденных.</param>
     /// <param name="matches">Только в последней части утверждённого прогона: предложения сопоставить пересозданные элементы.</param>
     /// <returns>false — прогон больше не идёт.</returns>
-    public async Task<bool> PostResultAsync(Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats, CancellationToken ct,
+    /// <exception cref="EngineServerException">Сервер отклонил или не смог принять результат (не 409): причина — в ответе сервера.</exception>
+    public async Task<bool> PostResultAsync(Guid runId, int attempt, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats, CancellationToken ct,
         IReadOnlyList<EngineGonePair>? gone = null, IReadOnlyList<EngineIdentityMatch>? matches = null)
     {
         using var packed = new MemoryStream();
         await using (var zip = new GZipStream(packed, CompressionLevel.Fastest, leaveOpen: true))
-            await JsonSerializer.SerializeAsync(zip, new EngineRunResult(runId, hits, stats, gone, matches), Json, ct);
+            await JsonSerializer.SerializeAsync(zip, new EngineRunResult(runId, hits, stats, gone, matches, attempt), Json, ct);
         using var content = new ByteArrayContent(packed.ToArray());
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         content.Headers.ContentEncoding.Add("gzip");
         using var response = await http.PostAsync($"api/engine/runs/{runId}/result?part={part}&last={(last ? "true" : "false")}", content, ct);
         if (response.StatusCode == HttpStatusCode.Conflict) return false;
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode) throw await EngineServerException.ReadAsync(response, ct);
         return true;
     }
 
-    public async Task FailAsync(Guid runId, string error, bool retry, CancellationToken ct)
+    public async Task FailAsync(Guid runId, int attempt, string error, bool retry, CancellationToken ct)
     {
-        using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/fail", new EngineFailure(runId, error, retry), Json, ct);
+        using var response = await http.PostAsJsonAsync($"api/engine/runs/{runId}/fail", new EngineFailure(runId, error, retry, attempt), Json, ct);
         if (response.StatusCode != HttpStatusCode.Conflict) response.EnsureSuccessStatusCode();
+    }
+}
+
+/// <summary>Сервер ответил на сдачу результата ошибкой (не 409): сбой сверки, ошибка базы, отказ по содержимому. Это не сбой сети и не повод качать слепки заново.</summary>
+public sealed class EngineServerException(int statusCode, string body) : Exception($"сервер ответил {statusCode}: {body}")
+{
+    private const int MaxBody = 500;
+
+    public int StatusCode { get; } = statusCode;
+
+    /// <summary>Текст ответа сервера, до 500 знаков.</summary>
+    public string Body { get; } = body;
+
+    /// <summary>Сбой может не повториться: шлюз или сервер недоступны (502, 503, 504), сервер перегружен (408, 429). Остальное — решение сервера по этому результату.</summary>
+    public bool Transient => StatusCode is 408 or 429 or 502 or 503 or 504;
+
+    internal static async Task<EngineServerException> ReadAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var text = (await response.Content.ReadAsStringAsync(ct)).Trim();
+        if (text.Length > MaxBody) text = text[..MaxBody] + "…";
+        return new EngineServerException((int)response.StatusCode, text.Length == 0 ? response.ReasonPhrase ?? "" : text);
     }
 }

@@ -250,7 +250,7 @@ public class ClashApprovedRunTests : ServerTest
 
         var third = await RerunAsync(partId);
         (await ClaimAsync(engine)).RunId.ShouldBe(third);
-        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{third}/basis");
+        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{third}/basis?attempt=1");
 
         var open = basis.Open.ShouldHaveSingleItem();
         (open.UniqueIdA, open.FoundByPrevious, open.FingerprintA).ShouldBe(("ua-1", true, 11L));
@@ -271,7 +271,7 @@ public class ClashApprovedRunTests : ServerTest
         var second = await RerunAsync(partId);
         (await ClaimAsync(engine)).RunId.ShouldBe(second);
 
-        (await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{second}/basis")).PreviousEngineVersion.ShouldBe(7);
+        (await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{second}/basis?attempt=1")).PreviousEngineVersion.ShouldBe(7);
     }
 
     [Test]
@@ -282,7 +282,7 @@ public class ClashApprovedRunTests : ServerTest
         var runId = await ApproveAndRunAsync(admin, partId);
         await ClaimAsync(engine);
 
-        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{runId}/basis");
+        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{runId}/basis?attempt=1");
 
         basis.PreviousConfigurationJson.ShouldBeNull();
         basis.PreviousModels.ShouldBeEmpty();
@@ -377,7 +377,7 @@ public class ClashApprovedRunTests : ServerTest
         (await PostApprovedResultAsync(engine, running, 0, true, [Fp(Hit(1)), Fp(Hit(2))], Stats, [], [])).EnsureSuccessStatusCode();
 
         (await ClaimAsync(engine)).RunId.ShouldBe(queued);
-        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{queued}/basis");
+        var basis = await engine.GetJsonAsync<EngineBasis>($"/api/engine/runs/{queued}/basis?attempt=1");
 
         (await RunAsync(queued)).PreviousRunId.ShouldBe(running);
         basis.Open.Where(p => p.FoundByPrevious).Select(p => p.UniqueIdA).Order().ShouldBe(["ua-1", "ua-2"]);

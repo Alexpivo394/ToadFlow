@@ -53,11 +53,12 @@ public static class ClashDraftFixtures
     }
 
     /// <summary>Часть результата сжатым JSON, как шлёт работник.</summary>
-    public static Task<HttpResponseMessage> PostResultAsync(HttpClient engine, Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats = null)
+    public static Task<HttpResponseMessage> PostResultAsync(HttpClient engine, Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits, EngineRunStats? stats = null,
+        int attempt = 1)
     {
         using var packed = new MemoryStream();
         using (var zip = new GZipStream(packed, CompressionLevel.Fastest, true))
-            JsonSerializer.Serialize(zip, new EngineRunResult(runId, hits, stats), TestJson.Options);
+            JsonSerializer.Serialize(zip, new EngineRunResult(runId, hits, stats, Attempt: attempt), TestJson.Options);
         var content = new ByteArrayContent(packed.ToArray());
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         content.Headers.ContentEncoding.Add("gzip");
@@ -66,11 +67,11 @@ public static class ClashDraftFixtures
 
     /// <summary>Часть результата утверждённого прогона: последняя часть несёт ушедшие пары и сопоставления.</summary>
     public static Task<HttpResponseMessage> PostApprovedResultAsync(HttpClient engine, Guid runId, int part, bool last, IReadOnlyList<EngineHit> hits,
-        EngineRunStats? stats, IReadOnlyList<EngineGonePair> gone, IReadOnlyList<EngineIdentityMatch> matches)
+        EngineRunStats? stats, IReadOnlyList<EngineGonePair> gone, IReadOnlyList<EngineIdentityMatch> matches, int attempt = 1)
     {
         using var packed = new MemoryStream();
         using (var zip = new GZipStream(packed, CompressionLevel.Fastest, true))
-            JsonSerializer.Serialize(zip, new EngineRunResult(runId, hits, stats, last ? gone : null, last ? matches : null), TestJson.Options);
+            JsonSerializer.Serialize(zip, new EngineRunResult(runId, hits, stats, last ? gone : null, last ? matches : null, attempt), TestJson.Options);
         var content = new ByteArrayContent(packed.ToArray());
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         content.Headers.ContentEncoding.Add("gzip");

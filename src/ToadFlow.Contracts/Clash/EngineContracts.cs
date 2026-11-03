@@ -12,7 +12,8 @@ public sealed record EngineRunAssignment(Guid RunId, string ConfigurationJson, I
 public sealed record EngineRunModel(Guid ModelId, string ModelName, string Discipline, Guid SnapshotId, long GeometryBytes, long ParametersBytes);
 
 /// <summary>Ход прогона; заодно продлевает его аренду.</summary>
-public sealed record EngineProgress(Guid RunId, string Stage, string Text);
+/// <param name="Attempt">Попытка из <see cref="EngineRunAssignment.Attempt" />: запрос другой попытки сервер отвергает (409).</param>
+public sealed record EngineProgress(Guid RunId, string Stage, string Text, int Attempt);
 
 /// <summary>
 ///     Коллизия с обеими сторонами. Пара каноническая: сначала элемент с меньшим (<c>ModelA</c>, <c>UniqueIdA</c>) в ordinal-порядке.
@@ -68,12 +69,14 @@ public sealed record EngineRunStats(
 /// <summary>Часть результата прогона; последняя часть несёт статистику, а у утверждённого прогона — ещё ушедшие пары и сопоставления.</summary>
 /// <param name="Gone">Открытые пары основы, которых нет среди найденных, с фактами о них.</param>
 /// <param name="Matches">Предложения сопоставить пересозданные элементы.</param>
+/// <param name="Attempt">Попытка из <see cref="EngineRunAssignment.Attempt" />: часть другой попытки сервер отвергает (409) и не записывает.</param>
 public sealed record EngineRunResult(
     Guid RunId,
     IReadOnlyList<EngineHit> Hits,
     EngineRunStats? Stats,
     IReadOnlyList<EngineGonePair>? Gone = null,
-    IReadOnlyList<EngineIdentityMatch>? Matches = null);
+    IReadOnlyList<EngineIdentityMatch>? Matches = null,
+    int Attempt = 0);
 
 /// <summary>Основа утверждённого прогона: прошлый удачный прогон утверждённой версии части и открытые коллизии.</summary>
 /// <param name="PreviousConfigurationJson">Конфигурация прошлого прогона; null — прошлого не было.</param>
@@ -109,7 +112,8 @@ public sealed record EngineGonePair(string ModelA, string UniqueIdA, string Mode
 public sealed record EngineIdentityMatch(string Model, string OldUniqueId, string NewUniqueId);
 
 /// <param name="Retry">Сбой может не повториться (сеть, ввод-вывод): прогон вернётся в очередь, пока есть попытки.</param>
-public sealed record EngineFailure(Guid RunId, string Error, bool Retry);
+/// <param name="Attempt">Попытка из <see cref="EngineRunAssignment.Attempt" />: сбой другой попытки сервер отвергает (409).</param>
+public sealed record EngineFailure(Guid RunId, string Error, bool Retry, int Attempt);
 
 /// <summary>Правила протокола работника движка.</summary>
 public static class EngineApi
@@ -119,6 +123,9 @@ public static class EngineApi
 
     /// <summary>Сколько коллизий в одной части результата: сотни тысяч коллизий не идут одним телом запроса.</summary>
     public const int ResultChunkHits = 50_000;
+
+    /// <summary>Параметр запроса основы (<c>GET /runs/{id}/basis?attempt=</c>): попытка прогона.</summary>
+    public const string AttemptQuery = "attempt";
 
     /// <summary>Прогон черновика.</summary>
     public const string Draft = "Draft";

@@ -16,11 +16,25 @@ public enum RunOutcome
 
 /// <summary>
 ///     Один прогон черновика: скачать слепки (кеш), прочитать модели, найти коллизии, дополнить их сведениями об элементах
-///     и сдать частями. Ход идёт на сервер во время всего прогона — так сервер видит, что работник жив, а работник узнаёт
-///     об отмене (409) и бросает поиск.
+///     и сдать частями. Ход идёт на сервер таймером весь прогон, в каждой фазе (скачивание прошлых слепков, поиск, сверка,
+///     сжатие и сдача частей) — так сервер видит, что работник жив, а работник узнаёт об отмене (409) и бросает работу.
+///     Каждый запрос несёт номер попытки: ответ другой попытки сервер отвергает.
 /// </summary>
-public sealed class EngineWorker(EngineClient client, SnapshotCache cache, WorkerOptions options, ILogger<EngineWorker> logger)
+public sealed class EngineWorker(EngineClient client, SnapshotCache cache, WorkerOptions options, ILogger<EngineWorker> logger, TimeProvider? time = null)
 {
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+
+    /// <summary>Текущая стадия — ту же строку таймер хода шлёт серверу.</summary>
+    private sealed record Stage(string Name, string Text);
+
+    /// <summary>Сервер сообщил, что прогон больше не идёт (отменён, отдан другой попытке).</summary>
+    private sealed class Stopped
+    {
+        private int _value;
+        public bool ByServer => Volatile.Read(ref _value) == 1;
+        public void Set() => Volatile.Write(ref _value, 1);
+    }
+
     /// <returns>Итог прогона; null — очередь пуста.</returns>
     public async Task<RunOutcome?> RunOnceAsync(CancellationToken ct)
     {
@@ -31,8 +45,23 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
     public async Task<RunOutcome> ProcessAsync(EngineRunAssignment assignment, CancellationToken ct)
     {
         var runId = assignment.RunId;
+        var attempt = assignment.Attempt;
         using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        logger.LogInformation("Прогон {Run}: моделей {Models}, попытка {Attempt}", runId, assignment.Models.Count, assignment.Attempt);
+        var token = cancelled.Token;
+        var stopped = new Stopped();
+        var stage = new Stage("Загрузка моделей", "");
+        var phase = "получить слепки";
+        logger.LogInformation("Прогон {Run}: моделей {Models}, попытка {Attempt}", runId, assignment.Models.Count, attempt);
+
+        Task<bool> Report(string name, string text)
+        {
+            Volatile.Write(ref stage, new Stage(name, text));
+            return client.ProgressAsync(runId, attempt, name, text, token);
+        }
+
+        // Таймер хода запускается до первого запроса и работает до конца прогона, что бы ни делал основной поток.
+        using var timer = new PeriodicTimer(options.ProgressInterval, _time);
+        var heartbeat = BeatAsync(timer, runId, attempt, () => Volatile.Read(ref stage), stopped, cancelled);
         try
         {
             var load = Stopwatch.StartNew();
@@ -41,8 +70,8 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             for (var i = 0; i < assignment.Models.Count; i++)
             {
                 var model = assignment.Models[i];
-                if (!await client.ProgressAsync(runId, "Загрузка моделей", $"{i + 1} из {assignment.Models.Count}: {model.ModelName}", ct)) return Cancelled(runId);
-                folders[model.SnapshotId] = await cache.GetAsync(model, ct);
+                if (!await Report("Загрузка моделей", $"{i + 1} из {assignment.Models.Count}: {model.ModelName}")) return Cancelled(runId);
+                folders[model.SnapshotId] = await cache.GetAsync(model, token);
                 models.Add(Read(model, folders[model.SnapshotId]));
             }
 
@@ -53,11 +82,12 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             IncrementalBase? incremental = null;
             if (assignment.Kind == EngineApi.Approved)
             {
-                basis = await client.BasisAsync(runId, ct);
+                Volatile.Write(ref stage, new Stage("Загрузка прошлых слепков", ""));
+                basis = await client.BasisAsync(runId, attempt, token);
                 if (basis is null) return Cancelled(runId);
                 if (basis.PreviousConfigurationJson is { } previousJson)
                 {
-                    previous = await ReadPreviousAsync(runId, basis.PreviousModels, folders, ct);
+                    previous = await ReadPreviousAsync(runId, basis.PreviousModels, folders, token);
                     // Пары прошлого прогона переиспользуются, только если их искал тот же алгоритм с той же конфигурацией.
                     if (basis.PreviousEngineVersion == ClashEngine.AlgorithmVersion &&
                         ApprovedRunFacts.SameConfiguration(previousJson, assignment.ConfigurationJson))
@@ -72,18 +102,9 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             load.Stop();
             cache.Trim(assignment.Models.Select(m => m.SnapshotId).Concat(previous.Select(p => p.Model.SnapshotId)).ToList());
 
-            if (!await client.ProgressAsync(runId, "Поиск пересечений", "", ct)) return Cancelled(runId);
-            var search = Task.Run(() => new ClashEngine(new EngineOptions(options.Threads)).Run(models, config, cancelled.Token, incremental), cancelled.Token);
-            while (await Task.WhenAny(search, Task.Delay(options.ProgressInterval, ct)) != search)
-            {
-                if (await client.ProgressAsync(runId, "Поиск пересечений", "", ct)) continue;
-                await cancelled.CancelAsync();
-                await IgnoreCancellation(search);
-                return Cancelled(runId);
-            }
-
-            var result = await search;
-            if (!await client.ProgressAsync(runId, "Запись результата", $"коллизий {result.Hits.Count}", ct)) return Cancelled(runId);
+            if (!await Report("Поиск пересечений", "")) return Cancelled(runId);
+            var result = await Task.Run(() => new ClashEngine(new EngineOptions(options.Threads)).Run(models, config, token, incremental), token);
+            if (!await Report("Запись результата", $"коллизий {result.Hits.Count}")) return Cancelled(runId);
             var hits = HitEnricher.Enrich(result.Hits, models, config);
             var process = Process.GetCurrentProcess();
             process.Refresh();
@@ -95,19 +116,22 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             List<EngineIdentityMatch>? matches = null;
             if (basis is not null)
             {
-                gone = ApprovedRunFacts.Gone(basis.Open, result.Hits, models, previousConfig, options.Threads, cancelled.Token);
+                Volatile.Write(ref stage, new Stage("Сверка с прошлым прогоном", $"открытых пар {basis.Open.Count}"));
+                gone = ApprovedRunFacts.Gone(basis.Open, result.Hits, models, previousConfig, options.Threads, token);
                 var current = assignment.Models.ToDictionary(m => m.ModelId.ToString("N"), m => ReadIndex(folders[m.SnapshotId]));
                 matches = ApprovedRunFacts.Matches(previous, current, result.Hits, basis.Open,
                     model => logger.LogWarning("Прогон {Run}: модель {Model} слишком плотная для сопоставления пересозданных элементов — предложений нет",
                         runId, model));
             }
 
+            phase = "сдать результат";
             var parts = Math.Max(1, (hits.Count + EngineApi.ResultChunkHits - 1) / EngineApi.ResultChunkHits);
             for (var part = 0; part < parts; part++)
             {
                 var chunk = hits.Skip(part * EngineApi.ResultChunkHits).Take(EngineApi.ResultChunkHits).ToList();
                 var last = part == parts - 1;
-                if (!await client.PostResultAsync(runId, part, last, chunk, last ? stats : null, ct, last ? gone : null, last ? matches : null))
+                Volatile.Write(ref stage, new Stage("Запись результата", $"часть {part + 1} из {parts}"));
+                if (!await client.PostResultAsync(runId, attempt, part, last, chunk, last ? stats : null, token, last ? gone : null, last ? matches : null))
                     return Cancelled(runId);
             }
 
@@ -115,21 +139,65 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
                 stats.BroadSeconds + stats.NarrowSeconds);
             return RunOutcome.Succeeded;
         }
+        catch (OperationCanceledException) when (stopped.ByServer && !ct.IsCancellationRequested)
+        {
+            return Cancelled(runId);
+        }
         catch (ModelsNotAlignedException exception)
         {
-            return await FailAsync(runId, NotAlignedMessage(exception, assignment.Models), retry: false, exception, ct);
+            return await FailAsync(runId, attempt, NotAlignedMessage(exception, assignment.Models), retry: false, exception, ct);
         }
         catch (InvalidDataException exception)
         {
-            return await FailAsync(runId, $"слепок модели повреждён: {exception.Message}", retry: false, exception, ct);
+            return await FailAsync(runId, attempt, $"слепок модели повреждён: {exception.Message}", retry: false, exception, ct);
+        }
+        catch (EngineServerException exception)
+        {
+            // Сервер ответил по существу (ошибка сверки, базы, отказ): его текст — причина прогона. Пересчитывать ради детерминированной
+            // ошибки сервера незачем; повторяется только то, что может пройти (шлюз, перегрузка).
+            return await FailAsync(runId, attempt, $"сервер не принял результат ({exception.StatusCode}): {exception.Body}", exception.Transient, exception, ct);
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException && !ct.IsCancellationRequested)
         {
-            return await FailAsync(runId, $"не удалось получить слепки: {exception.Message}", retry: true, exception, ct);
+            return await FailAsync(runId, attempt, $"не удалось {phase}: {exception.Message}", retry: true, exception, ct);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return await FailAsync(runId, $"сбой движка: {exception.Message}", retry: false, exception, ct);
+            return await FailAsync(runId, attempt, $"сбой движка: {exception.Message}", retry: false, exception, ct);
+        }
+        finally
+        {
+            await cancelled.CancelAsync();
+            await heartbeat;
+        }
+    }
+
+    /// <summary>
+    ///     Ход по таймеру: серверу уходит текущая стадия, пока идёт прогон. Сбой связи ход не обрывает — следующий тик повторит; если
+    ///     сервер ответил, что прогон не идёт, работа прекращается.
+    /// </summary>
+    private async Task BeatAsync(PeriodicTimer timer, Guid runId, int attempt, Func<Stage> current, Stopped stopped, CancellationTokenSource cancelled)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancelled.Token))
+            {
+                var stage = current();
+                try
+                {
+                    if (await client.ProgressAsync(runId, attempt, stage.Name, stage.Text, cancelled.Token)) continue;
+                    stopped.Set();
+                    await cancelled.CancelAsync();
+                    return;
+                }
+                catch (Exception exception) when (exception is HttpRequestException or IOException)
+                {
+                    logger.LogWarning("Прогон {Run}: ход не дошёл до сервера ({Error}) — повтор на следующем тике", runId, exception.Message);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -190,12 +258,12 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
         }
     }
 
-    private async Task<RunOutcome> FailAsync(Guid runId, string error, bool retry, Exception exception, CancellationToken ct)
+    private async Task<RunOutcome> FailAsync(Guid runId, int attempt, string error, bool retry, Exception exception, CancellationToken ct)
     {
         logger.LogError(exception, "Прогон {Run} не удался", runId);
         try
         {
-            await client.FailAsync(runId, error, retry, ct);
+            await client.FailAsync(runId, attempt, error, retry, ct);
         }
         catch (HttpRequestException report)
         {
@@ -209,17 +277,6 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
     {
         logger.LogInformation("Прогон {Run} отменён на сервере", runId);
         return RunOutcome.Cancelled;
-    }
-
-    private static async Task IgnoreCancellation(Task task)
-    {
-        try
-        {
-            await task;
-        }
-        catch (OperationCanceledException)
-        {
-        }
     }
 }
 
