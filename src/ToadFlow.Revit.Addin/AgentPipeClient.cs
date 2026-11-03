@@ -54,12 +54,40 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
         _pipe?.Dispose();
     }
 
+    /// <summary>
+    ///     Сеансы связи с агентом. Пайп оборвался, а Revit не закрывается: пробуем подключиться снова, и если агент не вернулся за
+    ///     <see cref="PipeLoss.Grace" />, Revit закрывается сам — упавший агент его уже не закроет.
+    /// </summary>
     private void Run()
     {
+        var loss = new PipeLoss();
+        while (!_stop.IsCancellationRequested)
+        {
+            if (Session()) loss.Restored();
+            if (_stop.IsCancellationRequested) return;
+
+            loss.Lost(DateTimeOffset.UtcNow);
+            if (loss.ShouldExit(DateTimeOffset.UtcNow))
+            {
+                Process.GetCurrentProcess().Kill();
+                return;
+            }
+
+            _stop.Token.WaitHandle.WaitOne(AliveEvery);
+        }
+    }
+
+    /// <returns>Подключились к агенту (сеанс был, пусть и оборвался).</returns>
+    private bool Session()
+    {
+        var connected = false;
         try
         {
+            _alive?.Dispose();
+            _pipe?.Dispose();
             _pipe = new NamedPipeClientStream(".", PipeNames.ForInstance(instanceId), PipeDirection.InOut, PipeOptions.Asynchronous);
             _pipe.Connect(ConnectTimeoutMs);
+            connected = true;
             var encoding = new UTF8Encoding(false);
             lock (_write)
             {
@@ -97,8 +125,14 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
         }
         catch (Exception exception) when (exception is IOException or TimeoutException or ObjectDisposedException or OperationCanceledException)
         {
-            // Агент недоступен или закрыл пайп — он сам решит, что делать с этим Revit.
+            // Агент недоступен или закрыл пайп: Run попробует снова, а если агент не вернётся — закроет Revit.
         }
+        finally
+        {
+            lock (_write) _writer = null;
+        }
+
+        return connected;
     }
 
     private void Send(PipeMessage message)

@@ -12,7 +12,9 @@ public sealed class RevitStartException(string message) : Exception(message);
 ///     задание, живёт между заданиями и закрывается после простоя или планового перезапуска — чтобы не держать лицензию
 ///     и не копить утечки памяти.
 /// </summary>
-public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<RevitInstallation> revits, TimeProvider time, ILogger<InstanceManager> logger)
+/// <param name="orphans">Список запущенных Revit на диске — чтобы при следующем старте закрыть оставшиеся; null — не вести (тесты).</param>
+public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<RevitInstallation> revits, TimeProvider time, ILogger<InstanceManager> logger,
+    OrphanRegistry? orphans = null)
     : IAsyncDisposable
 {
     public const int DefaultMaxSlots = 3;
@@ -110,6 +112,13 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
             throw new RevitStartException($"Не удалось запустить Revit {year}: {exception.Message}");
         }
 
+        if (orphans is not null && instance.Process.StartTime is { } startedAt)
+        {
+            var pid = instance.Process.Pid;
+            orphans.Add(pid, startedAt);
+            _ = instance.Process.Exited.ContinueWith(_ => orphans.Remove(pid), TaskScheduler.Default);
+        }
+
         logger.LogInformation("Revit {Year} запускается в слоте {Slot}, PID {Pid}", year, instance.Slot, instance.Process.Pid);
         using var timeout = new CancellationTokenSource(StartTimeout, time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
@@ -138,7 +147,12 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
 
         lock (_sync) _failedStarts.Remove(year);
         instance.State = InstanceState.Busy;
-        _ = instance.Closed.ContinueWith(_ => Forget(instance, failedStart: false), TaskScheduler.Default);
+        // Пайп оборвался, а процесс жив: такой Revit агенту бесполезен и без учёта держал бы лицензию — закрыть.
+        _ = instance.Closed.ContinueWith(_ =>
+        {
+            if (instance.Process.HasExited) Forget(instance, failedStart: false);
+            else KillCore(instance, "аддин ToadFlow отключился от агента");
+        }, TaskScheduler.Default);
         logger.LogInformation("Revit {Year} запущен в слоте {Slot}, PID {Pid}", year, instance.Slot, instance.Process.Pid);
         return instance;
     }
@@ -173,12 +187,23 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
         instance.IdleSince = time.GetUtcNow();
     }
 
-    /// <summary>Убить экземпляр в слоте; null — слот пуст.</summary>
+    /// <summary>
+    ///     Убить этот экземпляр. Внутри агента убивают только так: слот к этому времени мог занять новый Revit с чужим заданием.
+    /// </summary>
+    public void Kill(RevitInstance instance, string reason) => KillCore(instance, reason);
+
+    /// <summary>Убить экземпляр в слоте — по команде сервера (человек видит слоты); null — слот пуст.</summary>
     public RevitInstance? Kill(int slot, string reason)
     {
         var instance = Instances.FirstOrDefault(i => i.Slot == slot);
         if (instance is not null) KillCore(instance, reason);
         return instance;
+    }
+
+    /// <summary>При старте агента: закрыть Revit, оставшиеся от его прошлого запуска.</summary>
+    public void KillOrphans()
+    {
+        if (orphans?.KillLeftovers() is > 0 and var killed) logger.LogWarning("Закрыто Revit, оставшихся от прошлого запуска агента: {Count}", killed);
     }
 
     /// <summary>Закрыть экземпляры, простаивающие дольше <see cref="IdleTimeout" />, — чтобы не держать лицензии.</summary>

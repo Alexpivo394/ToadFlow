@@ -21,7 +21,9 @@ public static class AgentCoreSetup
         services.AddSingleton(options);
         services.AddSingleton(options.Launcher ?? new ProcessLauncher(new AddinTrust()));
         services.AddSingleton(provider => new InstanceManager(provider.GetRequiredService<IProcessLauncher>(), options.Revits ?? new RevitLocator().Find(),
-            provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InstanceManager>>()));
+            provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InstanceManager>>(),
+            // Список запущенных Revit ведёт только настоящий запуск: в тестах Revit подменён.
+            options.Launcher is null ? new OrphanRegistry(OrphanRegistry.DefaultPath, new SystemProcessCatalog()) : null));
         services.AddSingleton<ISystemMemory>(options.Memory ?? new SystemLoad());
         services.AddSingleton<JobRunner>();
         services.AddSingleton(provider => new ClashUploader(config, options, provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ClashUploader>>()));

@@ -27,6 +27,9 @@ public interface IRevitProcess
     /// <summary>Счётчики процесса сейчас; null — процесс закрылся или счётчики недоступны.</summary>
     ProcessSample? Sample() => null;
 
+    /// <summary>Когда процесс запущен — вместе с PID узнаёт его в реестре сирот (<see cref="OrphanRegistry" />); null — неизвестно.</summary>
+    DateTime? StartTime => null;
+
     /// <summary>Окна-диалоги этого процесса для <see cref="DialogWatcher" />.</summary>
     IRevitWindows Windows => NoRevitWindows.Instance;
 
@@ -51,6 +54,8 @@ public sealed partial class ProcessLauncher(AddinTrust trust) : IProcessLauncher
         var info = new ProcessStartInfo(exe, "/nosplash") { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! };
         foreach (var (name, value) in environment) info.Environment[name] = value;
         var process = Process.Start(info) ?? throw new InvalidOperationException($"Не удалось запустить {exe}");
+        // Revit живёт не дольше агента: упавший агент не оставит его держать лицензию.
+        JobObject.Assign(process.SafeHandle);
         return new RevitProcess(process, year);
     }
 
@@ -83,9 +88,11 @@ public sealed partial class ProcessLauncher(AddinTrust trust) : IProcessLauncher
             _process.EnableRaisingEvents = true;
             Exited = _process.WaitForExitAsync();
             Windows = new RevitWindows(process.Id);
+            StartTime = OrphanRegistry.StartTimeOf(process);
         }
 
         public int Pid => _process.Id;
+        public DateTime? StartTime { get; }
         public bool HasExited => _process.HasExited;
         public Task Exited { get; }
         public IRevitWindows Windows { get; }

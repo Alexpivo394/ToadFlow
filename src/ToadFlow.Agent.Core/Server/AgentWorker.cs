@@ -38,6 +38,9 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             logger.LogWarning(exception, "Не удалось убрать старые слепки коллизий");
         }
 
+        // Revit, оставшиеся от прошлого запуска агента, держат лицензии и память — новый агент их закрывает.
+        instances.KillOrphans();
+
         await connection.StartAsync(ct);
 
         var lastPoll = DateTimeOffset.MinValue;
@@ -218,7 +221,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             {
                 // Иначе задание осталось бы «выполняется»: heartbeat продлевал бы его аренду, пока жив этот Revit.
                 logger.LogError(exception, "Задание {Job} упало в агенте — Revit в слоте {Slot} будет перезапущен", assignment.JobId, instance.Slot);
-                instances.Kill(instance.Slot, "сбой агента во время задания");
+                instances.Kill(instance, "сбой агента во время задания");
                 completion = new JobCompletionDto(assignment.JobId, JobOutcome.InfrastructureFailure, $"сбой агента: {exception.Message}", null);
             }
 
@@ -229,7 +232,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
                 if (completion.Outcome == JobOutcome.InfrastructureFailure)
                 {
                     instances.RecordPeak(instance.PeakWorkingSetMb);
-                    instances.Kill(instance.Slot, "аддин сообщил о сбое Revit — перезапуск");
+                    instances.Kill(instance, "аддин сообщил о сбое Revit — перезапуск");
                 }
                 else instances.Release(instance, current);
             }

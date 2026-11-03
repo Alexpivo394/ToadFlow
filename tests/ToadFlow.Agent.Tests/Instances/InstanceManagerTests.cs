@@ -369,4 +369,72 @@ public class InstanceManagerTests : IAsyncDisposable
         for (var i = 0; i < InstanceManager.RecentPeaks; i++) _manager.RecordPeak(3000);
         _manager.ExpectedJobMb(4096).ShouldBe(4096);
     }
+
+    /// <summary>Пайп оборвался, а Revit жив: без учёта он держал бы лицензию — агент его закрывает.</summary>
+    [Test]
+    public async Task PipeClosedProcessAlive_InstanceKilled()
+    {
+        var instance = await AcquireAsync(2022);
+        _manager.Release(instance, Settings());
+        var process = _launcher.Started.Single().Process;
+
+        await _launcher.Addins.Single().DisposeAsync(); // пайп закрыт, процесс жив
+
+        await WaitAsync(() => process.Killed);
+        _manager.Instances.ShouldBeEmpty();
+        instance.KillReason.ShouldNotBeNull().ShouldContain("отключился");
+    }
+
+    [Test]
+    public async Task KillBySlot_AfterSlotReused_DoesNotKillNewInstance()
+    {
+        var old = await AcquireAsync(2022);
+        _manager.Kill(old, "сбой задания");
+        var fresh = await AcquireAsync(2022);
+        fresh.Slot.ShouldBe(old.Slot); // слот освободился и занят новым Revit
+
+        _manager.Kill(old, "повторный сбой старого задания");
+
+        _launcher.Started.Single(s => s.Process.Pid == fresh.Process.Pid).Process.Killed.ShouldBeFalse();
+        _manager.Instances.ShouldContain(fresh);
+    }
+
+    [Test]
+    public void Startup_KillsOrphansWithInstanceEnv()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "toadflow-orphans-" + Guid.NewGuid().ToString("N") + ".json");
+        var catalog = new FakeCatalog { Alive = { (101, new DateTime(2026, 11, 3, 1, 0, 0, DateTimeKind.Utc)) } };
+        var previous = new OrphanRegistry(path, catalog);
+        previous.Add(101, new DateTime(2026, 11, 3, 1, 0, 0, DateTimeKind.Utc)); // Revit прошлого агента, жив
+        previous.Add(102, new DateTime(2026, 11, 3, 2, 0, 0, DateTimeKind.Utc)); // PID занят другим процессом — время не то
+        previous.Add(103, new DateTime(2026, 11, 3, 3, 0, 0, DateTimeKind.Utc)); // уже закрылся
+        catalog.Alive.Add((102, new DateTime(2026, 11, 3, 9, 0, 0, DateTimeKind.Utc)));
+
+        var manager = new InstanceManager(_launcher, Revits, _time, NullLogger<InstanceManager>.Instance, new OrphanRegistry(path, catalog));
+        manager.KillOrphans();
+
+        catalog.Killed.ShouldBe([101]);
+        new OrphanRegistry(path, catalog).KillLeftovers().ShouldBe(0); // список очищен
+        File.Delete(path);
+    }
+
+    private sealed class FakeCatalog : IProcessCatalog
+    {
+        public List<(int Pid, DateTime StartedAt)> Alive { get; } = [];
+        public List<int> Killed { get; } = [];
+
+        public bool IsAlive(int pid, DateTime startedAt) => Alive.Contains((pid, startedAt));
+
+        public void Kill(int pid) => Killed.Add(pid);
+    }
+
+    private static async Task WaitAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("Условие не выполнилось за 10 с");
+            await Task.Delay(20);
+        }
+    }
 }

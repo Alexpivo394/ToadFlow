@@ -189,7 +189,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
                     }
                     else if (now - cancelSentAt > CancelGrace)
                     {
-                        instances.Kill(instance.Slot, "не прервал выгрузку после отмены");
+                        instances.Kill(instance, "не прервал выгрузку после отмены");
                         Finish(now, "Cancelled", "Revit не прервал выгрузку после отмены и был убит");
                         await FlushAsync();
                         return new JobCompletionDto(jobId, JobOutcome.Cancelled, "отменено пользователем; Revit не остановился и был убит", null);
@@ -310,7 +310,7 @@ public sealed class JobRunner(InstanceManager instances, TimeProvider time, ILog
         async Task<JobCompletionDto> KillAsync(string reason)
         {
             logger.LogWarning("Revit в слоте {Slot} (PID {Pid}), задание {Job}: {Reason} — убиваю", instance.Slot, instance.Process.Pid, jobId, reason);
-            instances.Kill(instance.Slot, reason);
+            instances.Kill(instance, reason);
             var now = time.GetUtcNow();
             buffer.Add(new JobLogDto(now, "Сбой", $"Revit {reason} — процесс {instance.Process.Pid} убит"));
             Finish(now, "InfrastructureFailure", $"причина: {reason}");
