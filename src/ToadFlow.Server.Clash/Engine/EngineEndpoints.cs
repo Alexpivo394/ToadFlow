@@ -108,8 +108,26 @@ public static class EngineEndpoints
         return Results.Ok();
     }
 
+    /// <summary>
+    ///     Часть результата. Неожиданный сбой (сверка, COPY, база) уходит работнику ответом 500 с текстом ошибки: без него в прогоне
+    ///     осталось бы пустое «Internal Server Error».
+    /// </summary>
     private static async Task<IResult> ResultAsync(Guid id, int part, bool last, HttpRequest request, ToadFlowDb db, DraftHits hits,
-        CollisionReconciler reconciler, TimeProvider time, IDomainEvents events, CancellationToken ct)
+        CollisionReconciler reconciler, IDomainEvents events, ILogger<DraftHits> logger, CancellationToken ct)
+    {
+        try
+        {
+            return await ResultCoreAsync(id, part, last, request, db, hits, reconciler, events, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(exception, "Прогон движка {Run}: часть результата {Part} не принята", id, part);
+            return Results.Problem(detail: exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    private static async Task<IResult> ResultCoreAsync(Guid id, int part, bool last, HttpRequest request, ToadFlowDb db, DraftHits hits,
+        CollisionReconciler reconciler, IDomainEvents events, CancellationToken ct)
     {
         if (part < 0) return Results.BadRequest(new { error = "Номер части — от 0" });
 

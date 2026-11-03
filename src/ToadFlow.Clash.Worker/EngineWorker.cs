@@ -25,7 +25,8 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
     /// <summary>Текущая стадия — ту же строку таймер хода шлёт серверу.</summary>
-    private sealed record Stage(string Name, string Text);
+    /// <param name="Final">Сдаётся последняя часть: ответ 409 на ход уже ничего не отменяет — результат мог быть принят.</param>
+    private sealed record Stage(string Name, string Text, bool Final = false);
 
     /// <summary>Сервер сообщил, что прогон больше не идёт (отменён, отдан другой попытке).</summary>
     private sealed class Stopped
@@ -53,9 +54,11 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
         var phase = "получить слепки";
         logger.LogInformation("Прогон {Run}: моделей {Models}, попытка {Attempt}", runId, assignment.Models.Count, attempt);
 
+        void SetStage(string name, string text, bool final = false) => Volatile.Write(ref stage, new Stage(name, text, final));
+
         Task<bool> Report(string name, string text)
         {
-            Volatile.Write(ref stage, new Stage(name, text));
+            SetStage(name, text);
             return client.ProgressAsync(runId, attempt, name, text, token);
         }
 
@@ -82,7 +85,7 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             IncrementalBase? incremental = null;
             if (assignment.Kind == EngineApi.Approved)
             {
-                Volatile.Write(ref stage, new Stage("Загрузка прошлых слепков", ""));
+                SetStage("Загрузка прошлых слепков", "");
                 basis = await client.BasisAsync(runId, attempt, token);
                 if (basis is null) return Cancelled(runId);
                 if (basis.PreviousConfigurationJson is { } previousJson)
@@ -116,7 +119,7 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             List<EngineIdentityMatch>? matches = null;
             if (basis is not null)
             {
-                Volatile.Write(ref stage, new Stage("Сверка с прошлым прогоном", $"открытых пар {basis.Open.Count}"));
+                SetStage("Сверка с прошлым прогоном", $"открытых пар {basis.Open.Count}");
                 gone = ApprovedRunFacts.Gone(basis.Open, result.Hits, models, previousConfig, options.Threads, token);
                 var current = assignment.Models.ToDictionary(m => m.ModelId.ToString("N"), m => ReadIndex(folders[m.SnapshotId]));
                 matches = ApprovedRunFacts.Matches(previous, current, result.Hits, basis.Open,
@@ -130,7 +133,7 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
             {
                 var chunk = hits.Skip(part * EngineApi.ResultChunkHits).Take(EngineApi.ResultChunkHits).ToList();
                 var last = part == parts - 1;
-                Volatile.Write(ref stage, new Stage("Запись результата", $"часть {part + 1} из {parts}"));
+                SetStage("Запись результата", $"часть {part + 1} из {parts}", last);
                 if (!await client.PostResultAsync(runId, attempt, part, last, chunk, last ? stats : null, token, last ? gone : null, last ? matches : null))
                     return Cancelled(runId);
             }
@@ -168,7 +171,14 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
         finally
         {
             await cancelled.CancelAsync();
-            await heartbeat;
+            try
+            {
+                await heartbeat;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Прогон {Run}: таймер хода завершился с ошибкой", runId);
+            }
         }
     }
 
@@ -186,8 +196,13 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
                 try
                 {
                     if (await client.ProgressAsync(runId, attempt, stage.Name, stage.Text, cancelled.Token)) continue;
-                    stopped.Set();
-                    await cancelled.CancelAsync();
+                    // Последняя часть уже у сервера: 409 может значить «принят и закрыт», итог решит ответ на саму сдачу.
+                    if (!stage.Final)
+                    {
+                        stopped.Set();
+                        await cancelled.CancelAsync();
+                    }
+
                     return;
                 }
                 catch (Exception exception) when (exception is HttpRequestException or IOException)

@@ -127,6 +127,59 @@ public class EngineProtocolTests : ServerTest
         (await RunAsync(runId)).State.ShouldBe(EngineRunState.Succeeded);
     }
 
+    /// <summary>
+    ///     Предпроверка в эндпоинте пропускает запрос, а прогон возвращают в очередь и отдают второй попытке до блокировки: ограждение
+    ///     под FOR UPDATE в самом DraftHits и сверке отказывает устаревшей сущности и ничего не меняет.
+    /// </summary>
+    [Test]
+    public async Task Engine_StaleEntityUnderLock_DraftHits_Refused_NewAttemptRowsKept()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var run = await StartAsync(admin, partId);
+        await ClaimAsync(engine);
+        var stale = await DbAsync(db => db.Set<EngineRun>().AsNoTracking().SingleAsync(r => r.Id == run.RunId));
+        await RequeueKeepingHitsAsync(run.RunId);
+        (await ClaimAsync(engine))!.Attempt.ShouldBe(2);
+        (await PostResultAsync(engine, run.RunId, 0, false, [Hit(1), Hit(2)], attempt: 2)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        stale.Attempt.ShouldBe(1);
+
+        await using var scope = Server.Services.CreateAsyncScope();
+        var hits = scope.ServiceProvider.GetRequiredService<DraftHits>();
+        (await hits.WriteChunkAsync(stale, 0, [Hit(7)], CancellationToken.None)).ShouldBeFalse();
+        (await hits.CompleteAsync(stale, Stats, CancellationToken.None)).ShouldBeFalse();
+
+        (await DraftHitsAsync(run.RunId)).ShouldBe(2);
+        (await DbAsync(db => db.Set<ClashDraftHit>().Where(h => h.RunId == run.RunId).Select(h => h.ElementIdA).OrderBy(x => x).ToListAsync())).ShouldBe([1L, 2L]);
+        var current = await RunAsync(run.RunId);
+        (current.State, current.Attempt).ShouldBe((EngineRunState.Running, 2));
+        (await DbAsync(db => db.Set<ClashPart>().Where(p => p.Id == partId).Select(p => p.ResultRunId).SingleAsync())).ShouldBeNull();
+    }
+
+    [Test]
+    public async Task Engine_StaleEntityUnderLock_Reconciler_Refused_NewAttemptRowsKept()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var approve = await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = (string?)null, run = true });
+        approve.StatusCode.ShouldBe(HttpStatusCode.OK, await approve.Content.ReadAsStringAsync());
+        var runId = (await approve.ReadJsonAsync<ApprovedVersionView>()).RunId.ShouldNotBeNull();
+        await ClaimAsync(engine);
+        var stale = await DbAsync(db => db.Set<EngineRun>().AsNoTracking().SingleAsync(r => r.Id == runId));
+        await RequeueKeepingHitsAsync(runId);
+        (await ClaimAsync(engine))!.Attempt.ShouldBe(2);
+        (await PostApprovedResultAsync(engine, runId, 0, false, [Hit(1), Hit(2)], null, [], [], attempt: 2)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        await using var scope = Server.Services.CreateAsyncScope();
+        var hits = scope.ServiceProvider.GetRequiredService<DraftHits>();
+        (await hits.WriteChunkAsync(stale, 1, [Hit(7)], CancellationToken.None)).ShouldBeFalse();
+        (await scope.ServiceProvider.GetRequiredService<CollisionReconciler>().ApplyAsync(stale, [], [], Stats, CancellationToken.None)).ShouldBeNull();
+
+        (await ApprovedHitsAsync(runId)).ShouldBe(2);
+        (await RunAsync(runId)).State.ShouldBe(EngineRunState.Running);
+        (await DbAsync(db => db.Set<ClashCollision>().CountAsync(c => c.PartId == partId))).ShouldBe(0);
+    }
+
     /// <summary>Часть, пришедшая после отмены, не записывается: ограждение проверяет состояние под блокировкой строки прогона.</summary>
     [Test]
     public async Task Engine_ResultAfterCancel_409_NothingWritten()

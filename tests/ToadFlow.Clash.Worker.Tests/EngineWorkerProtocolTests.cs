@@ -71,30 +71,39 @@ public class EngineWorkerProtocolTests : ServerTest
         }
     }
 
+    private async Task BeatsAsync(Spy spy, int count)
+    {
+        var before = spy.Count("/progress");
+        for (var beat = 1; beat <= count; beat++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(20));
+            await WaitAsync(() => spy.Count("/progress") >= before + beat);
+        }
+    }
+
     /// <summary>
     ///     Долгий <c>BasisAsync</c> (скачивание прошлых слепков) и долгая сдача результата: ход уходит каждые 20 с времени работника,
-    ///     а не только вокруг поиска. Тот же таймер идёт и во время сверки с прошлым прогоном.
+    ///     а не только вокруг поиска. Тот же таймер идёт и во время сверки с прошлым прогоном (отдельно она не проверяется).
     /// </summary>
     [Test]
-    public async Task Worker_HeartbeatDuringBasisAndCompare()
+    public async Task Worker_HeartbeatDuringBasisAndResult()
     {
         var (admin, partId) = await PartAsync();
         (await admin.PostJsonAsync($"/api/clash/parts/{partId}/approve", new { comment = (string?)null, run = true })).EnsureSuccessStatusCode();
         var (worker, client, spy) = Worker();
         var assignment = (await client.ClaimAsync(CancellationToken.None)).ShouldNotBeNull();
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        spy.Hold = path => path.EndsWith("/basis", StringComparison.Ordinal) || path.EndsWith("/result", StringComparison.Ordinal) ? release.Task : Task.CompletedTask;
+        var basis = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var result = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        spy.Hold = path => path.EndsWith("/basis", StringComparison.Ordinal) ? basis.Task : path.EndsWith("/result", StringComparison.Ordinal) ? result.Task : Task.CompletedTask;
 
         var run = worker.ProcessAsync(assignment, CancellationToken.None);
         await WaitAsync(() => spy.Count("/basis") == 1);
-        var before = spy.Count("/progress");
-        for (var beat = 1; beat <= 3; beat++)
-        {
-            _time.Advance(TimeSpan.FromSeconds(20));
-            await WaitAsync(() => spy.Count("/progress") >= before + beat);
-        }
+        await BeatsAsync(spy, 3);
+        basis.SetResult();
+        await WaitAsync(() => spy.Count("/result") == 1);
+        await BeatsAsync(spy, 3);
 
-        release.SetResult();
+        result.SetResult();
         (await run).ShouldBe(RunOutcome.Succeeded);
         (await LastRunAsync()).State.ShouldBe(EngineRunState.Succeeded);
     }
@@ -154,7 +163,7 @@ public class EngineWorkerProtocolTests : ServerTest
         (await worker.RunOnceAsync(CancellationToken.None)).ShouldBe(RunOutcome.Failed);
 
         var run = await LastRunAsync();
-        run.State.ShouldBe(EngineRunState.Failed); // детерминированная ошибка сервера: второй пересчёт не нужен
+        run.State.ShouldBe(EngineRunState.Queued); // 5xx: база или перезапуск могли поправиться, попытки ограничены
         run.Error.ShouldNotBeNull().ShouldContain("ошибка сверки: дубль ключа");
         run.Error.ShouldContain("500");
         run.Error.ShouldNotContain("слепки");

@@ -127,8 +127,11 @@ public sealed class EngineServerException(int statusCode, string body) : Excepti
     /// <summary>Текст ответа сервера, до 500 знаков.</summary>
     public string Body { get; } = body;
 
-    /// <summary>Сбой может не повториться: шлюз или сервер недоступны (502, 503, 504), сервер перегружен (408, 429). Остальное — решение сервера по этому результату.</summary>
-    public bool Transient => StatusCode is 408 or 429 or 502 or 503 or 504;
+    /// <summary>
+    ///     Сбой может не повториться: ошибка сервера (5xx — база, перезапуск, шлюз) или перегрузка (408, 429); расход ограничен числом
+    ///     попыток прогона. Остальное 4xx — решение сервера по этому результату, повтор бесполезен.
+    /// </summary>
+    public bool Transient => StatusCode is >= 500 or 408 or 429;
 
     internal static async Task<EngineServerException> ReadAsync(HttpResponseMessage response, CancellationToken ct)
     {
