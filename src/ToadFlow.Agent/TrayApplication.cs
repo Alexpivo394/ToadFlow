@@ -15,8 +15,11 @@ internal sealed class TrayApplication : ApplicationContext
     private readonly ServerConnection _connection;
     private readonly InstanceManager _instances;
 
-    public TrayApplication(IServiceProvider services, AgentConfig config)
+    private readonly EventWaitHandle _stopSignal;
+
+    public TrayApplication(IServiceProvider services, AgentConfig config, EventWaitHandle stopSignal)
     {
+        _stopSignal = stopSignal;
         _connection = services.GetRequiredService<ServerConnection>();
         _instances = services.GetRequiredService<InstanceManager>();
 
@@ -38,6 +41,15 @@ internal sealed class TrayApplication : ApplicationContext
     /// <summary>«ToadFlow · в сети · Revit: 2 · выгружает АР.rvt» — подсказка ограничена 127 символами.</summary>
     private void Refresh()
     {
+        // Установщик обновления просит закрыться: без вопросов — Revit закроются, задания повторятся после установки.
+        if (_stopSignal.WaitOne(0))
+        {
+            _timer.Stop();
+            _icon.Visible = false;
+            ExitThread();
+            return;
+        }
+
         var instances = _instances.Instances;
         var busy = instances.FirstOrDefault(i => i.State is InstanceState.Busy or InstanceState.Unresponsive && i.ModelName is not null);
         var parts = new List<string>

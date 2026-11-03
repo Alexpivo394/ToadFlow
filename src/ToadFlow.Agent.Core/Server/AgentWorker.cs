@@ -53,6 +53,7 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
                 await connection.EnsureConnectedAsync(ct);
                 await connection.HeartbeatAsync(new AgentHeartbeatDto(_load.CpuPercent(), _load.RamUsedMb(), instances.Statuses().ToArray(),
                     _uploading.Keys.Select(k => new ActiveJobDto(k.JobId, k.Attempt)).ToList()));
+                await connection.CheckAddinAsync();
                 if (connection.ReconcileNeeded) await ReconcileAsync(ct);
 
                 var now = time.GetUtcNow();

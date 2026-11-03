@@ -54,6 +54,9 @@ public sealed class RevitInstance
     internal PipeChannel Pipe { get; private set; } = null!;
     internal Task<HelloMessage> Hello => _hello.Task;
 
+    /// <summary>Версия аддина из его hello; null — аддин ещё не представился.</summary>
+    public string? AddinVersion => _hello.Task.IsCompletedSuccessfully ? _hello.Task.Result.AddinVersion : null;
+
     /// <summary>Revit закончил запуск и готов к заданиям: ready от аддина, а у аддина до 1.7 — hello.</summary>
     internal Task Ready => _ready.Task;
 

@@ -55,8 +55,8 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
             .AddJsonProtocol(json => json.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
             .Build();
 
-        _hub.On<SourceDto, string, SourceEntryDto[]>(nameof(IAgentClient.ListChildren), (source, path) => browser.ListChildrenAsync(source, path));
-        _hub.On<SourceDto, SelectionDto, ExpandedModelDto[]>(nameof(IAgentClient.ExpandSelection), (source, selection) => browser.ExpandAsync(source, selection));
+        _hub.On<SourceDto, string, SourceEntryDto[]>(nameof(IAgentClient.ListChildren), (source, path) => browser.ListChildrenBoundedAsync(source, path));
+        _hub.On<SourceDto, SelectionDto, ExpandedModelDto[]>(nameof(IAgentClient.ExpandSelection), (source, selection) => browser.ExpandBoundedAsync(source, selection));
         _hub.On<int>(nameof(IAgentClient.KillInstance), slot =>
         {
             _logger.LogWarning("Сервер попросил убить Revit в слоте {Slot}", slot);
@@ -199,11 +199,26 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await _hub.DisposeAsync();
 
+    /// <summary>
+    ///     В Revit загружен аддин другой версии (установщик не заменил DLL, пока её держал Revit): сообщить серверу виды заданий без
+    ///     коллизий. Отметка держится до перезапуска агента — новый Revit загрузит ту же старую DLL до перезагрузки машины.
+    /// </summary>
+    public async Task CheckAddinAsync()
+    {
+        if (_addinOutdated || _instances.Instances.FirstOrDefault(i => AgentModules.AddinOutdated(_options.AgentVersion, i.AddinVersion)) is not { } outdated) return;
+        _addinOutdated = true;
+        _logger.LogWarning("В Revit {Year} загружен аддин {Addin}, агент — {Agent}: задания коллизий не беру до перезагрузки машины", outdated.Year,
+            outdated.AddinVersion, _options.AgentVersion);
+        if (IsConnected) await HelloAsync(CancellationToken.None);
+    }
+
+    private bool _addinOutdated;
+
     private async Task HelloAsync(CancellationToken ct)
     {
         var revits = _instances.Revits.Select(r => new InstalledRevitDto(r.Year, HasNwcExporter(r.Year, r.HasNwcExporter))).ToArray();
         var totalMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024);
-        var hello = new AgentHelloDto(_options.MachineName, _options.AgentVersion, totalMb, revits);
+        var hello = new AgentHelloDto(_options.MachineName, _options.AgentVersion, totalMb, revits, AgentModules.For(_addinOutdated));
         Settings = await CallAsync(token => _hub.InvokeAsync<AgentSettingsDto>(nameof(IAgentHub.Hello), hello, token), CallTimeout, ct);
     }
 

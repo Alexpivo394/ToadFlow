@@ -41,7 +41,7 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
             var staged = ClashMapping.ToStaged(folder, geometry.Elements.Count, triangles, geometry.Inventory.Count);
             return (JobOutcome.Succeeded, null, AddinPipeJson.SerializeObject(staged));
         }
-        catch (Exception exception) when (exception is OperationCanceledException or ArgumentException or IOException or UnauthorizedAccessException
+        catch (Exception exception) when (exception is OperationCanceledException or ArgumentException or IOException or UnauthorizedAccessException or OutOfMemoryException
                                               or InvalidOperationException or Autodesk.Revit.Exceptions.ApplicationException)
         {
             progress.Step(payload.ModelName, ClashMapping.FailureLog(exception));

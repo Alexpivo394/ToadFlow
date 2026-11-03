@@ -198,7 +198,7 @@ public static class HistoryEndpoints
     private static bool CanServe(Agent agent, Job job, int year) =>
         agent.Limits.Any(l => l.Year == year && l.MaxInstances > 0)
         && (!job.RequiresNwc || agent.Revits.Any(r => r.Year == year && r.HasNwcExporter))
-        && AgentCapabilities.CanRun(agent.AgentVersion, job.ModuleKind);
+        && AgentCapabilities.CanRun(agent.AgentVersion, agent.Modules, job.ModuleKind);
 
     private static int Count(List<JobStatus> statuses, JobStatus status) => statuses.Count(s => s == status);
 }

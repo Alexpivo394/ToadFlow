@@ -43,7 +43,8 @@ public interface IAgentClient
 
 public sealed record InstalledRevitDto(int Year, bool HasNwcExporter);
 
-public sealed record AgentHelloDto(string MachineName, string AgentVersion, long TotalRamMb, InstalledRevitDto[] Revits);
+/// <param name="Modules">Виды заданий, которые агент берёт (<see cref="ModuleKinds" />); null — агент до 2.0, сервер решает по версии.</param>
+public sealed record AgentHelloDto(string MachineName, string AgentVersion, long TotalRamMb, InstalledRevitDto[] Revits, IReadOnlyList<string>? Modules = null);
 
 public sealed record VersionLimitDto(int Year, int MaxInstances);
 

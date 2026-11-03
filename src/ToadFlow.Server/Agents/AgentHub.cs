@@ -44,6 +44,7 @@ public sealed class AgentHub(ToadFlowDb db, AgentRegistry registry, ISettingsSto
         var agent = await db.Agents.SingleAsync(a => a.Id == AgentId);
         agent.MachineName = hello.MachineName;
         agent.AgentVersion = hello.AgentVersion;
+        agent.Modules = hello.Modules?.ToArray();
         agent.TotalRamMb = hello.TotalRamMb;
         agent.Ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
         agent.Revits = hello.Revits.OrderBy(r => r.Year).ToList();

@@ -34,10 +34,8 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         var lease = now + LeaseOptions.Lease;
         var running = nameof(JobStatus.Running);
         var queued = nameof(JobStatus.Queued);
-        var export = ModuleKinds.Export;
-        var anyModule = AgentCapabilities.KnowsModuleKind(agent.AgentVersion);
-        var clash = ModuleKinds.ClashExtract;
-        var clashCapable = AgentCapabilities.CanRun(agent.AgentVersion, ModuleKinds.ClashExtract);
+        // Виды заданий, которые агент возьмёт: по его списку (агент 2.0+) или по версии. Пустой вид — выгрузка заданий до 1.1.
+        string[] kinds = [.. AgentCapabilities.Runnable(agent.AgentVersion, agent.Modules), ""];
         var claimed = await db.Jobs.FromSql($"""
             UPDATE jobs SET status = {running}, agent_id = {agentId}, instance_slot = {request.Slot}, attempt = attempt + 1,
                             started_at = {now}, lease_until = {lease}
@@ -45,7 +43,7 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
                 SELECT id FROM jobs
                 WHERE status = {queued} AND revit_year = {request.Year} AND (NOT requires_nwc OR {request.HasNwcExporter})
                       AND (SELECT count(*) FROM jobs r WHERE r.agent_id = {agentId} AND r.status = {running} AND r.revit_year = {request.Year}) < {limit}
-                      AND (module_kind = {export} OR {anyModule}) AND (module_kind <> {clash} OR {clashCapable}) AND NOT cancel_requested
+                      AND module_kind = ANY({kinds}) AND NOT cancel_requested
                 ORDER BY priority DESC, created_at
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED) AND status = {queued}

@@ -40,7 +40,31 @@ var registration = new InstalledFileAction(agentExeId, register, Return.ignore, 
     Impersonate = false
 };
 
-var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs, registration])
+// Обновление: работающий агент закрывается до проверки занятых файлов — по событию Global\ToadFlowAgentStop (агент 2.0 и новее
+// выходит сам и закрывает свои Revit), а агент до 2.0, который события не слушает, — принудительно через 30 с. Скрипт передаётся в
+// -EncodedCommand: в строке действия MSI квадратные скобки — ссылки на свойства.
+const string stopScript = """
+    try { $e = [System.Threading.EventWaitHandle]::OpenExisting('Global\ToadFlowAgentStop'); [void]$e.Set() } catch { }
+    Get-Process -Name ToadFlow.Agent -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+    Get-Process -Name ToadFlow.Agent -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    """;
+var encodedStop = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(stopScript));
+var stopAgent = new WixQuietExecAction(@"[System64Folder]WindowsPowerShell\v1.0\powershell.exe",
+    $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedStop}", Return.ignore, When.Before, Step.InstallValidate,
+    Condition.Always)
+{
+    Execute = Execute.immediate
+};
+
+// После установки — запуск агента в сессии того, кто ставит (немедленное действие идёт от его имени). Тихая установка от имени
+// SYSTEM (средства развёртывания) агент не запускает: Revit в сессии службы работать не может, агент запустится при входе.
+var startAgent = new InstalledFileAction(agentExeId, "--autostart", Return.asyncNoWait, When.After, Step.InstallFinalize,
+    new Condition("NOT REMOVE AND LogonUser <> \"SYSTEM\""))
+{
+    Execute = Execute.immediate
+};
+
+var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs, registration, stopAgent, startAgent])
 {
     GUID = new Guid("5E1A4B2D-8C73-4F0A-9D61-3B7E2C9F4A18"),
     Version = version,

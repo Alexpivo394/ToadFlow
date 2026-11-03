@@ -230,7 +230,7 @@ public static class ScheduleEndpoints
                 .Where(a => a.Revits.Any(r => r.Year == year)).ToList();
             if (agents.Count == 0)
                 warnings.Add($"Для Revit {year} нет ни одного агента — задания будут ждать, пока он появится");
-            else if (!agents.Any(a => AgentCapabilities.CanRun(a.AgentVersion, schedule.ModuleKind)))
+            else if (!agents.Any(a => AgentCapabilities.CanRun(a.AgentVersion, a.Modules, schedule.ModuleKind)))
                 warnings.Add($"Агенты с Revit {year} старой версии и не умеют эту задачу — задания будут ждать, пока агента обновят до {AgentCapabilities.MinimumVersion(schedule.ModuleKind)} или новее");
         }
 

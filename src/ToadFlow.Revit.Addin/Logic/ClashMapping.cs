@@ -43,15 +43,19 @@ public static class ClashMapping
     };
 
     /// <summary>
-    ///     Исключение выгрузки → итог задания. Нет вида — ошибка модели, повтор не поможет. Внутренняя ошибка Revit — сбой
-    ///     инфраструктуры: сервис повторит модель в новом Revit.
+    ///     Исключение выгрузки → итог задания. Нет вида — ошибка модели, повтор не поможет. Внутренняя ошибка Revit, ввод-вывод
+    ///     (диск полон, файл держит антивирус, сеть при копировании модели) и нехватка памяти — сбой инфраструктуры: сервис повторит
+    ///     модель в новом Revit. Прочие ошибки аргументов — ошибка модели с исходным текстом.
     /// </summary>
     /// <param name="revitFailure">Исключение — внутренняя ошибка Revit (<c>Autodesk.Revit.Exceptions.InternalException</c>).</param>
     public static (JobOutcome Outcome, string Note) MapFailure(Exception exception, bool revitFailure, string viewName) => exception switch
     {
         OperationCanceledException => (JobOutcome.Cancelled, "отменено пользователем"),
         _ when revitFailure => (JobOutcome.InfrastructureFailure, exception.Message),
-        ArgumentException => (JobOutcome.Failed, $"в модели нет 3D-вида «{viewName}»"),
+        System.IO.IOException or UnauthorizedAccessException => (JobOutcome.InfrastructureFailure, $"сбой записи на машине агента: {exception.Message}"),
+        OutOfMemoryException => (JobOutcome.InfrastructureFailure, "не хватило памяти Revit на выгрузку геометрии"),
+        // Так экстрактор говорит, что вида нет (GeometryExtractor, параметр viewName).
+        ArgumentException { ParamName: "viewName" } => (JobOutcome.Failed, $"в модели нет 3D-вида «{viewName}»"),
         _ => (JobOutcome.Failed, exception.Message)
     };
 

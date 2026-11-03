@@ -1262,6 +1262,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("machine_name");
 
+                    b.PrimitiveCollection<string[]>("Modules")
+                        .HasColumnType("text[]")
+                        .HasColumnName("modules");
+
                     b.Property<long>("RamUsedMb")
                         .HasColumnType("bigint")
                         .HasColumnName("ram_used_mb");

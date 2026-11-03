@@ -2,9 +2,15 @@ using ToadFlow.Contracts;
 
 namespace ToadFlow.Server.Agents;
 
-/// <summary>Что умеет агент своей версии. Агент и аддин ставятся одним установщиком, поэтому версия агента — это и версия аддина.</summary>
+/// <summary>
+///     Что умеет агент. Агент 2.0 и новее присылает список видов заданий (<see cref="AgentHelloDto.Modules" />) — решает он. У агентов
+///     до 2.0 списка нет, и решает версия: агент и аддин ставятся одним установщиком, поэтому версия агента — это и версия аддина.
+/// </summary>
 public static class AgentCapabilities
 {
+    /// <summary>Виды заданий, которые знает сервер.</summary>
+    public static readonly string[] Known = [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract];
+
     /// <summary>
     ///     Агент передаёт аддину вид задания. Агенты 1.0.x его не передают, и их аддин принял бы любое задание за выгрузку
     ///     без форматов — открыл бы модель и отчитался «успешно», ничего не сделав. Такие агенты получают только выгрузку.
@@ -22,7 +28,16 @@ public static class AgentCapabilities
     /// <summary>С какой версии агент умеет задания этого вида — для подсказки «обновите агента».</summary>
     public static string MinimumVersion(string moduleKind) => moduleKind == ModuleKinds.ClashExtract ? "1.8" : "1.1";
 
-    /// <summary>Может ли агент этой версии взять задание этого вида.</summary>
+    /// <summary>Может ли агент взять задание этого вида: по его списку, а без списка — по версии. Выгрузку умеют все.</summary>
+    /// <param name="modules">Список видов из hello агента; null — агент до 2.0.</param>
+    public static bool CanRun(string agentVersion, IReadOnlyCollection<string>? modules, string moduleKind) =>
+        moduleKind == ModuleKinds.Export || (modules is not null ? modules.Contains(moduleKind) : CanRun(agentVersion, moduleKind));
+
+    /// <summary>Виды заданий, которые агент может взять, — для выдачи.</summary>
+    public static string[] Runnable(string agentVersion, IReadOnlyCollection<string>? modules) =>
+        Known.Where(kind => CanRun(agentVersion, modules, kind)).ToArray();
+
+    /// <summary>Может ли агент этой версии (до 2.0, без списка) взять задание этого вида.</summary>
     public static bool CanRun(string agentVersion, string moduleKind) => moduleKind switch
     {
         ModuleKinds.Export => true,

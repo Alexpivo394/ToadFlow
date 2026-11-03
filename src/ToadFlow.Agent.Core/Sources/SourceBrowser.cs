@@ -11,6 +11,35 @@ public sealed class SourceBrowser
 {
     private const int MaxDepth = 50;
 
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
+
+    /// <summary>Сколько ждать обзора, который просит сервер; дольше — ошибка серверу, а обход отменяется.</summary>
+    public TimeSpan Timeout { get; init; } = DefaultTimeout;
+
+    /// <summary>Дерево по запросу сервера — с ограничением <see cref="Timeout" />.</summary>
+    public Task<SourceEntryDto[]> ListChildrenBoundedAsync(SourceDto source, string folderPath) => BoundedAsync(ct => ListChildrenAsync(source, folderPath, ct));
+
+    /// <summary>Разворачивание отметок по запросу сервера — с ограничением <see cref="Timeout" />.</summary>
+    public Task<ExpandedModelDto[]> ExpandBoundedAsync(SourceDto source, SelectionDto selection) => BoundedAsync(ct => ExpandAsync(source, selection, ct));
+
+    /// <summary>
+    ///     Обзор идёт отдельной задачей с отменой через <see cref="Timeout" />. Ожидание кончается вовремя, даже если сетевая папка
+    ///     зависла в вызове без отмены (<c>File.Exists</c> на недоступном UNC): соединение с сервером не стоит за обзором.
+    /// </summary>
+    /// <exception cref="TimeoutException">Обзор не уложился.</exception>
+    public async Task<T> BoundedAsync<T>(Func<CancellationToken, Task<T>> browse)
+    {
+        using var limit = new CancellationTokenSource(Timeout);
+        try
+        {
+            return await Task.Run(() => browse(limit.Token), limit.Token).WaitAsync(limit.Token);
+        }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested)
+        {
+            throw new TimeoutException($"обзор источника не уложился в {Timeout.TotalSeconds:0} с — проверьте доступ агента к папке");
+        }
+    }
+
     public async Task<SourceEntryDto[]> ListChildrenAsync(SourceDto source, string folderPath, CancellationToken ct = default)
     {
         var tree = Tree(source);

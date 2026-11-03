@@ -91,11 +91,15 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
                 Arguments = ["eula", "accept", "wix7"]
             }, cancellationToken: cancellationToken);
 
-        await context.Shell.Command.ExecuteCommandLineTool(
-            new GenericCommandLineToolOptions(wixExe.Path)
-            {
-                Arguments = ["extension", "add", "-g", $"WixToolset.UI.wixext/{wixVersion}"]
-            }, cancellationToken: cancellationToken);
+        // UI — окно хода установки; Util — WixQuietExec, которым установщик закрывает работающий агент.
+        foreach (var extension in new[] { "WixToolset.UI.wixext", "WixToolset.Util.wixext" })
+        {
+            await context.Shell.Command.ExecuteCommandLineTool(
+                new GenericCommandLineToolOptions(wixExe.Path)
+                {
+                    Arguments = ["extension", "add", "-g", $"{extension}/{wixVersion}"]
+                }, cancellationToken: cancellationToken);
+        }
 
         return wixToolFolder;
     }

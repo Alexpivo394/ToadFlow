@@ -69,7 +69,10 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
                     Export(application, job);
                     break;
                 default:
-                    Result(job, JobOutcome.Failed, $"Аддин не умеет задания «{job.ModuleKind}» — обновите агента ToadFlow", null);
+                    // Аддин старее агента (обновление ещё не заменило DLL в Revit): модель тут ни при чём — повтор пойдёт в новом Revit,
+                    // который загрузит новый аддин.
+                    recycle = $"аддин не знает задания «{job.ModuleKind}» — загружена старая версия";
+                    Result(job, JobOutcome.InfrastructureFailure, $"Аддин не умеет задания «{job.ModuleKind}» — обновите агента ToadFlow", null);
                     break;
             }
         }

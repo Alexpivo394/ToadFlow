@@ -21,6 +21,20 @@ public class ClashContractsTests
     [Test]
     public void CanRun_Loi_StillAllowedOnAgent171() => AgentCapabilities.CanRun("1.7.1", ModuleKinds.Loi).ShouldBeTrue();
 
+    /// <summary>Список видов из hello решает, а не номер версии; без списка (агент до 2.0) — по версии, как раньше.</summary>
+    [Test]
+    public void Capabilities_ModulesListWins_VersionFallback()
+    {
+        // Сборка CI 1.7.2-…: по версии коллизий бы не было, но агент сказал, что умеет.
+        AgentCapabilities.CanRun("1.7.2-ci.5", [ModuleKinds.ClashExtract], ModuleKinds.ClashExtract).ShouldBeTrue();
+        // Агент 2.0 с устаревшим аддином убрал коллизии из списка — не получает, хотя версия свежая.
+        AgentCapabilities.CanRun("2.0.0", [ModuleKinds.Loi], ModuleKinds.ClashExtract).ShouldBeFalse();
+        AgentCapabilities.CanRun("2.0.0", [], ModuleKinds.Export).ShouldBeTrue(); // выгрузку умеют все
+        AgentCapabilities.CanRun("1.7.1", null, ModuleKinds.ClashExtract).ShouldBeFalse();
+        AgentCapabilities.CanRun("1.8.0", null, ModuleKinds.ClashExtract).ShouldBeTrue();
+        AgentCapabilities.Runnable("2.0.0", [ModuleKinds.Loi]).ShouldBe([ModuleKinds.Export, ModuleKinds.Loi]);
+    }
+
     [Test]
     public void ClashStaging_IsInside_RejectsTraversal()
     {

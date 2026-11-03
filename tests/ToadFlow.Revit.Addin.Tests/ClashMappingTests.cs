@@ -22,7 +22,7 @@ public class ClashMappingTests
     [Test]
     public void MapFailure_MissingView_FailsWithoutRetry()
     {
-        var (outcome, note) = ClashMapping.MapFailure(new ArgumentException("В документе нет 3D-вида", "options"), revitFailure: false, Payload.ViewName);
+        var (outcome, note) = ClashMapping.MapFailure(new ArgumentException("В документе нет 3D-вида \"Navisworks\".", "viewName"), revitFailure: false, Payload.ViewName);
 
         outcome.ShouldBe(JobOutcome.Failed);
         note.ShouldBe("в модели нет 3D-вида «Navisworks»");
@@ -44,7 +44,19 @@ public class ClashMappingTests
 
     [Test]
     public void MapFailure_OtherError_FailsWithMessage() =>
-        ClashMapping.MapFailure(new IOException("диск переполнен"), revitFailure: false, Payload.ViewName).ShouldBe((JobOutcome.Failed, "диск переполнен"));
+        ClashMapping.MapFailure(new InvalidOperationException("модель повреждена"), revitFailure: false, Payload.ViewName).ShouldBe((JobOutcome.Failed, "модель повреждена"));
+
+    [Test]
+    public void ClashMapping_IoOrOom_InfrastructureFailure_ArgumentKeepsText()
+    {
+        ClashMapping.MapFailure(new IOException("диск переполнен"), revitFailure: false, Payload.ViewName).Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        ClashMapping.MapFailure(new UnauthorizedAccessException("файл занят"), revitFailure: false, Payload.ViewName).Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+        ClashMapping.MapFailure(new OutOfMemoryException(), revitFailure: false, Payload.ViewName).Outcome.ShouldBe(JobOutcome.InfrastructureFailure);
+
+        // Ошибка аргумента из библиотеки — не «нет вида»: её текст остаётся.
+        ClashMapping.MapFailure(new ArgumentOutOfRangeException("index", "индекс вне диапазона"), revitFailure: false, Payload.ViewName)
+            .ShouldBe((JobOutcome.Failed, "индекс вне диапазона (Parameter 'index')"));
+    }
 
     [Test]
     public void ToOpenOptions_NeverUpgradesAndSkipsLinks()

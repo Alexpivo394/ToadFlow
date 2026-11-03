@@ -3,12 +3,16 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ToadFlow.Agent.Config;
+using ToadFlow.Agent.Logging;
 
 namespace ToadFlow.Agent.App;
 
 internal static partial class Program
 {
     private const string MutexName = @"Global\ToadFlowAgent";
+
+    /// <summary>Установщик просит агент закрыться перед заменой файлов (обновление): агент проверяет его по таймеру трея.</summary>
+    private const string StopEventName = @"Global\ToadFlowAgentStop";
 
     /// <summary>Синхронный и STA: WinForms (трей, окно регистрации) требует однопоточного апартамента.</summary>
     [STAThread]
@@ -49,7 +53,10 @@ internal static partial class Program
         host.StartAsync().GetAwaiter().GetResult();
         host.Services.GetRequiredService<ILogger<TrayApplication>>().LogInformation("Агент запущен, сервер {Server}", config.ServerUrl);
 
-        Application.Run(new TrayApplication(host.Services, config));
+        // Сигнал прошлой установки не должен закрыть агент, только что запущенный после неё.
+        using var stopSignal = new EventWaitHandle(false, EventResetMode.ManualReset, StopEventName);
+        stopSignal.Reset();
+        Application.Run(new TrayApplication(host.Services, config, stopSignal));
 
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         host.StopAsync(stop.Token).GetAwaiter().GetResult();

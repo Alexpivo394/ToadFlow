@@ -8,6 +8,10 @@ public sealed class Agent
     public string MachineName { get; set; } = "";
     public string? Ip { get; set; }
     public string AgentVersion { get; set; } = "";
+
+    /// <summary>Виды заданий, которые агент умеет, — из его hello; null — агент до 2.0, решает версия.</summary>
+    public string[]? Modules { get; set; }
+
     public long TotalRamMb { get; set; }
 
     /// <summary>SHA-256 ключа агента в hex; сам ключ знает только агент.</summary>

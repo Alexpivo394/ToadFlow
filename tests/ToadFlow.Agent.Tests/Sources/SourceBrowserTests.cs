@@ -147,4 +147,25 @@ public class SourceBrowserTests
         (await _browser.ExpandAsync(tree.Source, new SelectionDto([], [new FolderSelectionDto(Path.Combine(tree.Root, "ЖК"), true, true)])))
             .ShouldHaveSingleItem().Name.ShouldBe("АР.rvt");
     }
+
+    /// <summary>Сетевая папка зависла в вызове без отмены: обзор кончается по времени, а не держит соединение с сервером.</summary>
+    [Test]
+    public async Task Browse_Timeout120s_Cancelled()
+    {
+        var browser = new SourceBrowser { Timeout = TimeSpan.FromMilliseconds(200) };
+        CancellationToken seen = default;
+        var started = DateTime.UtcNow;
+
+        var error = await Should.ThrowAsync<TimeoutException>(browser.BoundedAsync<int>(ct =>
+        {
+            seen = ct;
+            Thread.Sleep(5_000); // File.Exists на недоступном UNC
+            return Task.FromResult(0);
+        }));
+
+        (DateTime.UtcNow - started).ShouldBeLessThan(TimeSpan.FromSeconds(3));
+        seen.IsCancellationRequested.ShouldBeTrue();
+        error.Message.ShouldContain("не уложился");
+        SourceBrowser.DefaultTimeout.ShouldBe(TimeSpan.FromSeconds(120));
+    }
 }
