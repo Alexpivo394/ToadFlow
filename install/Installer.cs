@@ -70,7 +70,14 @@ var project = new Project("ToadFlow Agent", [agentFiles, startMenu, .. addinDirs
     Version = version,
     Platform = Platform.x64,
     Scope = InstallScope.perMachine,
-    MajorUpgrade = MajorUpgrade.Default,
+    // Новая версия ставится поверх прежней, и только потом прежняя удаляется. Если удалять прежнюю первой (по умолчанию), MSI ещё до
+    // удаления решает не ставить файлы, которые лежат на диске той же версии (рантайм .NET), а удаление их стирает: агент 2.0.0 поверх
+    // 1.7.1 не запускался без hostpolicy.dll. Порядок требует постоянных GUID компонентов — WixSharp выводит их из GUID и пути файла.
+    MajorUpgrade = new MajorUpgrade
+    {
+        Schedule = UpgradeSchedule.afterInstallExecute,
+        DowngradeErrorMessage = "Уже установлена более новая версия [ProductName]."
+    },
     UI = WUI.WixUI_ProgressOnly,
     OutDir = "output",
     OutFileName = $"ToadFlowAgent-{args[0]}",
