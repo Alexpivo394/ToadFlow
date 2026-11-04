@@ -19,6 +19,16 @@ const n = (value: number) => value.toLocaleString('ru-RU');
 const PageSize = 50;
 const NoProject = 'Без проекта';
 
+/**
+ * Сторона пользователя в коллизии: модель из его разделов. Обе или ни одна — null: «ваш» не подписывается.
+ */
+export function mySide(row: { disciplineA: string; disciplineB: string }, disciplines: string[]): 'A' | 'B' | null {
+  const has = (d: string) => disciplines.some((x) => x.toLowerCase() === d.trim().toLowerCase());
+  const a = has(row.disciplineA);
+  const b = has(row.disciplineB);
+  return a === b ? null : a ? 'A' : 'B';
+}
+
 /** Подсказка счётчика «Новые для меня»: заказчик не понял отметку — имя оставлено, смысл объясняется. */
 const NewForMeHint = 'Коллизии, которые вы ещё не открывали: появились или вернулись после вашего последнего просмотра. В списке они отмечены синей точкой; откройте карточку — отметка снимется';
 
@@ -53,7 +63,7 @@ function Counter({ label, value, active, onClick, caption, hint }: {
 export const DesignerPollMs = 60_000;
 
 export function MyPage() {
-  const { can, canWork, isStaff } = useAuth();
+  const { can, canWork, isStaff, disciplines } = useAuth();
   const queryClient = useQueryClient();
 
   // Проектировщик не получает живых обновлений: раз в минуту — свежие счётчики, проверки и список.
@@ -185,6 +195,7 @@ export function MyPage() {
             <>
               <Box style={{ flex: 3, minHeight: 0 }}>
                 <HitScene runId="" number={current?.row.number ?? 0} collisionId={collisionId}
+                  mine={current ? mySide(current.row, disciplines) : null}
                   title={current?.my ? `№ ${current.row.number} · ${current.my.partName} · глубина ${Math.round(current.row.depthMm)} мм` : undefined} />
               </Box>
               <Box pt="xs" data-testid="card-column" style={{ flex: 2, minHeight: 0, overflowY: 'auto' }}>

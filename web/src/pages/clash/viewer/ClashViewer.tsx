@@ -3,7 +3,7 @@ import { Center, Text } from '@mantine/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ViewerSceneView } from '../../../api/types';
-import { type Box, type Isolation, isVisible, roleColor, type Vec3, type ViewerMesh } from '../../../lib/viewer';
+import { type Box, frameForHit, type Isolation, isVisible, roleColor, type Vec3, type ViewerMesh } from '../../../lib/viewer';
 import { dragFace, elementBox, type Handle, handles } from './sectionGizmo';
 
 export interface ClashViewerProps {
@@ -217,6 +217,9 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
           new THREE.MeshLambertMaterial({ color, opacity, transparent: true, depthWrite: pair, side: THREE.DoubleSide }),
         );
         object.renderOrder = pair ? 2 : 1;
+      } else if (element.role === 'context') {
+        // Окружение без сетки каркасом габарита не рисуется: десятки рамок заслоняют пару и ничего не объясняют.
+        continue;
       } else {
         const size = element.max.map((v, i) => Math.max(v - element.min[i], 1)) as [number, number, number];
         object = new THREE.LineSegments(
@@ -238,17 +241,30 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
   useEffect(() => {
     const s = stage.current;
     if (!s) return;
-    const framed = frame != null && scene.elements[frame] ? [scene.elements[frame]] : scene.elements.filter((e) => e.role !== 'context');
-    const extent = Math.max(
-      300,
-      ...framed.flatMap((e) => [0, 1, 2].map((axis) => Math.max(Math.abs(e.min[axis]), Math.abs(e.max[axis])))),
-    );
-    const distance = scene.radiusMm > 0 ? Math.min(extent * 4, scene.radiusMm * 1.5) : extent * 2.5;
-    s.camera.position.copy(new THREE.Vector3(1, -1.2, 0.8).normalize().multiplyScalar(distance));
+    const view = new THREE.Vector3(1, -1.2, 0.8).normalize();
+    const hit = frame == null && scene.elements.some((e) => e.role === 'A' || e.role === 'B');
+    let target = new THREE.Vector3(0, 0, 0);
+    let distance: number;
+    let extent: number;
+    if (hit) {
+      // Коллизия — кадр по месту прохода элементов друг через друга плюс 1,5 м, а не по их целым габаритам (длинная труба).
+      const box = frameForHit(scene);
+      target = new THREE.Vector3(...box.center);
+      extent = box.radius;
+      distance = box.radius / Math.sin(THREE.MathUtils.degToRad(s.camera.fov / 2));
+    } else {
+      const framed = frame != null && scene.elements[frame] ? [scene.elements[frame]] : scene.elements.filter((e) => e.role !== 'context');
+      extent = Math.max(
+        300,
+        ...framed.flatMap((e) => [0, 1, 2].map((axis) => Math.max(Math.abs(e.min[axis]), Math.abs(e.max[axis])))),
+      );
+      distance = scene.radiusMm > 0 ? Math.min(extent * 4, scene.radiusMm * 1.5) : extent * 2.5;
+    }
+    s.camera.position.copy(target.clone().add(view.multiplyScalar(distance)));
     s.camera.near = Math.max(1, distance / 2000);
     s.camera.far = distance * 20 + Math.max(scene.radiusMm, extent) * 4;
     s.camera.updateProjectionMatrix();
-    s.controls.target.set(0, 0, 0);
+    s.controls.target.copy(target);
     s.controls.update();
     s.render();
   }, [scene]); // eslint-disable-line react-hooks/exhaustive-deps

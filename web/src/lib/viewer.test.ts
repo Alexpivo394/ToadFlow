@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ViewerElementView, ViewerSceneView } from '../api/types';
-import { defaultSectionBox, isVisible, parseMeshes } from './viewer';
+import { defaultSectionBox, frameForHit, isVisible, parseMeshes } from './viewer';
 
 function meshes(items: { index: number; positions: number[]; indices: number[] }[]): ArrayBuffer {
   const size = 8 + items.reduce((sum, m) => sum + 12 + m.positions.length * 4 + m.indices.length * 4, 0);
@@ -60,6 +60,24 @@ describe('viewer', () => {
     ]));
 
     expect(box).toEqual({ min: [-1100, -1050, -1030], max: [1300, 1050, 1100] });
+  });
+
+  it('frameForHit_IntersectionOfPairPlusMargin', () => {
+    // Длинная труба через стену: кадр — место прохода (пересечение габаритов) плюс 1,5 м, а не вся длина трубы.
+    const frame = frameForHit(scene([
+      element(0, 'A', [-100, -2000, -1500], [100, 2000, 1500]),
+      element(1, 'B', [-20000, -50, -50], [20000, 50, 50]),
+      element(2, 'context', [-9000, -9000, -9000], [9000, 9000, 9000]),
+    ]));
+
+    expect([frame.min, frame.max, frame.center]).toEqual([[-1600, -1550, -1550], [1600, 1550, 1550], [0, 0, 0]]);
+    expect(frame.radius).toBeCloseTo(Math.hypot(1600, 1550, 1550));
+  });
+
+  it('frameForHit_NoOverlap_UnionOfPair', () => {
+    const frame = frameForHit(scene([element(0, 'A', [-300, 0, 0], [-10, 10, 10]), element(1, 'B', [10, 0, 0], [300, 10, 10])]));
+
+    expect([frame.min, frame.max]).toEqual([[-1800, -1500, -1500], [1800, 1510, 1510]]);
   });
 
   it('isVisible_PairHidesContext', () => {

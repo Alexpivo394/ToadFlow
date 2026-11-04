@@ -48,19 +48,22 @@ function plural(n: number, one: string, few: string, many: string) {
  * Сцена коллизии: 3D (A и B, окружение в радиусе), изоляция, секущий куб и свойства элемента плашкой поверх сцены.
  * Встраивается в черновик (и позже в отчёт); <c>focus</c> — какую сторону показать в свойствах (Enter в списке).
  */
-export function HitScene({ runId, number, collisionId, title, focus, onRefresh }: {
+export function HitScene({ runId, number, collisionId, title, focus, mine = null, onRefresh }: {
   runId: string;
   number: number;
   /** Коллизия утверждённой проверки: сцена — по прогону, который нашёл её последним. */
   collisionId?: string;
   title?: string;
   focus?: 'A' | 'B' | null;
+  /** Сторона пользователя («Мои»: модель из его разделов) — элемент выбран при открытии и подписан «ваш». */
+  mine?: 'A' | 'B' | null;
   onRefresh?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [radius, setRadius] = useState('5000');
   const [isolation, setIsolation] = useState<Isolation>('all');
-  const [sectionOn, setSectionOn] = useState(false);
+  // Куб включён сразу: вокруг пары, иначе окружение закрывает место коллизии.
+  const [sectionOn, setSectionOn] = useState(true);
   const [section, setSection] = useState<Box | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   // Свойства свёрнуты: сцена видна целиком, под ней — строка выбранного элемента; панель раскрывается по щелчку (W-2).
@@ -72,9 +75,9 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
 
   // Другая коллизия — новый секущий куб вокруг её пары и сброс выбора.
   useEffect(() => {
-    setSelected(null);
+    setSelected(mine ? (scene.data?.elements.find((e) => e.role === mine)?.index ?? null) : null);
     setSection(scene.data ? defaultSectionBox(scene.data) : null);
-  }, [scene.data]);
+  }, [scene.data, mine]);
 
   useEffect(() => {
     if (!focus || !scene.data) return;
@@ -154,7 +157,8 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
           <Paper withBorder shadow="sm" p="xs" radius="md" w={320} style={{ position: 'absolute', top: 8, right: 8, maxHeight: 'calc(100% - 16px)', display: 'flex' }}>
             <ScrollArea.Autosize mah="100%" style={{ flex: 1 }}>
               {meshes.error && <Text size="xs" c="red">{meshes.error.message}</Text>}
-              <ElementPanel runId={scene.data.runId} collisionId={collisionId} scene={scene.data} selected={selected} />
+              <ElementPanel runId={scene.data.runId} collisionId={collisionId} scene={scene.data} selected={selected}
+                mine={mine ? scene.data.elements.find((e) => e.role === mine)?.index ?? null : null} />
             </ScrollArea.Autosize>
           </Paper>
         )}
@@ -162,7 +166,7 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
       {scene.data && (
         <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
           <Text size="xs" c="dimmed" truncate style={{ flex: 1, minWidth: 0 }}>
-            {picked ? `${roleName[picked.role]}: ${categoryLabel(picked.category)} · ${picked.family ?? '—'} · ID ${picked.elementId}` : 'Щёлкните элемент в сцене, чтобы выбрать его'}
+            {picked ? `${roleName[picked.role]}${mine === picked.role ? ' (ваш)' : ''}: ${categoryLabel(picked.category)} · ${picked.family ?? '—'} · ID ${picked.elementId}` : 'Щёлкните элемент в сцене, чтобы выбрать его'}
           </Text>
           <Button size="compact-xs" variant="subtle" onClick={() => setShowProps(!showProps)}>{showProps ? 'Скрыть свойства' : 'Свойства'}</Button>
         </Group>

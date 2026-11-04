@@ -1,6 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderUi } from '../../../test/renderApp';
+import { mySide } from '../my/MyPage';
 import { HitScene } from './HitScene';
 
 // WebGL в jsdom нет: вместо сцены three.js — заглушка.
@@ -27,5 +28,25 @@ describe('Hit scene', () => {
 
     expect(await screen.findByText('Элемент A')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Скрыть свойства' })).toBeTruthy();
+  });
+});
+
+describe('Hit scene: your element', () => {
+  it('HitScene_MineSelectedAndLabelled', async () => {
+    renderUi(<HitScene runId="" number={1} collisionId="c1" mine="B" />, {
+      '/api/clash/collisions/c1/scene': scene,
+      '/api/clash/collisions/c1/meshes': new Uint32Array([0x31564354, 0]).buffer,
+    });
+
+    expect(await screen.findByText('Элемент B (ваш): Стены · Стена · ID 1001')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Свойства' }));
+    expect((await screen.findAllByText('ваш')).length).toBeGreaterThan(0);
+  });
+
+  it('MySide_ByUserDisciplines', () => {
+    expect(mySide({ disciplineA: 'КР', disciplineB: 'ОВК' }, ['овк'])).toBe('B');
+    expect(mySide({ disciplineA: 'КР', disciplineB: 'ОВК' }, ['КР'])).toBe('A');
+    expect(mySide({ disciplineA: 'ОВК', disciplineB: 'ОВК' }, ['ОВК'])).toBeNull();
+    expect(mySide({ disciplineA: 'КР', disciplineB: 'АР' }, ['ОВК'])).toBeNull();
   });
 });

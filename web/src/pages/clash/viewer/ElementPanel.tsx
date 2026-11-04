@@ -7,11 +7,12 @@ import { roleColor } from '../../../lib/viewer';
 
 export const roleName = { A: 'Элемент A', B: 'Элемент B', set: 'Элемент набора', context: 'Окружение' } as const;
 
-function Brief({ element }: { element: ViewerElementView }) {
+function Brief({ element, mine }: { element: ViewerElementView; mine: boolean }) {
   return (
     <Stack gap={2}>
       <Group gap="xs">
         <Badge color={roleColor(element.role).color} variant="filled" size="sm">{roleName[element.role]}</Badge>
+        {mine && <Badge color="yellow" variant="light" size="sm">ваш</Badge>}
         <Text size="xs" c="dimmed">{element.discipline}</Text>
       </Group>
       <Text size="sm">{categoryLabel(element.category)} · {element.family ?? '—'} · {element.type ?? '—'}</Text>
@@ -68,20 +69,22 @@ function Properties({ runId, collisionId, element }: { runId: string; collisionI
 }
 
 /** Правая панель просмотрщика: кратко A и B, по щелчку в сцене — все свойства выбранного элемента. */
-export function ElementPanel({ runId, collisionId, scene, selected }: {
+export function ElementPanel({ runId, collisionId, scene, selected, mine = null }: {
   runId: string;
   collisionId?: string;
   scene: ViewerSceneView | undefined;
   selected: number | null;
+  /** Индекс элемента стороны пользователя — подписан «ваш». */
+  mine?: number | null;
 }) {
   const element = selected != null ? scene?.elements[selected] : undefined;
   return (
     <ScrollArea h="100%" type="auto">
       <Stack gap="md" pr="sm">
-        {scene?.elements.filter((e) => e.role !== 'context').map((e) => <Brief key={e.index} element={e} />)}
+        {scene?.elements.filter((e) => e.role !== 'context').map((e) => <Brief key={e.index} element={e} mine={e.index === mine} />)}
         {element ? (
           <Stack gap="xs">
-            <Brief element={element} />
+            <Brief element={element} mine={element.index === mine} />
             <Properties runId={runId} collisionId={collisionId} element={element} />
           </Stack>
         ) : (

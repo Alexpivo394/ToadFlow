@@ -67,3 +67,20 @@ export function roleColor(role: ViewerElementView['role']): { color: string; opa
   if (role === 'set') return { color: '#2f9e44', opacity: 1 };
   return { color: '#adb5bd', opacity: 0.2 };
 }
+
+/**
+ * Кадр камеры коллизии: пересечение габаритов A и B (там, где элементы проходят друг через друга), расширенное на
+ * <c>marginMm</c> (1,5 м) с каждой стороны. Если габариты не пересекаются (касание по допуску) — их общий габарит. Камера
+ * смотрит в центр кадра и отходит так, чтобы он целиком был виден.
+ */
+export function frameForHit(scene: ViewerSceneView, marginMm = 1500): Box & { center: Vec3; radius: number } {
+  const pair = scene.elements.filter((e) => e.role === 'A' || e.role === 'B');
+  const lo = [0, 1, 2].map((axis) => Math.max(...pair.map((e) => e.min[axis])));
+  const hi = [0, 1, 2].map((axis) => Math.min(...pair.map((e) => e.max[axis])));
+  const overlap = pair.length > 0 && lo.every((v, axis) => v <= hi[axis]);
+  const min = (overlap ? lo : [0, 1, 2].map((axis) => Math.min(0, ...pair.map((e) => e.min[axis])))).map((v) => v - marginMm) as Vec3;
+  const max = (overlap ? hi : [0, 1, 2].map((axis) => Math.max(0, ...pair.map((e) => e.max[axis])))).map((v) => v + marginMm) as Vec3;
+  const center = [0, 1, 2].map((axis) => (min[axis] + max[axis]) / 2) as Vec3;
+  const radius = Math.hypot(...[0, 1, 2].map((axis) => (max[axis] - min[axis]) / 2));
+  return { min, max, center, radius };
+}
