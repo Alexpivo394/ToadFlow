@@ -259,6 +259,7 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashApprove();
         api.MapClashProjects();
         api.MapClashOverview();
+        api.MapClashTriggeredRuns();
     }
 
     /// <summary>Проектировщику — только коллизии утверждённых проверок и версии; настройка проверок остаётся в <see cref="MapEndpoints" />.</summary>

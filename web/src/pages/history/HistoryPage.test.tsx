@@ -67,3 +67,20 @@ describe('HistoryPage for LOI', () => {
     expect(screen.getByRole('button', { name: 'Скопировать путь к отчёту' })).toBeTruthy();
   });
 });
+
+describe('HistoryPage: clash extraction', () => {
+  it('History_ClashExtract_ShowsRunsItStarted', async () => {
+    const clashJob = { ...job, id: 'j5', moduleKind: 'clash-extract', status: 'Succeeded', note: null };
+    renderApp('/history/runs/r1', {
+      '/api/runs/r1': { run, jobs: [clashJob] },
+      '/api/clash/extract-runs/r1/engine-runs': [
+        { runId: 'e1', partId: 'p1', partName: 'Корпус 1', state: 'Succeeded', new: 12, error: null },
+        { runId: 'e2', partId: 'p2', partName: 'Корпус 2', state: 'Queued', new: null, error: null },
+      ],
+    });
+
+    const line = await screen.findByTestId('clash-runs');
+    expect(line.textContent).toBe('Прогоны:Корпус 1— готово (новых 12)·Корпус 2— в очереди');
+    expect(screen.getByRole('link', { name: 'Корпус 1' }).getAttribute('href')).toBe('/clash/checks/p1');
+  });
+});

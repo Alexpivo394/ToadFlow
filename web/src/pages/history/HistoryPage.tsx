@@ -8,6 +8,7 @@ import { RequireRole } from '../../auth/RequireRole';
 import { ConfirmButton, Empty, PageTitle, Panel, RunStateBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime, formatDuration } from '../../lib/format';
+import { ClashRunsLine } from './ClashRunsLine';
 import { toApiQuery } from './filters';
 import { Filters, useHistoryFilters } from './HistoryFilters';
 import { JobsTable } from './JobsTable';
@@ -178,6 +179,7 @@ function RunDetails() {
           <Text size="sm" c="dimmed">{formatDuration(run.durationSeconds)}</Text>
         </Group>
         {run.warning && <Alert color="yellow" mb="sm">{run.warning}</Alert>}
+        {details.data!.jobs.some((j) => j.moduleKind === 'clash-extract') && <ClashRunsLine runId={run.id} />}
         {details.data!.jobs.length === 0 ? <Empty>{run.state === 'Expanding' ? 'Строится список моделей…' : 'Моделей нет'}</Empty> : (
           <JobsTable jobs={details.data!.jobs} initiallyOpen={params.get('job')} />
         )}

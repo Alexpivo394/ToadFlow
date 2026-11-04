@@ -80,6 +80,23 @@ public class ClashApprovedScheduleTests : ServerTest
     }
 
     [Test]
+    public async Task History_ExtractRun_ListsEngineRunsItStarted()
+    {
+        var (admin, agent, partId, models) = await ApprovedPartAsync();
+        await using var _ = agent;
+        var (runId, jobs) = await ScheduleRunAsync(partId, models, false, JobStatus.Succeeded, JobStatus.Succeeded);
+        await CompletedAsync(jobs[1]);
+        var engineRun = (await ApprovedRunsAsync(partId)).ShouldHaveSingleItem();
+
+        var list = await admin.GetJsonAsync<ToadFlow.Server.Clash.Engine.TriggeredRunView[]>($"/api/clash/extract-runs/{runId}/engine-runs");
+
+        var item = list.ShouldHaveSingleItem();
+        (item.RunId, item.PartId, item.State, item.New).ShouldBe((engineRun.Id, partId, EngineRunState.Queued, (int?)null));
+        item.PartName.ShouldNotBeNullOrEmpty();
+        (await admin.GetJsonAsync<ToadFlow.Server.Clash.Engine.TriggeredRunView[]>($"/api/clash/extract-runs/{Guid.NewGuid()}/engine-runs")).ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task Schedule_JobsFinishTogether_OneApprovedRun()
     {
         var (_, agent, partId, models) = await ApprovedPartAsync();

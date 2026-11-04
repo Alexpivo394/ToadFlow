@@ -1448,3 +1448,14 @@ export interface PartScheduleView {
   onceAt: string | null;
   nextRunAt: string | null;
 }
+
+/** Прогон утверждённой части, поставленный запуском выгрузки для коллизий («История»). */
+export interface TriggeredRunView {
+  runId: string;
+  partId: string;
+  partName: string;
+  state: 'Queued' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled';
+  /** Новых по итогу сверки; null — прогон не закончен или не удался. */
+  new: number | null;
+  error: string | null;
+}
