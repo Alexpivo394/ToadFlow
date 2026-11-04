@@ -3,7 +3,7 @@ import { Link as RouterLink } from 'react-router';
 import { Alert, Anchor, Button, Checkbox, Drawer, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { ReportRunView, RunCompare } from '../../../api/types';
-import { formatFullDateTime } from './ReportPage';
+import { formatFullDateTime } from '../../../lib/format';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 const NotComparable = 'Прогон до обновления — сравнение недоступно';

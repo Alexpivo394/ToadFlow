@@ -22,7 +22,7 @@ public class AuthorizationMatrixTests : ServerTest
     /// </summary>
     private static readonly string[] Personal =
         ["/api/auth/tokens", "/api/auth/tokens/current", "/api/auth/tokens/{id:guid}", "/api/profile", "/api/profile/password", "/api/loi/naming/preview", "/api/loi/routing/preview",
-         "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned",
+         "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned", "/api/clash/parts/{id:guid}/draft/sets/preview/batch",
          "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit", "/api/clash/collisions/{id:guid}/seen", "/api/clash/reports/{runId:guid}/archive", "/api/clash/report-archives/{id:guid}"];
 
     [Test]

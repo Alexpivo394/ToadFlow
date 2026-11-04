@@ -3,11 +3,11 @@ import { ActionIcon, Alert, Badge, Button, Group, Menu, Modal, MultiSelect, NavL
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconDots } from '@tabler/icons-react';
 import { useApi, useApiPost } from '../../../api/queries';
-import type { DraftView, ModelCatalog, PresenceView, SetPreviewResult, UnassignedResult } from '../../../api/types';
+import type { DraftView, ModelCatalog, PresenceView, SetPreviewBatch, UnassignedResult } from '../../../api/types';
 import { askConfirm } from '../../../components/ui';
 import { categoryLabel } from '../../../lib/categories';
 import {
-  type ClashConfig, copySet, type GroupSource, newGroup, newSet, removeGroup, removeSet, replaceGroup, replaceSet, type SetGroup,
+  type ClashConfig, copySet, type GroupSource, hashConfig, newGroup, newSet, removeGroup, removeSet, replaceGroup, replaceSet, type SetGroup,
 } from '../../../lib/clashConfig';
 import { SetEditor } from './SetEditor';
 
@@ -46,27 +46,31 @@ function GroupDialog({ view, group, onSave, onClose }: { view: DraftView; group:
   );
 }
 
-function SetRow({ partId, config, setId, name, active, onClick }: { partId: string; config: ClashConfig; setId: string; name: string; active: boolean; onClick: () => void }) {
+/** Счётчики наборов группы и «не попали» — одним запросом на версию черновика (через 400 мс после последней правки). */
+function useGroupPreview(partId: string, config: ClashConfig, group: SetGroup | undefined) {
   const [debounced] = useDebouncedValue(config, 400);
-  const preview = useApiPost<SetPreviewResult>(['clash-preview', partId, setId, JSON.stringify(debounced)], `/api/clash/parts/${partId}/preview`,
-    { configuration: debounced, setId });
+  // Наборы — из отложенного черновика: только что добавленного набора сервер в нём ещё не увидит.
+  const setIds = group ? debounced.sets.filter((s) => s.groupId === group.id).map((s) => s.id) : [];
+  const body = group ? { configuration: debounced, setIds, groupId: isDisciplineGroup(group) ? group.id : undefined } : null;
+  return useApiPost<SetPreviewBatch>(['clash-preview-batch', partId, group?.id, hashConfig(debounced)],
+    `/api/clash/parts/${partId}/draft/sets/preview/batch`, body, { gcTime: 30_000 });
+}
+
+function SetRow({ name, count, active, onClick }: { name: string; count: number | undefined; active: boolean; onClick: () => void }) {
   return (
     <NavLink label={name || 'без имени'} active={active} onClick={onClick}
-      rightSection={<Text size="xs" c="green">{preview.data ? preview.data.matched.toLocaleString('ru-RU') : '…'}</Text>} />
+      rightSection={<Text size="xs" c="green">{count != null ? count.toLocaleString('ru-RU') : '…'}</Text>} />
   );
 }
 
-function Unassigned({ partId, config, groupId }: { partId: string; config: ClashConfig; groupId: string }) {
-  const [debounced] = useDebouncedValue(config, 400);
+function Unassigned({ result }: { result: UnassignedResult | null | undefined }) {
   const [open, setOpen] = useState(false);
-  const result = useApiPost<UnassignedResult>(['clash-unassigned', partId, groupId, JSON.stringify(debounced)], `/api/clash/parts/${partId}/unassigned`,
-    { configuration: debounced, groupId });
-  if (!result.data || result.data.count === 0) return null;
+  if (!result || result.count === 0) return null;
   return (
     <Alert color="orange" p="xs">
-      <Text size="xs">{result.data.count.toLocaleString('ru-RU')} элементов источника не попали ни в один набор группы.</Text>
+      <Text size="xs">{result.count.toLocaleString('ru-RU')} элементов источника не попали ни в один набор группы.</Text>
       <Button size="compact-xs" variant="subtle" color="orange" onClick={() => setOpen(!open)}>{open ? 'Скрыть' : 'Показать по категориям'}</Button>
-      {open && result.data.byCategory.map((c) => <Text key={c.value} size="xs">{categoryLabel(c.value)} — {c.count.toLocaleString('ru-RU')}</Text>)}
+      {open && result.byCategory.map((c) => <Text key={c.value} size="xs">{categoryLabel(c.value)} — {c.count.toLocaleString('ru-RU')}</Text>)}
     </Alert>
   );
 }
@@ -92,6 +96,7 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
   const group = config.groups.find((g) => g.id === groupId) ?? config.groups[0];
   const sets = config.sets.filter((s) => s.groupId === group?.id);
   const set = sets.find((s) => s.id === setId) ?? sets[0];
+  const preview = useGroupPreview(partId, config, group);
   useEffect(() => onOpenSet(set?.id ?? null), [set?.id, onOpenSet]);
 
   const addSet = () => {
@@ -129,7 +134,7 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
             )}
           </Group>
           {sets.map((s) => (
-            <SetRow key={s.id} partId={partId} config={config} setId={s.id} name={s.name} active={s.id === set?.id} onClick={() => setSetId(s.id)} />
+            <SetRow key={s.id} name={s.name} count={preview.data?.counts[s.id]} active={s.id === set?.id} onClick={() => setSetId(s.id)} />
           ))}
           {!readOnly && (
             <Group gap={4}>
@@ -143,7 +148,7 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
               )}
             </Group>
           )}
-          {isDisciplineGroup(group) && <Unassigned partId={partId} config={config} groupId={group.id} />}
+          {isDisciplineGroup(group) && <Unassigned result={preview.data?.unassigned} />}
         </Stack>
       )}
 

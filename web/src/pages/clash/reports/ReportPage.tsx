@@ -12,7 +12,7 @@ import { ListFilters } from '../../../components/collisions/ListFilters';
 import { ClosedStatuses, OpenStatuses, type ListParams } from '../../../components/collisions/useListParams';
 import { Panel } from '../../../components/ui';
 import { copyText } from '../../../lib/clipboard';
-import { formatDuration } from '../../../lib/format';
+import { formatDuration, formatFullDateTime } from '../../../lib/format';
 import { ReportCollisionDrawer } from './ReportCollisionDrawer';
 import { ReportExport } from './ReportExport';
 import { NoLevel, ReportRows } from './ReportRows';
@@ -21,14 +21,6 @@ import { type ReportSelection, ReportTree, ReportTreeSelect, readMine, writeMine
 
 const PageSize = 100;
 const n = (value: number) => value.toLocaleString('ru-RU');
-
-/** Дата и время целиком: «31.10.2026 12:05». */
-export function formatFullDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  const pad = (v: number) => String(v).padStart(2, '0');
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 /** Выбор и фильтры отчёта — в строке адреса: ссылку можно переслать. */
 const filterKeys = ['discipline', 'pair', 'status', 'assignee', 'fixer', 'level', 'model', 'q', 'sort'] as const;

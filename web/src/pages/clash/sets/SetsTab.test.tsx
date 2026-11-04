@@ -1,7 +1,9 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { partResponses } from '../../../test/clashPart';
+import { emptyConfig, newGroup } from '../../../lib/clashConfig';
+import { batch, partResponses } from '../../../test/clashPart';
 import { renderApp } from '../../../test/renderApp';
+import { valuesKey } from './SetEditor';
 
 type FetchMock = { mock: { calls: [string, RequestInit?][] } };
 const calls = () => (fetch as unknown as FetchMock).mock.calls;
@@ -46,7 +48,7 @@ describe('Sets tab', () => {
   it('SetsTab_UnassignedWarning', async () => {
     renderApp('/clash/setup/parts/p1?tab=sets', {
       ...partResponses,
-      '/api/clash/parts/p1/unassigned': { count: 312, byCategory: [{ value: 'OST_Furniture', count: 300 }, { value: 'OST_Something', count: 12 }] },
+      'POST /api/clash/parts/p1/draft/sets/preview/batch': batch({ count: 312, byCategory: [{ value: 'OST_Furniture', count: 300 }, { value: 'OST_Something', count: 12 }] }),
     });
 
     expect(await screen.findByText(/312 элементов источника не попали/)).toBeTruthy();
@@ -58,7 +60,7 @@ describe('Sets tab', () => {
   it('SetsTab_UnassignedHiddenForCustomGroup', async () => {
     renderApp('/clash/setup/parts/p1?tab=sets', {
       ...partResponses,
-      '/api/clash/parts/p1/unassigned': { count: 31375, byCategory: [{ value: 'OST_Walls', count: 31375 }] },
+      'POST /api/clash/parts/p1/draft/sets/preview/batch': batch({ count: 31375, byCategory: [{ value: 'OST_Walls', count: 31375 }] }),
     });
     expect(await screen.findByText(/элементов источника не попали/)).toBeTruthy();
 
@@ -81,6 +83,34 @@ describe('Sets tab', () => {
     expect(screen.getByText(/В набор попало/)).toBeTruthy();
     await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/preview' && JSON.parse(String(init?.body)).setId === 's-walls'))
       .toBe(true));
+  });
+
+  /** Счётчики наборов группы — один запрос на версию черновика, а не по запросу на набор; открытый набор — ещё один. */
+  it('Sets_OneBatchRequestPerConfigVersion', async () => {
+    renderApp('/clash/setup/parts/p1?tab=sets', partResponses);
+    const batches = () => calls().filter(([url]) => url === '/api/clash/parts/p1/draft/sets/preview/batch');
+    const singles = () => calls().filter(([url]) => url === '/api/clash/parts/p1/preview');
+
+    await screen.findByLabelText('Имя набора');
+    await waitFor(() => expect(batches()).toHaveLength(1));
+    expect(JSON.parse(String(batches()[0][1]!.body))).toMatchObject({ setIds: ['s-walls'], groupId: 'g-ar' });
+    expect(singles().length).toBeLessThanOrEqual(1);
+
+    fireEvent.change(screen.getByLabelText('Имя набора'), { target: { value: 'Стены наружные' } });
+    await waitFor(() => expect(batches()).toHaveLength(2), { timeout: 2000 });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(batches()).toHaveLength(2);
+    expect(singles().length).toBeLessThanOrEqual(2);
+  });
+
+  it('ValuePicker_KeyIncludesGroupSource', () => {
+    const group = newGroup('Проезды', { disciplines: ['АР'], modelKeys: [] });
+    const config = { ...emptyConfig(), groups: [group] };
+    const moved = { ...config, groups: [{ ...group, source: { disciplines: ['КР'], modelKeys: [] } }] };
+    const property = { kind: 'category' as const };
+
+    expect(valuesKey('p1', config, group.id, property)).not.toEqual(valuesKey('p1', moved, group.id, property));
+    expect(valuesKey('p1', config, group.id, property)).toEqual(valuesKey('p1', { ...config, sets: [] }, group.id, property));
   });
 
   /** Наблюдатель настройку части не видит — его уводит в «Проверки». */

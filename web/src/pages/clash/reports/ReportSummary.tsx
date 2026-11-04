@@ -1,7 +1,7 @@
 import { Paper, SimpleGrid, Spoiler, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import type { ReportView } from '../../../api/types';
 import { Panel } from '../../../components/ui';
-import { formatFullDateTime } from './ReportPage';
+import { formatFullDateTime } from '../../../lib/format';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 

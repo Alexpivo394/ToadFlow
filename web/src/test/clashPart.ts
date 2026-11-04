@@ -3,6 +3,13 @@ const ar = { id: 'g-ar', name: 'АР', source: { disciplines: ['АР'], modelKey
 const ov = { id: 'g-ov', name: 'ОВ', source: { disciplines: ['ОВ'], modelKeys: [] } };
 const any = { property: { kind: 'category' }, operator: 'isNotEmpty', value: null };
 
+/** Пакетный предпросмотр наборов: по 14 элементов в каждом запрошенном наборе, «не попали» — <c>unassigned</c>. */
+export const batch = (unassigned = { count: 0, byCategory: [] as { value: string; count: number }[] }) =>
+  (_url: string, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { setIds: string[]; groupId?: string };
+    return { counts: Object.fromEntries(body.setIds.map((id) => [id, 14])), unassigned: body.groupId ? unassigned : null };
+  };
+
 export const walls = { id: 's-walls', groupId: 'g-ar', name: 'Стены', anyOf: [{ all: [any] }] };
 export const ducts = { id: 's-ducts', groupId: 'g-ov', name: 'Воздуховоды', anyOf: [{ all: [any] }] };
 
@@ -39,6 +46,7 @@ export const partResponses = {
   '/api/clash/parts/p1/preview': { matched: 14, total: 21430, byAnyOf: [14], sample: [] },
   '/api/clash/parts/p1/values': [{ value: 'OST_Walls', count: 5902 }, { value: 'OST_Doors', count: 310 }, { value: 'OST_GenericModel', count: 1204 }],
   '/api/clash/parts/p1/unassigned': { count: 0, byCategory: [] },
+  'POST /api/clash/parts/p1/draft/sets/preview/batch': batch(),
   '/api/clash/parts/p1/draft/run': null,
   '/api/clash/parts/p1/draft/summary': { total: 0, checks: [], legacy: false },
   '/api/clash/parts/p1/schedules': [],

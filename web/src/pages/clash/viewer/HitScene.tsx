@@ -15,15 +15,24 @@ const axes = ['X', 'Y', 'Z'] as const;
 
 const base = (runId: string, number: number) => `/api/clash/runs/${runId}/hits/${number}`;
 
+/**
+ * Сцена неизменна для своего ключа: коллизия прогона не меняется, у утверждённой коллизии в ключе версия картинки
+ * (она меняется с прогоном, нашедшим коллизию). Поэтому сетки (мегабайты) не перекачиваются при возврате в окно,
+ * а просмотренные держатся в памяти недолго.
+ */
+const viewerCache = { staleTime: Infinity, refetchOnWindowFocus: false, gcTime: 60_000 } as const;
+
 /** Сцена по адресу: коллизия прогона черновика или коллизия утверждённой проверки. */
-const sceneAt = (path: string, radius: string) => ({
-  queryKey: ['clash-viewer', path, radius, 'scene'],
+const sceneAt = (path: string, radius: string, version = '') => ({
+  queryKey: ['clash-viewer', path, version, radius, 'scene'],
   queryFn: () => apiFetch<ViewerSceneView>(`${path}/scene?radius=${radius}`),
+  ...viewerCache,
 });
 
-const meshesAt = (path: string, radius: string) => ({
-  queryKey: ['clash-viewer', path, radius, 'meshes'],
+const meshesAt = (path: string, radius: string, version = '') => ({
+  queryKey: ['clash-viewer', path, version, radius, 'meshes'],
   queryFn: async () => parseMeshes(await apiFetchBinary(`${path}/meshes?radius=${radius}`)),
+  ...viewerCache,
 });
 
 export const sceneQuery = (runId: string, number: number, radius: string) => sceneAt(base(runId, number), radius);
@@ -48,11 +57,13 @@ function plural(n: number, one: string, few: string, many: string) {
  * Сцена коллизии: 3D (A и B, окружение в радиусе), изоляция, секущий куб и свойства элемента плашкой поверх сцены.
  * Встраивается в черновик (и позже в отчёт); <c>focus</c> — какую сторону показать в свойствах (Enter в списке).
  */
-export function HitScene({ runId, number, collisionId, title, focus, mine = null, onRefresh }: {
+export function HitScene({ runId, number, collisionId, version, title, focus, mine = null, onRefresh }: {
   runId: string;
   number: number;
   /** Коллизия утверждённой проверки: сцена — по прогону, который нашёл её последним. */
   collisionId?: string;
+  /** Версия сцены утверждённой коллизии (<c>imageVersion</c> строки): нашёл другой прогон — сцена грузится заново. */
+  version?: string;
   title?: string;
   focus?: 'A' | 'B' | null;
   /** Сторона пользователя («Мои»: модель из его разделов) — элемент выбран при открытии и подписан «ваш». */
@@ -70,8 +81,8 @@ export function HitScene({ runId, number, collisionId, title, focus, mine = null
   const [showProps, setShowProps] = useState(false);
 
   const path = collisionId ? `/api/clash/collisions/${collisionId}` : base(runId, number);
-  const scene = useQuery(sceneAt(path, radius));
-  const meshes = useQuery({ ...meshesAt(path, radius), enabled: !!scene.data });
+  const scene = useQuery(sceneAt(path, radius, version));
+  const meshes = useQuery({ ...meshesAt(path, radius, version), enabled: !!scene.data });
 
   // Другая коллизия — новый секущий куб вокруг её пары и сброс выбора.
   useEffect(() => {

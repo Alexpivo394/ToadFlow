@@ -852,6 +852,12 @@ export interface ClashTemplateView {
   updatedAt: string;
 }
 
+/** Пакетный предпросмотр наборов группы: сколько попало в каждый набор; «не попали» — только для группы раздела. */
+export interface SetPreviewBatch {
+  counts: Record<string, number>;
+  unassigned: UnassignedResult | null;
+}
+
 export interface SetPreviewResult {
   matched: number;
   total: number;

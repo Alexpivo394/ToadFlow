@@ -6,7 +6,7 @@ import { useApiPost } from '../../../api/queries';
 import type { ModelCatalog, PresenceView, SetPreviewResult, ValueCount } from '../../../api/types';
 import { categoryLabel } from '../../../lib/categories';
 import {
-  addCondition, addGroup, type ClashConfig, type Condition, needsValue, operators, propertyKinds, type PropertyRef, type SelectionSet,
+  addCondition, addGroup, type ClashConfig, type Condition, hashConfig, needsValue, operators, propertyKinds, type PropertyRef, type SelectionSet,
   setCondition,
 } from '../../../lib/clashConfig';
 import { type SetFocus, SetScene } from './SetScene';
@@ -21,6 +21,10 @@ function parseProperty(value: string): PropertyRef {
 
 const show = (property: PropertyRef, value: string) => (property.kind === 'category' ? categoryLabel(value) : value);
 
+/** Ключ значений свойства: значения зависят от источника группы (какие модели), а не от наборов. */
+export const valuesKey = (partId: string, config: ClashConfig, groupId: string, property: PropertyRef) =>
+  ['clash-values', partId, groupId, hashConfig(config.groups.find((g) => g.id === groupId)?.source ?? null), JSON.stringify(property)];
+
 /** Значение условия: реальные значения источника группы с числом элементов; для «одно из» — несколько. Своё значение тоже можно ввести. */
 function ValuePicker({ partId, config, groupId, condition, readOnly, onChange }: {
   partId: string;
@@ -31,7 +35,7 @@ function ValuePicker({ partId, config, groupId, condition, readOnly, onChange }:
   onChange: (condition: Condition) => void;
 }) {
   const body = { configuration: config, groupId, property: condition.property };
-  const values = useApiPost<ValueCount[]>(['clash-values', partId, groupId, JSON.stringify(condition.property)], `/api/clash/parts/${partId}/values`, body);
+  const values = useApiPost<ValueCount[]>(valuesKey(partId, config, groupId, condition.property), `/api/clash/parts/${partId}/values`, body);
   const data = (values.data ?? []).map((v) => ({ value: v.value, label: `${show(condition.property, v.value)} · ${v.count.toLocaleString('ru-RU')}` }));
 
   if (condition.operator === 'oneOf') {
@@ -92,8 +96,10 @@ export function SetEditor({ partId, config, set, source, catalog, readOnly, edit
   onChange: (set: SelectionSet) => void;
 }) {
   const [debounced] = useDebouncedValue(config, 400);
-  const preview = useApiPost<SetPreviewResult>(['clash-preview', partId, set.id, JSON.stringify(debounced)], `/api/clash/parts/${partId}/preview`,
-    { configuration: debounced, setId: set.id });
+  // Набор только что добавлен и ещё не попал в отложенный черновик — считать нечего (сервер ответил бы 400).
+  const known = debounced.sets.some((s) => s.id === set.id);
+  const preview = useApiPost<SetPreviewResult>(['clash-preview', partId, set.id, hashConfig(debounced)], `/api/clash/parts/${partId}/preview`,
+    known ? { configuration: debounced, setId: set.id } : null, { gcTime: 30_000 });
   // Набор в 3D: undefined — закрыт, null — весь набор, образец — кадр на нём.
   const [scene3d, setScene3d] = useState<SetFocus | null | undefined>(undefined);
 

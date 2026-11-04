@@ -190,7 +190,7 @@ export function MyPage() {
           {collisionId ? (
             <>
               <Box style={{ flex: 3, minHeight: 0 }}>
-                <HitScene runId="" number={current?.row.number ?? 0} collisionId={collisionId}
+                <HitScene runId="" number={current?.row.number ?? 0} collisionId={collisionId} version={current?.row.imageVersion}
                   mine={current ? mySide(current.row, disciplines) : null}
                   title={current?.my ? `№ ${current.row.number} · ${current.my.partName} · глубина ${Math.round(current.row.depthMm)} мм` : undefined} />
               </Box>

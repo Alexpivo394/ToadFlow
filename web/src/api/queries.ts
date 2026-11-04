@@ -52,13 +52,14 @@ export function useApiMutation<TBody = void, TResult = unknown>(
 
 /**
  * Запрос-вычисление методом POST (тело — несохранённое состояние редактора): кешируется по ключу, как GET.
- * null вместо тела — запрос не нужен.
+ * null вместо тела — запрос не нужен. `gcTime` — сколько держать в памяти ответ, который больше не на экране.
  */
-export function useApiPost<T>(key: unknown[], path: string, body: unknown | null) {
+export function useApiPost<T>(key: unknown[], path: string, body: unknown | null, options: { gcTime?: number } = {}) {
   return useQuery({
     queryKey: key,
-    queryFn: async () => (await apiFetch<T>(path, { method: 'POST', json: body })) as T,
+    queryFn: async ({ signal }) => (await apiFetch<T>(path, { method: 'POST', json: body, signal })) as T,
     enabled: body !== null,
     placeholderData: (previous) => previous,
+    gcTime: options.gcTime,
   });
 }

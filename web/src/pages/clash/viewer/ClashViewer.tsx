@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ViewerSceneView } from '../../../api/types';
 import { type Box, frameForHit, type Isolation, isVisible, roleColor, type Vec3, type ViewerMesh } from '../../../lib/viewer';
 import { dragFace, elementBox, type Handle, handles } from './sectionGizmo';
+import { createSectionPlanes, updateSectionPlanes } from './sectionPlanes';
 
 export interface ClashViewerProps {
   scene: ViewerSceneView;
@@ -28,8 +29,11 @@ interface Stage {
   world: THREE.Scene;
   group: THREE.Group;
   outline: THREE.Group;
-  /** Секущий куб в сцене: полупрозрачная коробка, контур и ручки граней. */
+  /** Секущий куб в сцене: полупрозрачная коробка, контур и ручки граней; строится один раз, куб его двигает и растягивает. */
   gizmo: THREE.Group;
+  /** Шесть плоскостей куба: одни на всё время просмотрщика, у материалов — ссылка на этот массив. */
+  planes: THREE.Plane[];
+  /** Кадр в ближайшем requestAnimationFrame: сколько бы раз за кадр ни попросили, рисуется один раз. */
   render: () => void;
 }
 
@@ -45,13 +49,52 @@ function dispose(object: THREE.Object3D) {
   });
 }
 
-function sectionPlanes(box: Box | null): THREE.Plane[] {
-  if (!box) return [];
-  return [0, 1, 2].flatMap((axis) => {
-    const normal = new THREE.Vector3();
-    normal.setComponent(axis, 1);
-    return [new THREE.Plane(normal.clone(), -box.min[axis]), new THREE.Plane(normal.clone().negate(), box.max[axis])];
-  });
+/** Плоскости отсечения материала: куб включён — общий массив, выключен — пусто. Перекомпиляция — только при включении и выключении. */
+function clip(material: THREE.Material, planes: THREE.Plane[], on: boolean) {
+  const wanted = on ? planes : [];
+  if (material.clippingPlanes === wanted || (!on && !material.clippingPlanes?.length)) return;
+  material.clippingPlanes = wanted;
+  material.needsUpdate = true;
+}
+
+/** Секущий куб: коробка и контур единичного размера (растягиваются), шесть ручек (двигаются). */
+function buildGizmo(gizmo: THREE.Group) {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const shell = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: Selected, transparent: true, opacity: 0.05, depthWrite: false }));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: Selected }));
+  shell.raycast = () => {};
+  edges.raycast = () => {};
+  shell.userData.frame = true;
+  edges.userData.frame = true;
+  gizmo.add(shell, edges);
+  const knob = new THREE.SphereGeometry(1, 16, 12);
+  for (let i = 0; i < 6; i++) {
+    const mesh = new THREE.Mesh(knob, new THREE.MeshBasicMaterial({ color: Selected, depthTest: false }));
+    mesh.renderOrder = 3;
+    gizmo.add(mesh);
+  }
+  gizmo.visible = false;
+}
+
+function placeGizmo(gizmo: THREE.Group, box: Box | null) {
+  gizmo.visible = !!box;
+  if (!box) return;
+  const size = [0, 1, 2].map((i) => Math.max(box.max[i] - box.min[i], 1)) as Vec3;
+  const center = [0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2) as Vec3;
+  const radius = Math.max(20, Math.hypot(...size) / 60);
+  const knobs = handles(box);
+  let k = 0;
+  for (const child of gizmo.children) {
+    if (child.userData.frame) {
+      child.position.set(...center);
+      child.scale.set(...size);
+    } else {
+      const handle = knobs[k++];
+      child.position.set(...handle.position);
+      child.scale.setScalar(radius);
+      child.userData.handle = handle;
+    }
+  }
 }
 
 function inside(point: THREE.Vector3, box: Box | null): boolean {
@@ -106,10 +149,20 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     const gizmo = new THREE.Group();
     world.add(group, outline, gizmo);
 
+    buildGizmo(gizmo);
+    const planes = createSectionPlanes();
+
     const controls = new OrbitControls(camera, renderer.domElement);
-    const render = () => renderer.render(world, camera);
+    let frameRequest = 0;
+    const render = () => {
+      if (frameRequest) return;
+      frameRequest = requestAnimationFrame(() => {
+        frameRequest = 0;
+        renderer.render(world, camera);
+      });
+    };
     controls.addEventListener('change', render);
-    stage.current = { renderer, camera, controls, world, group, outline, gizmo, render };
+    stage.current = { renderer, camera, controls, world, group, outline, gizmo, planes, render };
 
     const resize = () => {
       const { clientWidth, clientHeight } = host;
@@ -117,7 +170,8 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
       renderer.setSize(clientWidth, clientHeight);
       camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
-      render();
+      // Сразу, а не в следующем кадре: setSize очищает холст, иначе он на кадр мигнёт пустым.
+      renderer.render(world, camera);
     };
     const observer = new ResizeObserver(resize);
     observer.observe(host);
@@ -138,6 +192,7 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     // Ручка куба под мышью тянет свою грань (камера в это время не вращается); щелчок без перетаскивания — выбор элемента.
     let down: { x: number; y: number } | null = null;
     let drag: { handle: Handle; start: Vec3; box: Box } | null = null;
+    let hovered: THREE.Object3D | undefined;
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY };
       const hit = section.current && handleAt(e);
@@ -152,10 +207,12 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
         changeSection.current?.(dragFace(drag.box, drag.handle, r.origin.toArray() as Vec3, r.direction.toArray() as Vec3, drag.start));
         return;
       }
-      const hover = section.current ? handleAt(e) : undefined;
+      const hover = section.current ? handleAt(e)?.object : undefined;
+      if (hover === hovered) return;
+      hovered = hover;
       renderer.domElement.style.cursor = hover ? 'grab' : '';
       for (const child of gizmo.children)
-        if (child.userData.handle) ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(child === hover?.object ? '#e8590c' : Selected);
+        if (child.userData.handle) ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(child === hover ? '#e8590c' : Selected);
       render();
     };
     const onUp = (e: PointerEvent) => {
@@ -181,6 +238,7 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     renderer.domElement.addEventListener('dblclick', onDouble);
 
     return () => {
+      cancelAnimationFrame(frameRequest);
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointermove', onMove);
@@ -269,17 +327,25 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     s.render();
   }, [scene]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Изоляция, секущий куб и подсветка выбранного — без пересборки сеток.
+  // Куб двигается: меняются только константы общих плоскостей и положение гизмо — материалы и контур не трогаются.
   useEffect(() => {
     const s = stage.current;
     if (!s) return;
-    const planes = sectionPlanes(sectionBox);
+    if (sectionBox) updateSectionPlanes(s.planes, sectionBox);
+    placeGizmo(s.gizmo, sectionBox);
+    s.render();
+  }, [sectionBox]);
+
+  // Изоляция, включение куба и подсветка выбранного — без пересборки сеток; контур выбранного — только при смене выбора.
+  const sectionOn = sectionBox !== null;
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
     for (const object of s.group.children) {
       const element = scene.elements[object.userData.index as number];
       object.visible = element ? isVisible(element, isolation, selected) : false;
       const material = (object as THREE.Mesh).material as THREE.Material;
-      material.clippingPlanes = planes;
-      material.needsUpdate = true;
+      clip(material, s.planes, sectionOn);
       if (object instanceof THREE.LineSegments) {
         (material as THREE.LineBasicMaterial).color.set(object.userData.index === selected ? Selected : roleColor(element.role).color);
       } else {
@@ -294,43 +360,13 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
     if (chosen instanceof THREE.Mesh && chosen.visible) {
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(chosen.geometry, 30),
-        new THREE.LineBasicMaterial({ color: Selected, clippingPlanes: planes, depthTest: false }),
+        new THREE.LineBasicMaterial({ color: Selected, clippingPlanes: sectionOn ? s.planes : [], depthTest: false }),
       );
       s.outline.add(edges);
     }
 
     s.render();
-  }, [scene, meshes, isolation, sectionBox, selected]);
-
-  // Секущий куб виден в сцене: полупрозрачная коробка, жёлтый контур и ручки в центрах граней.
-  useEffect(() => {
-    const s = stage.current;
-    if (!s) return;
-    dispose(s.gizmo);
-    s.gizmo.clear();
-    if (sectionBox) {
-      const size = [0, 1, 2].map((i) => sectionBox.max[i] - sectionBox.min[i]) as Vec3;
-      const center = [0, 1, 2].map((i) => (sectionBox.min[i] + sectionBox.max[i]) / 2) as Vec3;
-      const geometry = new THREE.BoxGeometry(...size);
-      const shell = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: Selected, transparent: true, opacity: 0.05, depthWrite: false }));
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: Selected }));
-      shell.position.set(...center);
-      edges.position.set(...center);
-      shell.raycast = () => {};
-      edges.raycast = () => {};
-      s.gizmo.add(shell, edges);
-      const radius = Math.max(20, Math.hypot(...size) / 60);
-      for (const handle of handles(sectionBox)) {
-        const knob = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), new THREE.MeshBasicMaterial({ color: Selected, depthTest: false }));
-        knob.position.set(...handle.position);
-        knob.renderOrder = 3;
-        knob.userData.handle = handle;
-        s.gizmo.add(knob);
-      }
-    }
-
-    s.render();
-  }, [sectionBox]);
+  }, [scene, meshes, isolation, sectionOn, selected]);
 
   if (failed)
     return (

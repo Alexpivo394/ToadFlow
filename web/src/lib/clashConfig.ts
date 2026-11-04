@@ -176,3 +176,17 @@ export const setCellTolerance = (config: ClashConfig, cell: MatrixCell, mm: numb
   ...config,
   matrix: config.matrix.map((c) => (c.groupA === cell.groupA && c.groupB === cell.groupB ? { ...c, toleranceMm: mm } : c)),
 });
+
+/**
+ * Короткий ключ кеша по содержимому (FNV-1a по JSON): ключи запросов предпросмотра не держат весь черновик,
+ * а одинаковые черновики дают один ключ.
+ */
+export function hashConfig(value: unknown): string {
+  const text = JSON.stringify(value) ?? '';
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${(hash >>> 0).toString(16)}:${text.length}`;
+}

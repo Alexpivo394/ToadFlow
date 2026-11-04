@@ -1,24 +1,27 @@
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes, type RouteObject } from 'react-router';
 import { Center, Loader } from '@mantine/core';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
 import { RegisterPage } from './auth/RegisterPage';
 import { AppShell } from './layout/AppShell';
-import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { CheckPage } from './pages/clash/checks/CheckPage';
 import { ChecksPage } from './pages/clash/checks/ChecksPage';
-import { ClashHome } from './pages/clash/home/ClashHome';
 import { MyPage } from './pages/clash/my/MyPage';
-import { ReportPage } from './pages/clash/reports/ReportPage';
-import { PartShell } from './pages/clash/part/PartShell';
-import { OverviewPage } from './pages/clash/setup/OverviewPage';
-import { SummaryPage } from './pages/clash/summary/SummaryPage';
 import { ClashRedirect, HomeRedirect, OldPartRedirect, SetupOnly, StaffOnly } from './pages/HomeRedirect';
-import { HistoryPage } from './pages/history/HistoryPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
-import { SchedulesPage } from './pages/schedules/SchedulesPage';
-import { SettingsPage } from './pages/settings/SettingsPage';
+
+// Страницы своими чанками: грузятся, когда их открыли. Проектировщику не нужен код настроек, расписаний и графиков,
+// а вход не ждёт весь бандл. «Мои», «Проверки» и проверка — в главном чанке: с них начинают все.
+const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
+const ReportPage = lazy(() => import('./pages/clash/reports/ReportPage').then((m) => ({ default: m.ReportPage })));
+const PartShell = lazy(() => import('./pages/clash/part/PartShell').then((m) => ({ default: m.PartShell })));
+const OverviewPage = lazy(() => import('./pages/clash/setup/OverviewPage').then((m) => ({ default: m.OverviewPage })));
+const SummaryPage = lazy(() => import('./pages/clash/summary/SummaryPage').then((m) => ({ default: m.SummaryPage })));
+const ClashHome = lazy(() => import('./pages/clash/home/ClashHome').then((m) => ({ default: m.ClashHome })));
+const HistoryPage = lazy(() => import('./pages/history/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const SchedulesPage = lazy(() => import('./pages/schedules/SchedulesPage').then((m) => ({ default: m.SchedulesPage })));
+const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 /**
  * Маршруты data router (createBrowserRouter в приложении, createMemoryRouter в тестах): вход и страницы — внутри <c>App</c>, data

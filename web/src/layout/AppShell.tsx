@@ -1,5 +1,6 @@
+import { Suspense } from 'react';
 import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
-import { ActionIcon, Anchor, AppShell as Shell, Box, Burger, Group, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
+import { ActionIcon, Anchor, AppShell as Shell, Box, Burger, Center, Group, Loader, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAdjustments, IconBox, IconCalendarTime, IconChartBar, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
@@ -106,7 +107,10 @@ export function AppShell() {
       </Shell.Navbar>
 
       <Shell.Main>
-        <Outlet />
+        {/* Страницы грузятся своими чанками: пока чанк идёт, меню остаётся, на месте страницы — загрузка. */}
+        <Suspense fallback={<Center py="xl"><Loader /></Center>}>
+          <Outlet />
+        </Suspense>
       </Shell.Main>
     </Shell>
   );

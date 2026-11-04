@@ -264,7 +264,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
           {collisionId ? (
             <>
               <Box style={{ flex: 3, minHeight: 0 }}>
-                <HitScene runId="" number={current?.number ?? 0} collisionId={collisionId}
+                <HitScene runId="" number={current?.number ?? 0} collisionId={collisionId} version={current?.imageVersion}
                   title={current ? `№ ${current.number} · глубина ${Math.round(current.depthMm)} мм` : undefined} />
               </Box>
               <Box pt="xs" data-testid="card-column" style={{ flex: 2, minHeight: 0, overflowY: 'auto' }}>

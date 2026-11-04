@@ -214,4 +214,53 @@ public class ClashSetPreviewTests : ServerTest
         result.Count.ShouldBe(3);
         result.ByCategory.ShouldBe([new ValueCount("OST_GenericModel", 2), new ValueCount("OST_PipeCurves", 1)]);
     }
+
+    private sealed record BatchResult(Dictionary<Guid, int> Counts, UnassignedResult? Unassigned);
+
+    [Test]
+    public async Task PreviewBatch_CountsMatchSingle()
+    {
+        await using var agent = await AgentAsync();
+        await PublishAsync(agent, "POL_K1_AR.rvt", padding: 2);
+        await PublishAsync(agent, "POL_K1_OV.rvt");
+        var admin = await AdminAsync();
+        var partId = await PartAsync(admin, "POL_K1_AR.rvt", "POL_K1_OV.rvt");
+        var walls = Walls();
+        var pipes = new SelectionSet(Guid.NewGuid(), ConfigurationDefaults.DisciplineGroupId("АР"), "Трубы",
+            [new ConditionGroup([new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.Equals, "OST_PipeCurves")])]);
+        var config = Groups with { Sets = [walls, pipes] };
+        var viewer = await ClientAsync(UserRole.Viewer);
+
+        var response = await viewer.PostAsync($"/api/clash/parts/{partId}/draft/sets/preview/batch", GroupBody(new
+        {
+            configuration = GroupsJson(config), setIds = new[] { walls.Id, pipes.Id }, groupId = ConfigurationDefaults.DisciplineGroupId("АР")
+        }));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var batch = await response.ReadJsonAsync<BatchResult>();
+        foreach (var set in new[] { walls, pipes })
+        {
+            var single = await admin.PostAsync($"/api/clash/parts/{partId}/preview", GroupBody(new { configuration = GroupsJson(config), setId = set.Id }));
+            batch.Counts[set.Id].ShouldBe((await single.ReadJsonAsync<SetPreviewResult>()).Matched);
+        }
+
+        batch.Counts[walls.Id].ShouldBe(1);
+        batch.Unassigned.ShouldNotBeNull().Count.ShouldBe(2); // два заполнителя модели АР
+    }
+
+    [Test]
+    public async Task PreviewBatch_UnknownSet_Returns400()
+    {
+        await using var agent = await AgentAsync();
+        await PublishAsync(agent, "POL_K1_AR.rvt");
+        var admin = await AdminAsync();
+        var partId = await PartAsync(admin, "POL_K1_AR.rvt");
+
+        var response = await admin.PostAsync($"/api/clash/parts/{partId}/draft/sets/preview/batch", GroupBody(new
+        {
+            configuration = GroupsJson(Groups with { Sets = [Walls()] }), setIds = new[] { Guid.NewGuid() }
+        }));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
 }

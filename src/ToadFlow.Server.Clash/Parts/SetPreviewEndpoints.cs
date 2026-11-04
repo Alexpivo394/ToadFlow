@@ -22,6 +22,8 @@ public static class SetPreviewEndpoints
         api.MapPost("/clash/parts/{id:guid}/preview", PreviewAsync);
         api.MapPost("/clash/parts/{id:guid}/values", ValuesAsync);
         api.MapPost("/clash/parts/{id:guid}/unassigned", UnassignedAsync);
+        // Счётчики всех наборов группы одним запросом: список наборов не шлёт по запросу на набор на каждую правку.
+        api.MapPost("/clash/parts/{id:guid}/draft/sets/preview/batch", BatchAsync);
 
         var sets = api.MapGroup("/clash/parts/{id:guid}/draft/sets").RequireAuthorization(Policies.Operator);
         sets.MapPost("/scene", Viewer.SetScene.SceneAsync);
@@ -29,7 +31,10 @@ public static class SetPreviewEndpoints
         sets.MapPost("/why", Viewer.SetScene.WhyAsync);
     }
 
-    private sealed record Body(ClashConfiguration Configuration, Guid? SetId, Guid? GroupId, PropertyRef? Property);
+    private sealed record Body(ClashConfiguration Configuration, Guid? SetId, Guid? GroupId, PropertyRef? Property, IReadOnlyList<Guid>? SetIds = null);
+
+    /// <summary>Ответ пакетного предпросмотра: сколько элементов попало в каждый набор и, если задана группа, сколько не попало ни в один.</summary>
+    public sealed record BatchPreview(IReadOnlyDictionary<Guid, int> Counts, UnassignedResult? Unassigned);
 
     /// <summary>Тело — <c>{ configuration, setId }</c>. Прежняя форма — конфигурация ровно с одним набором — тоже принимается.</summary>
     private static async Task<IResult> PreviewAsync(Guid id, HttpRequest request, PartElements elements, CancellationToken ct)
@@ -43,6 +48,20 @@ public static class SetPreviewEndpoints
 
         if (config.Sets.All(s => s.Id != setId)) return Results.BadRequest(new { error = "Набора нет в черновике" });
         return Results.Ok(SetPreview.Count(config, setId, await elements.LoadAsync(id, ct)));
+    }
+
+    /// <summary>Тело — <c>{ configuration, setIds, groupId? }</c>.</summary>
+    private static async Task<IResult> BatchAsync(Guid id, HttpRequest request, PartElements elements, CancellationToken ct)
+    {
+        if (Parse(await ReadAsync(request, ct)) is not { SetIds: { } setIds } body)
+            return Results.BadRequest(new { error = "Передайте черновик и наборы" });
+        if (setIds.Any(setId => body.Configuration.Sets.All(s => s.Id != setId)))
+            return Results.BadRequest(new { error = "Набора нет в черновике" });
+
+        var loaded = await elements.LoadAsync(id, ct);
+        var counts = setIds.Distinct().ToDictionary(setId => setId, setId => SetPreview.Count(body.Configuration, setId, loaded).Matched);
+        var unassigned = body.GroupId is { } groupId ? SetPreview.Unassigned(body.Configuration, groupId, loaded) : null;
+        return Results.Ok(new BatchPreview(counts, unassigned));
     }
 
     private static async Task<IResult> ValuesAsync(Guid id, HttpRequest request, PartElements elements, CancellationToken ct)
@@ -79,7 +98,10 @@ public static class SetPreviewEndpoints
             var property = root.TryGetProperty("property", out var raw) && raw.ValueKind == JsonValueKind.Object
                 ? raw.Deserialize<PropertyRef>(PropertyJson)
                 : null;
-            return new Body(config, Id("setId"), Id("groupId"), property);
+            var setIds = root.TryGetProperty("setIds", out var ids) && ids.ValueKind == JsonValueKind.Array
+                ? ids.EnumerateArray().Select(v => v.ValueKind == JsonValueKind.String && v.TryGetGuid(out var g) ? g : Guid.Empty).ToList()
+                : null;
+            return new Body(config, Id("setId"), Id("groupId"), property, setIds);
         }
         catch (JsonException)
         {

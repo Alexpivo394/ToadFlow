@@ -2,7 +2,7 @@ import { Alert, Button, Collapse, Group, List, Stack, Table, Text, UnstyledButto
 import { useState } from 'react';
 import { useApi, useApiMutation } from '../../../api/queries';
 import type { ApprovePreview } from '../../../api/types';
-import { formatFullDateTime } from '../reports/ReportPage';
+import { formatFullDateTime } from '../../../lib/format';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 const MaxPairs = 8;

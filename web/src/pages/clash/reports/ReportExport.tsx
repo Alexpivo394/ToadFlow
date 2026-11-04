@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, downloadFile } from '../../../api/client';
 import { useApi } from '../../../api/queries';
 import type { HtmlEstimate, ReportArchiveView, ReportView } from '../../../api/types';
-import { formatFullDateTime } from './ReportPage';
+import { formatFullDateTime } from '../../../lib/format';
 import { inScope, type ReportSelection } from './ReportTree';
 
 const currentKey = ['clash-collisions', 'report-archive-current'];

@@ -1,4 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { renderUi } from '../../../test/renderApp';
 import { mySide } from '../my/MyPage';
@@ -28,6 +29,27 @@ describe('Hit scene', () => {
 
     expect(await screen.findByText('Элемент A')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Скрыть свойства' })).toBeTruthy();
+  });
+});
+
+describe('Hit scene: cache', () => {
+  it('Viewer_Meshes_NotRefetchedOnFocus', async () => {
+    renderUi(<HitScene runId="" number={1} collisionId="c1" version="v1" />, {
+      '/api/clash/collisions/c1/scene': scene,
+      '/api/clash/collisions/c1/meshes': () => new Uint32Array([0x31564354, 0]).buffer,
+    });
+    expect(await screen.findByText('сцена')).toBeTruthy();
+    const meshCalls = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/meshes')).length;
+    await waitFor(() => expect(meshCalls()).toBe(1));
+
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(meshCalls()).toBe(1);
+    focusManager.setFocused(undefined);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addCondition, addExclusion, addGroup, cellsForSetPair, copySet, emptyConfig, matrixCell, newGroup, newSet, removeGroup, removeSet, setCell,
-  setCellTolerance, type ClashConfig,
+  setCellTolerance, hashConfig, type ClashConfig,
 } from './clashConfig';
 
 const ar = newGroup('АР', { disciplines: ['АР'], modelKeys: [] });
@@ -109,5 +109,13 @@ describe('clashConfig noise to rules', () => {
     const result = setCellTolerance(config, cell, 35);
 
     expect(result.matrix.map((c) => c.toleranceMm)).toEqual([35, 10]);
+  });
+});
+
+describe('hashConfig', () => {
+  it('HashConfig_SameContentSameKey_DifferentContentDifferentKey', () => {
+    const a = { ...emptyConfig(), groups: [ar, ov] };
+    expect(hashConfig(a)).toBe(hashConfig(JSON.parse(JSON.stringify(a))));
+    expect(hashConfig(a)).not.toBe(hashConfig({ ...a, groups: [ov, ar] }));
   });
 });
