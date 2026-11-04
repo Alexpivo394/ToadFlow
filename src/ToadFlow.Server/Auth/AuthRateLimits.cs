@@ -33,6 +33,9 @@ public static class AuthRateLimits
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            // Прокси может быть два (HTTPS-прокси на хосте → nginx в compose): адреса из частных сетей пропускаются,
+            // пока не встретится внешний адрес клиента. С пределом 1 клиентом был бы второй прокси — общий на всех.
+            options.ForwardLimit = null;
             options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
             foreach (var network in new[] { "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1/128" })

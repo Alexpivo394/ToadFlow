@@ -191,6 +191,26 @@ public class RateLimitTests : ServerTest
         codes[10].ShouldBe(HttpStatusCode.TooManyRequests);
     }
 
+    /// <summary>
+    /// За двумя прокси (Caddy на хосте → nginx в compose) X-Forwarded-For приходит как «клиент, адрес Caddy в сети Docker».
+    /// Лимит считается по клиенту, а не по последнему прокси: иначе все пользователи из интернета делили бы одно окно.
+    /// </summary>
+    [Test]
+    public async Task Login_BehindTwoProxies_LimitPerClientAddress()
+    {
+        async Task<HttpStatusCode> LoginFrom(string forwardedFor)
+        {
+            var client = Server.CreateClient();
+            client.DefaultRequestHeaders.Add("X-Forwarded-For", forwardedFor);
+            return (await client.PostJsonAsync("/api/auth/login", new { login = "nobody", password = "wrong-pass" })).StatusCode;
+        }
+
+        for (var i = 0; i < 10; i++) (await LoginFrom("203.0.113.5, 172.18.0.1")).ShouldBe(HttpStatusCode.Unauthorized);
+
+        (await LoginFrom("203.0.113.5, 172.18.0.1")).ShouldBe(HttpStatusCode.TooManyRequests);
+        (await LoginFrom("198.51.100.7, 172.18.0.1")).ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
     [Test]
     public async Task Register_RateLimited_5Per10MinutesPerIp_429()
     {
