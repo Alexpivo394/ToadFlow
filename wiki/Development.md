@@ -46,12 +46,11 @@ dotnet run --project src/ToadFlow.Agent
 
 Аддин для отладки: `dotnet build src/ToadFlow.Revit.Addin -c Debug.R22` кладёт его в `%AppData%\Autodesk\Revit\Addins\2022`. Аддин работает только в Revit, запущенном агентом, — запускайте выгрузку через расписание.
 
-
-Движок коллизий против локального сервера (ключ — любой, одинаковый у обоих):
+Движок коллизий против локального сервера (ключ — любой не короче 32 символов, одинаковый у обоих):
 
 ```powershell
-$env:Clash__EngineKey = 'dev-engine-key'; dotnet run --project src/ToadFlow.Server.Host   # сервер с ключом движка
-$env:Clash__EngineKey = 'dev-engine-key'; dotnet run --project src/ToadFlow.Clash.Worker   # работник: http://localhost:5000
+$env:Clash__EngineKey = 'dev-engine-key-0123456789abcdefghij'; dotnet run --project src/ToadFlow.Server.Host   # сервер с ключом движка
+$env:Clash__EngineKey = 'dev-engine-key-0123456789abcdefghij'; dotnet run --project src/ToadFlow.Clash.Worker   # работник: http://localhost:5000
 ```
 
 ## Тесты
@@ -61,7 +60,7 @@ dotnet test --project tests/ToadFlow.Server.Tests      # на встроенно
 dotnet test --project tests/ToadFlow.Agent.Tests       # агент против настоящего сервера и имитации Revit
 dotnet test --project tests/ToadFlow.Revit.Addin.Tests # логика аддина без Revit
 dotnet test --project tests/ToadFlow.Clash.Worker.Tests # работник движка коллизий против настоящего сервера
-cd web; npm test
+cd web; npm test; npm run lint; npx tsc -b
 ```
 
 ## Миграции базы

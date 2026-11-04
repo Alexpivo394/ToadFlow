@@ -26,7 +26,7 @@
 2. На машине с Revit, от администратора:
 
    ```powershell
-   msiexec /i ToadFlowAgent-1.0.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
+   msiexec /i ToadFlowAgent-2.0.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
    ```
 
    Можно и просто запустить MSI двойным щелчком — тогда адрес сервера и код агент спросит в окне **«Подключение к ToadFlow»** при первом запуске.

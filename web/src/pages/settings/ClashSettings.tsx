@@ -45,8 +45,8 @@ export function ClashSettings() {
         </Text>
         <NumberInput label="Сколько выгрузок хранить у каждой модели" w={320} min={1} max={20} value={value.storage.keepSnapshots} disabled={readOnly}
           error={keepInvalid ? 'От 1 до 20' : null} onChange={(v) => setDraft({ ...value, storage: { keepSnapshots: Number(v) } })} />
-        <Title order={5} mt="sm">Обзор координатора</Title>
-        <Text size="sm" c="dimmed">Когда проверка попадает в «Настройка проверок → Обзор» и в блок «Коллизии: требует внимания».</Text>
+        <Title order={5} mt="sm">Обзор проверок</Title>
+        <Text size="sm" c="dimmed">Когда проверка попадает в «Настройка проверок → Обзор проверок».</Text>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <NumberInput label="Выгрузка устарела — дней" min={1} max={365} value={o.staleDays} disabled={readOnly}
             error={errors.staleDays ? 'От 1 до 365' : null} onChange={(v) => setOverview({ staleDays: Number(v) })} />
