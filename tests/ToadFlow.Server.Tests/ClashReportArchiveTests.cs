@@ -122,6 +122,12 @@ public class ClashReportArchiveTests : ServerTest
     }
 
     [Test]
+    public void FileName_WindowsInvalidChars_ReplacedOnAnyOs()
+    {
+        ReportPairFile.FileName(["ВК", "a<b>:c\"d/e\\f|g?h*i\tj", null, " "]).ShouldBe("ВК a_b__c_d_e_f_g_h_i_j");
+    }
+
+    [Test]
     public async Task Archive_FileNames_Sanitized()
     {
         var (admin, agent, runId) = await RunAsync(ThreePairs(vk: "ВК/<1>"));

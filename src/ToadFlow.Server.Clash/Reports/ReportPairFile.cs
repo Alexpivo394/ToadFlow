@@ -48,11 +48,15 @@ internal static class ReportPairFile
         return total;
     }
 
-    /// <summary>Имя файла из непустых частей через пробел; недопустимые в имени символы заменены на «_».</summary>
+    /// <summary>
+    ///     Имя файла из непустых частей через пробел; символы, недопустимые в имени файла Windows, заменены на «_».
+    ///     Набор — Windows на любой ОС сервера: файлы и архивы открывают на Windows, а сервер работает в Linux.
+    /// </summary>
     public static string FileName(IEnumerable<string?> parts)
     {
         var title = string.Join(' ', parts.Where(p => !string.IsNullOrWhiteSpace(p)));
-        var invalid = Path.GetInvalidFileNameChars();
-        return string.Concat(title.Select(c => invalid.Contains(c) ? '_' : c));
+        return string.Concat(title.Select(c => c < ' ' || WindowsInvalid.Contains(c) ? '_' : c));
     }
+
+    private const string WindowsInvalid = "<>:\"/\\|?*";
 }
