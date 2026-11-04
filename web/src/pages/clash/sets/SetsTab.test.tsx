@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { emptyConfig, newGroup } from '../../../lib/clashConfig';
-import { batch, partResponses } from '../../../test/clashPart';
+import { batch, configuration, draft, partResponses } from '../../../test/clashPart';
 import { renderApp } from '../../../test/renderApp';
 import { valuesKey } from './SetEditor';
 
@@ -43,6 +43,50 @@ describe('Sets tab', () => {
 
     const config = await savedBody();
     expect(config.sets[0].anyOf[0].all[0]).toMatchObject({ operator: 'oneOf', values: ['OST_Walls', 'OST_Doors'] });
+  });
+
+  it('SetsTab_ModelCondition_PicksFileByName', async () => {
+    renderApp('/clash/setup/parts/p1?tab=sets', {
+      ...partResponses,
+      '/api/clash/parts/p1/values': [{ value: 'm1', count: 5902 }],
+    });
+    await screen.findByLabelText('Имя набора');
+
+    fireEvent.click(screen.getAllByLabelText('Свойство')[0]);
+    fireEvent.click(await screen.findByRole('option', { name: 'Модель (файл)' }));
+    fireEvent.click(screen.getAllByLabelText('Оператор')[0]);
+    expect(await screen.findByRole('option', { name: 'одно из' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'содержит' })).toBeNull(); // «содержит» по ключу модели бессмысленно
+    fireEvent.click(await screen.findByRole('option', { name: 'равно' }));
+    fireEvent.click((await screen.findAllByLabelText('Значение'))[0]);
+    fireEvent.click(await screen.findByRole('option', { name: /POL_K1_AR\.rvt · 5\s902/ }));
+
+    const config = await savedBody();
+    expect(config.sets[0].anyOf[0].all[0]).toMatchObject({ property: { kind: 'model' }, operator: 'equals', value: 'm1' });
+  });
+
+  it('SetsTab_GroupOfRemovedDiscipline_CanBeDeleted', async () => {
+    const itp = { id: 'g-itp', name: 'ИТП', source: { disciplines: ['ИТП'], modelKeys: [] } };
+    const pipes = { id: 's-itp', groupId: 'g-itp', name: 'Трубы ИТП', anyOf: [{ all: [{ property: { kind: 'category' }, operator: 'isNotEmpty', value: null }] }] };
+    renderApp('/clash/setup/parts/p1?tab=sets', {
+      ...partResponses,
+      '/api/clash/parts/p1/draft': draft(1, { ...configuration, groups: [...configuration.groups, itp], sets: [...configuration.sets, pipes] }),
+    });
+
+    fireEvent.click(await screen.findByText('ИТП'));
+    expect(screen.getByText('раздела нет в части')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить группу' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Да' }));
+
+    const config = await savedBody();
+    expect(config.groups.map((g: { name: string }) => g.name)).toEqual(['АР', 'ОВ']);
+    expect(config.sets.map((s: { name: string }) => s.name)).toEqual(['Стены', 'Воздуховоды']);
+  });
+
+  it('SetsTab_GroupOfPresentDiscipline_ExplainsHowToExclude', async () => {
+    renderApp('/clash/setup/parts/p1?tab=sets', partResponses);
+    expect(await screen.findByText(/уберите его модели на вкладке «Модели»/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Удалить группу' })).toBeNull();
   });
 
   it('SetsTab_UnassignedWarning', async () => {

@@ -112,4 +112,18 @@ public class ClashConfigurationDiffTests
             "Клетка АР × ОВ включена, допуск 30 мм"
         ]);
     }
+
+    [Test]
+    public void Diff_ModelCondition_NamedByModel()
+    {
+        var first = Guid.NewGuid().ToString("N");
+        var second = Guid.NewGuid().ToString("N");
+        var byFile = new Condition(new PropertyRef(PropertyKind.Model), ConditionOperator.OneOf, null, [first, second]);
+        var after = Config(parking: [new ConditionGroup([byFile])]);
+
+        ConfigurationDiff.ModelKeys(Config(), after).ShouldBe([first, second]);
+        ConfigurationDiff.Compare(Config(), after, new Dictionary<string, string> { [first] = "AR_1.rvt", [second] = "AR_2.rvt" }).ShouldBe([
+            new ConfigChange(ConfigChangeKind.SetConditions, "Набор «Паркинг» (АР): Категория = Парковка → Модель — одно из: AR_1.rvt, AR_2.rvt")
+        ]);
+    }
 }

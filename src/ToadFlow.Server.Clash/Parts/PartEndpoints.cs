@@ -2,6 +2,7 @@ using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Events;
 using ToadFlow.Server.Naming;
 
 namespace ToadFlow.Server.Clash.Parts;
@@ -147,10 +148,12 @@ public static class PartEndpoints
         return deleted == 0 ? Results.NotFound() : Results.NoContent();
     }
 
-    private static async Task<IResult> SetModelsAsync(Guid id, PartModelRequest[] request, ToadFlowDb db, HttpContext http, TimeProvider time,
+    private static async Task<IResult> SetModelsAsync(Guid id, PartModelRequest[] request, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events,
         PartModels models, CancellationToken ct)
     {
-        var part = await db.Set<ClashPart>().SingleOrDefaultAsync(p => p.Id == id, ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // Блокировка строки части: черновик меняется вместе с составом и не должен затереть одновременное сохранение черновика.
+        var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {id} FOR UPDATE").SingleOrDefaultAsync(ct);
         if (part is null) return Results.NotFound();
 
         var ids = request.Select(m => m.ModelId).Distinct().ToList();
@@ -167,7 +170,43 @@ public static class PartEndpoints
         part.UpdatedAt = time.GetUtcNow();
         part.UpdatedByUserId = http.User.UserId();
         await db.SaveChangesAsync(ct);
+
+        var draft = ConfigurationJson.Deserialize(part.DraftJson);
+        var pruned = WithoutRemovedModels(draft, await DraftEndpoints.DisciplinesAsync(id, models, ct), ids.Select(m => m.ToString("N")).ToList());
+        if (pruned is not null)
+        {
+            await DraftEndpoints.StoreAsync(db, part, pruned, http, time, ct);
+            await db.SaveChangesAsync(ct);
+        }
+
+        await transaction.CommitAsync(ct);
+        if (pruned is not null) events.Publish(new Engine.ClashDraftChanged(http.User.Actor(), id));
         return Results.Ok(await ViewAsync(part, models, ct));
+    }
+
+    /// <summary>
+    ///     Черновик без того, что осталось от убранных моделей: группы разделов, моделей которых в части больше нет, уходят вместе с
+    ///     наборами, клетками и исключениями; из своих групп убираются ключи убранных моделей. Утверждённая версия не меняется.
+    /// </summary>
+    /// <returns>Новый черновик или <c>null</c>, если убирать нечего.</returns>
+    public static ClashConfiguration? WithoutRemovedModels(ClashConfiguration config, IReadOnlyList<string> disciplines, IReadOnlyList<string> modelKeys)
+    {
+        var present = new HashSet<string>(disciplines, StringComparer.OrdinalIgnoreCase);
+        var keys = new HashSet<string>(modelKeys, StringComparer.OrdinalIgnoreCase);
+        var gone = config.Groups.Where(g => DraftEndpoints.IsDisciplineGroup(g) && !present.Contains(g.Source.Disciplines[0])).Select(g => g.Id).ToHashSet();
+        var stale = config.Groups.Any(g => !DraftEndpoints.IsDisciplineGroup(g) && g.Source.ModelKeys.Any(k => !keys.Contains(k)));
+        if (gone.Count == 0 && !stale) return null;
+
+        var sets = config.Sets.Where(s => gone.Contains(s.GroupId)).Select(s => s.Id).ToHashSet();
+        return config with
+        {
+            Groups = config.Groups.Where(g => !gone.Contains(g.Id))
+                .Select(g => DraftEndpoints.IsDisciplineGroup(g) ? g : g with { Source = g.Source with { ModelKeys = g.Source.ModelKeys.Where(keys.Contains).ToList() } })
+                .ToList(),
+            Sets = config.Sets.Where(s => !sets.Contains(s.Id)).ToList(),
+            Matrix = config.Matrix.Where(c => !gone.Contains(c.GroupA) && !gone.Contains(c.GroupB)).ToList(),
+            Exclusions = config.Exclusions.Where(e => !sets.Contains(e.SetA) && !sets.Contains(e.SetB)).ToList()
+        };
     }
 
     private static void Apply(ClashPart part, ClashPartRequest request, HttpContext http, DateTimeOffset now)

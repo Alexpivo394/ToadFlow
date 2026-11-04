@@ -75,6 +75,34 @@ public class ClashDraftTests : ServerTest
     }
 
     [Test]
+    public async Task RemoveModel_LastOfDiscipline_DropsItsGroupFromDraft()
+    {
+        var (admin, partId, ids) = await PartAsync("POL_K1_AR.rvt", "POL_K1_OV.rvt", "POL_K1_ITP.rvt");
+        (await admin.PutJsonAsync($"/api/clash/parts/{partId}/models",
+            ids.Select((id, i) => new { modelId = id, disciplineOverride = i == 2 ? "ИТП" : null }).ToArray())).EnsureSuccessStatusCode();
+        var walls = Set("АР", "Стены");
+        var ducts = Set("ОВ", "Воздуховоды");
+        var pipes = Set("ИТП", "Трубы ИТП");
+        var custom = new SetGroup(Guid.NewGuid(), "ИТП и ОВ", new GroupSource([], [ids[1].ToString("N"), ids[2].ToString("N")]));
+        var config = Config([walls, ducts, pipes], [new DisciplineCell("АР", "ОВ", true, 20), new DisciplineCell("АР", "ИТП", true, 20)],
+            [new SetPairExclusion(walls.Id, pipes.Id)]);
+        (await SaveAsync(admin, partId, config with { Groups = [.. config.Groups, custom] })).EnsureSuccessStatusCode();
+        var before = (await admin.GetJsonAsync<DraftView>($"/api/clash/parts/{partId}/draft")).Version;
+
+        (await admin.PutJsonAsync($"/api/clash/parts/{partId}/models",
+            ids.Take(2).Select(id => new { modelId = id, disciplineOverride = (string?)null }).ToArray())).EnsureSuccessStatusCode();
+
+        var (saved, view) = await DraftAsync(admin, partId);
+        view.Version.ShouldBe(before + 1);
+        view.Problems.ShouldBeEmpty();
+        saved.Groups.Select(g => g.Name).ShouldBe(["АР", "ОВ", "ИТП и ОВ"]);
+        saved.Groups.Single(g => g.Id == custom.Id).Source.ModelKeys.ShouldBe([ids[1].ToString("N")]); // убранная модель уходит и из своей группы
+        saved.Sets.Select(s => s.Name).ShouldBe(["Стены", "Воздуховоды"]);
+        saved.Matrix.ShouldHaveSingleItem().GroupB.ShouldBe(G("ОВ"));
+        saved.Exclusions.ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task SaveDraft_InvalidConfiguration_ReturnsProblems()
     {
         var (admin, partId, _) = await PartAsync();

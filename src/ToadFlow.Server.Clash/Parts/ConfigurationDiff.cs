@@ -37,8 +37,9 @@ public static class ConfigurationDiff
         IReadOnlyDictionary<string, string>? modelNames = null)
     {
         var changes = new List<ConfigChange>();
-        Groups(before, after, modelNames ?? new Dictionary<string, string>(), changes);
-        Sets(before, after, changes);
+        var names = modelNames ?? new Dictionary<string, string>();
+        Groups(before, after, names, changes);
+        Sets(before, after, names, changes);
         Cells(before, after, changes);
         Exclusions(before, after, changes);
         return changes;
@@ -66,7 +67,9 @@ public static class ConfigurationDiff
 
     /// <summary>Ключи моделей из источников групп обеих конфигураций — чьи имена нужны <see cref="Compare" />.</summary>
     public static IReadOnlyList<string> ModelKeys(params ClashConfiguration[] configurations) =>
-        configurations.SelectMany(c => c.Groups).SelectMany(g => g.Source.ModelKeys).Distinct(StringComparer.Ordinal).ToList();
+        configurations.SelectMany(c => c.Groups).SelectMany(g => g.Source.ModelKeys)
+            .Concat(configurations.SelectMany(c => c.Sets).SelectMany(s => s.AnyOf).SelectMany(g => g.All).SelectMany(ConditionText.ModelKeys))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     private static void Groups(ClashConfiguration before, ClashConfiguration after, IReadOnlyDictionary<string, string> names, List<ConfigChange> changes)
     {
@@ -113,7 +116,7 @@ public static class ConfigurationDiff
     private static string ModelsText(IEnumerable<string> keys, IReadOnlyDictionary<string, string> names) =>
         string.Join(", ", keys.Select(k => $"«{names.GetValueOrDefault(k, k)}»"));
 
-    private static void Sets(ClashConfiguration before, ClashConfiguration after, List<ConfigChange> changes)
+    private static void Sets(ClashConfiguration before, ClashConfiguration after, IReadOnlyDictionary<string, string> names, List<ConfigChange> changes)
     {
         var old = before.Sets.ToDictionary(s => s.Id);
         foreach (var set in after.Sets)
@@ -127,7 +130,7 @@ public static class ConfigurationDiff
 
             if (was.Name != set.Name)
                 changes.Add(new ConfigChange(ConfigChangeKind.SetRenamed, $"Набор «{was.Name}» ({group}) переименован в «{set.Name}»"));
-            var (from, to) = (ConditionText.Of(was.AnyOf), ConditionText.Of(set.AnyOf));
+            var (from, to) = (ConditionText.Of(was.AnyOf, names), ConditionText.Of(set.AnyOf, names));
             if (from != to) changes.Add(new ConfigChange(ConfigChangeKind.SetConditions, $"Набор «{set.Name}» ({group}): {from} → {to}"));
         }
 
@@ -183,18 +186,34 @@ public static class ConfigurationDiff
     }
 }
 
-/// <summary>Условие набора одной строкой: условия группы — через «и», группы — через «или».</summary>
+/// <summary>
+///     Условие набора одной строкой: условия группы — через «и», группы — через «или». Модель в условии называется по имени из
+///     <c>names</c> (ключ — Id модели в форме N), без имени — ключом.
+/// </summary>
 public static class ConditionText
 {
-    public static string Of(IReadOnlyList<ConditionGroup> anyOf) =>
-        anyOf.Count == 0 ? "без условий" : string.Join(" или ", anyOf.Select(g => anyOf.Count > 1 && g.All.Count > 1 ? $"({Of(g)})" : Of(g)));
+    public static string Of(IReadOnlyList<ConditionGroup> anyOf, IReadOnlyDictionary<string, string>? names = null) =>
+        anyOf.Count == 0
+            ? "без условий"
+            : string.Join(" или ", anyOf.Select(g => anyOf.Count > 1 && g.All.Count > 1 ? $"({Of(g, names)})" : Of(g, names)));
 
-    public static string Of(ConditionGroup group) => group.All.Count == 0 ? "все элементы" : string.Join(" и ", group.All.Select(Of));
+    public static string Of(ConditionGroup group, IReadOnlyDictionary<string, string>? names = null) =>
+        group.All.Count == 0 ? "все элементы" : string.Join(" и ", group.All.Select(c => Of(c, names)));
 
-    public static string Of(Condition condition)
+    /// <summary>Ключи моделей, которые называет условие на модель; у других условий — пусто.</summary>
+    public static IEnumerable<string> ModelKeys(Condition condition) =>
+        condition.Property.Kind != PropertyKind.Model ? [] : (condition.Values ?? []).Append(condition.Value ?? "").Where(k => k.Length > 0);
+
+    public static string Of(Condition condition, IReadOnlyDictionary<string, string>? names = null)
     {
+        if (condition.Property.Kind == PropertyKind.Model && names is not null) condition = condition with
+        {
+            Value = condition.Value is { } key ? Name(key, names) : null,
+            Values = condition.Values?.Select(k => Name(k, names)).ToList()
+        };
         var property = condition.Property.Kind switch
         {
+            PropertyKind.Model => "Модель",
             PropertyKind.Category => "Категория",
             PropertyKind.Family => "Семейство",
             PropertyKind.Type => "Тип",
@@ -217,4 +236,7 @@ public static class ConditionText
             _ => property
         };
     }
+
+    private static string Name(string key, IReadOnlyDictionary<string, string> names) =>
+        names.TryGetValue(key, out var name) || names.TryGetValue(key.ToLowerInvariant(), out name) ? name : key;
 }

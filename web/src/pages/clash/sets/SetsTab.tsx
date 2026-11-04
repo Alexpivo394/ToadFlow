@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActionIcon, Alert, Badge, Button, Group, Menu, Modal, MultiSelect, NavLink, Stack, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconDots } from '@tabler/icons-react';
@@ -99,6 +99,10 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
   const preview = useGroupPreview(partId, config, group);
   useEffect(() => onOpenSet(set?.id ?? null), [set?.id, onOpenSet]);
 
+  // Группа раздела, моделей которого в части больше нет (осталась от старого состава или шаблона), — удаляется как своя.
+  const orphan = (g: SetGroup) => isDisciplineGroup(g) && !view.disciplines.some((d) => d.toLowerCase() === g.source.disciplines[0].toLowerCase());
+  const modelNames = useMemo(() => Object.fromEntries(view.models.map((m) => [m.modelKey.toLowerCase(), m.name])), [view.models]);
+
   const addSet = () => {
     const created = newSet(group!.id, `Набор ${sets.length + 1}`);
     onChange((c) => ({ ...c, sets: [...c.sets, created] }));
@@ -111,7 +115,8 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
         <Text size="xs" fw={700} c="dimmed" tt="uppercase">Группы</Text>
         {config.groups.map((g) => (
           <NavLink key={g.id} label={g.name} active={g.id === group?.id} onClick={() => { setGroupId(g.id); setSetId(null); }}
-            description={isDisciplineGroup(g) ? undefined : 'своя группа'}
+            description={!isDisciplineGroup(g) ? 'своя группа' : orphan(g) ? 'раздела нет в части' : undefined}
+            c={orphan(g) ? 'orange' : undefined}
             rightSection={<Badge size="xs" variant="light" color="gray">{config.sets.filter((s) => s.groupId === g.id).length}</Badge>} />
         ))}
         {!readOnly && <Button size="compact-sm" variant="subtle" onClick={() => setDialog('new')}>+ Своя группа</Button>}
@@ -121,6 +126,12 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
         <Stack gap={4} w={240} style={{ flexShrink: 0 }}>
           <Group justify="space-between">
             <Text size="xs" fw={700} c="dimmed" tt="uppercase">Наборы «{group.name}»</Text>
+            {!readOnly && orphan(group) && (
+              <Button size="compact-xs" variant="subtle" color="red"
+                onClick={() => askConfirm(`Удалить группу «${group.name}» с её наборами?`, () => onChange((c) => removeGroup(c, group.id)))}>
+                Удалить группу
+              </Button>
+            )}
             {!readOnly && !isDisciplineGroup(group) && (
               <Menu>
                 <Menu.Target><ActionIcon size="sm" variant="subtle" aria-label="Действия группы"><IconDots size={14} /></ActionIcon></Menu.Target>
@@ -133,6 +144,12 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
               </Menu>
             )}
           </Group>
+          {isDisciplineGroup(group) && !orphan(group) && (
+            <Text size="xs" c="dimmed">
+              Группа раздела есть, пока в части есть его модели. Чтобы не проверять раздел, уберите его модели на вкладке «Модели» или выключите
+              клетки раздела в матрице.
+            </Text>
+          )}
           {sets.map((s) => (
             <SetRow key={s.id} name={s.name} count={preview.data?.counts[s.id]} active={s.id === set?.id} onClick={() => setSetId(s.id)} />
           ))}
@@ -153,7 +170,7 @@ export function SetsTab({ partId, view, config, readOnly, onChange, onOpenSet, p
       )}
 
       {set && group ? (
-        <SetEditor partId={partId} config={config} set={set} source={sourceText(group, view)} catalog={catalog.data} readOnly={readOnly}
+        <SetEditor partId={partId} config={config} set={set} source={sourceText(group, view)} catalog={catalog.data} models={modelNames} readOnly={readOnly}
           editing={present.filter((p) => p.tab === 'sets' && p.setId === set.id)} onChange={(changed) => onChange((c) => replaceSet(c, changed))} />
       ) : (
         <Text size="sm" c="dimmed">В группе ещё нет наборов{readOnly ? '' : ' — нажмите «+ Набор»'}</Text>

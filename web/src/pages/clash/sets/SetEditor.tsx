@@ -6,7 +6,7 @@ import { useApiPost } from '../../../api/queries';
 import type { ModelCatalog, PresenceView, SetPreviewResult, ValueCount } from '../../../api/types';
 import { categoryLabel } from '../../../lib/categories';
 import {
-  addCondition, addGroup, type ClashConfig, type Condition, hashConfig, needsValue, operators, propertyKinds, type PropertyRef, type SelectionSet,
+  addCondition, addGroup, type ClashConfig, type Condition, hashConfig, modelOperators, needsValue, operators, propertyKinds, type PropertyRef, type SelectionSet,
   setCondition,
 } from '../../../lib/clashConfig';
 import { type SetFocus, SetScene } from './SetScene';
@@ -25,31 +25,45 @@ function parseProperty(value: string): PropertyRef {
   return { kind: 'parameter', sharedGuid: guid || null, parameterName: name.join(':') || null };
 }
 
-const show = (property: PropertyRef, value: string) => (property.kind === 'category' ? categoryLabel(value) : value);
+/** Значение для человека: категория — по-русски, модель — именем файла (значение условия — ключ модели). */
+const show = (property: PropertyRef, value: string, models: Record<string, string>) =>
+  property.kind === 'category' ? categoryLabel(value) : property.kind === 'model' ? models[value.toLowerCase()] ?? 'модель не в части' : value;
 
 /** Ключ значений свойства: значения зависят от источника группы (какие модели), а не от наборов. */
 export const valuesKey = (partId: string, config: ClashConfig, groupId: string, property: PropertyRef) =>
   ['clash-values', partId, groupId, hashConfig(config.groups.find((g) => g.id === groupId)?.source ?? null), JSON.stringify(property)];
 
 /** Значение условия: реальные значения источника группы с числом элементов; для «одно из» — несколько. Своё значение тоже можно ввести. */
-function ValuePicker({ partId, config, groupId, condition, readOnly, onChange }: {
+function ValuePicker({ partId, config, groupId, condition, models, readOnly, onChange }: {
   partId: string;
   config: ClashConfig;
   groupId: string;
   condition: Condition;
+  models: Record<string, string>;
   readOnly: boolean;
   onChange: (condition: Condition) => void;
 }) {
   const body = { configuration: config, groupId, property: condition.property };
   const values = useApiPost<ValueCount[]>(valuesKey(partId, config, groupId, condition.property), `/api/clash/parts/${partId}/values`, body);
-  const data = (values.data ?? []).map((v) => ({ value: v.value, label: `${show(condition.property, v.value)} · ${v.count.toLocaleString('ru-RU')}` }));
+  const data = (values.data ?? []).map((v) => ({ value: v.value, label: `${show(condition.property, v.value, models)} · ${v.count.toLocaleString('ru-RU')}` }));
 
   if (condition.operator === 'oneOf') {
     const chosen = condition.values ?? [];
-    const all = [...data, ...chosen.filter((c) => !data.some((d) => d.value === c)).map((c) => ({ value: c, label: show(condition.property, c) }))];
+    const all = [...data, ...chosen.filter((c) => !data.some((d) => d.value === c)).map((c) => ({ value: c, label: show(condition.property, c, models) }))];
     return (
       <MultiSelect size="xs" style={{ flex: 1 }} searchable disabled={readOnly} aria-label="Значения" placeholder="выберите значения" data={all} value={chosen}
         onChange={(v) => onChange({ ...condition, values: v, value: null })} />
+    );
+  }
+
+  // Модель выбирается из списка: введённый текст ключом модели не станет.
+  if (condition.property.kind === 'model') {
+    const own = condition.value && !data.some((d) => d.value === condition.value)
+      ? [{ value: condition.value, label: show(condition.property, condition.value, models) }]
+      : [];
+    return (
+      <Select size="xs" style={{ flex: 1 }} searchable disabled={readOnly} aria-label="Значение" placeholder="выберите модель" data={[...data, ...own]}
+        value={condition.value ?? null} onChange={(v) => onChange({ ...condition, value: v })} />
     );
   }
 
@@ -66,6 +80,7 @@ function ConditionRow(props: {
   groupId: string;
   condition: Condition;
   catalog: ModelCatalog | undefined;
+  models: Record<string, string>;
   readOnly: boolean;
   first: boolean;
   onChange: (condition: Condition | null) => void;
@@ -77,8 +92,14 @@ function ConditionRow(props: {
       <Text size="xs" c="dimmed" w={16}>{props.first ? '' : 'и'}</Text>
       <Select size="xs" w={210} searchable disabled={readOnly} aria-label="Свойство" value={propertyValue(condition.property)}
         data={[...propertyKinds.filter((k) => k.value !== 'parameter').map((k) => ({ value: k.value, label: k.label })), ...parameters]}
-        onChange={(v) => v && onChange({ ...condition, property: parseProperty(v), value: null, values: null })} />
-      <Select size="xs" w={130} disabled={readOnly} aria-label="Оператор" allowDeselect={false} value={condition.operator} data={operators}
+        onChange={(v) => {
+          if (!v) return;
+          const property = parseProperty(v);
+          const operator = property.kind === 'model' && !modelOperators.includes(condition.operator) ? 'equals' : condition.operator;
+          onChange({ ...condition, property, operator, value: null, values: null });
+        }} />
+      <Select size="xs" w={130} disabled={readOnly} aria-label="Оператор" allowDeselect={false} value={condition.operator}
+        data={condition.property.kind === 'model' ? operators.filter((o) => modelOperators.includes(o.value)) : operators}
         onChange={(v) => v && onChange({ ...condition, operator: v as Condition['operator'] })} />
       {needsValue(condition.operator) ? <ValuePicker {...props} onChange={onChange} /> : <div style={{ flex: 1 }} />}
       {!readOnly && <ActionIcon variant="subtle" color="gray" aria-label="Удалить условие" onClick={() => onChange(null)}><IconTrash size={14} /></ActionIcon>}
@@ -90,12 +111,14 @@ function ConditionRow(props: {
  * Редактор набора: источник группы, имя, группы условий «или» (внутри — «и») со счётчиком каждой, образец попавших.
  * Счётчики пересчитываются через 400 мс после последней правки.
  */
-export function SetEditor({ partId, config, set, source, catalog, readOnly, editing, onChange }: {
+export function SetEditor({ partId, config, set, source, catalog, models, readOnly, editing, onChange }: {
   partId: string;
   config: ClashConfig;
   set: SelectionSet;
   source: string;
   catalog: ModelCatalog | undefined;
+  /** Имена моделей части по ключу модели в нижнем регистре — для условия «Модель (файл)». */
+  models: Record<string, string>;
   readOnly: boolean;
   /** Кто ещё сейчас открыл этот набор. */
   editing: PresenceView[];
@@ -123,7 +146,7 @@ export function SetEditor({ partId, config, set, source, catalog, readOnly, edit
             </Group>
             <Stack gap={4}>
               {group.all.map((condition, i) => (
-                <ConditionRow key={i} partId={partId} config={config} groupId={set.groupId} condition={condition} catalog={catalog} readOnly={readOnly}
+                <ConditionRow key={i} partId={partId} config={config} groupId={set.groupId} condition={condition} catalog={catalog} models={models} readOnly={readOnly}
                   first={i === 0} onChange={(c) => onChange(setCondition(set, g, i, c))} />
               ))}
               {!readOnly && <Button size="compact-xs" variant="subtle" w="fit-content" onClick={() => onChange(addCondition(set, g))}>+ условие</Button>}

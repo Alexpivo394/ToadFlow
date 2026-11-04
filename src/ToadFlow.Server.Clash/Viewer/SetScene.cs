@@ -58,13 +58,15 @@ public static class SetScene
         if (Parse(await ReadAsync(request, ct)) is not { Element: { } element } body) return Results.BadRequest(new { error = "Передайте черновик, набор и элемент" });
         if (body.Configuration.Sets.FirstOrDefault(s => s.Id == body.SetId) is not { } set) return Results.BadRequest(new { error = "Набора нет в черновике" });
 
-        foreach (var snapshot in await SnapshotsAsync(id, models, storage, cache, ct))
+        var snapshots = await SnapshotsAsync(id, models, storage, cache, ct);
+        var names = snapshots.ToDictionary(s => s.Model.Index.Header.ModelKey, s => s.Model.ModelName, StringComparer.OrdinalIgnoreCase);
+        foreach (var snapshot in snapshots)
         {
             if (snapshot.Model.Index.Header.ModelKey != element.Model) continue;
             if (snapshot.Elements.Elements.FirstOrDefault(e => e.UniqueId == element.UniqueId) is not { } info) break;
             var input = new ElementsInput(snapshot.Model.Discipline, element.Model, [info], snapshot.Elements.Parameters);
             var matched = SetPreview.Count(body.Configuration, set.Id, [input]).ByAnyOf;
-            return Results.Ok(set.AnyOf.Where((_, i) => matched[i] > 0).Select(ConditionText.Of).ToList());
+            return Results.Ok(set.AnyOf.Where((_, i) => matched[i] > 0).Select(g => ConditionText.Of(g, names)).ToList());
         }
 
         return Results.NotFound(new { error = "Элемента нет в выгрузке модели" });

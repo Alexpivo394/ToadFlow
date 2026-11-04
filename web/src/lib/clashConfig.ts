@@ -1,6 +1,6 @@
 // Конфигурация проверки коллизий — тот же JSON, что ConfigurationJson в Alexpivo394.Revit.Clash.Rules (camelCase, перечисления строками).
 
-export type PropertyKind = 'category' | 'family' | 'type' | 'level' | 'workset' | 'parameter';
+export type PropertyKind = 'category' | 'family' | 'type' | 'level' | 'workset' | 'model' | 'parameter';
 export type ConditionOperator = 'equals' | 'notEquals' | 'contains' | 'notContains' | 'greater' | 'less' | 'isEmpty' | 'isNotEmpty' | 'oneOf';
 
 export interface PropertyRef {
@@ -67,6 +67,7 @@ export const propertyKinds: { value: PropertyKind; label: string }[] = [
   { value: 'type', label: 'Тип' },
   { value: 'level', label: 'Уровень' },
   { value: 'workset', label: 'Рабочий набор' },
+  { value: 'model', label: 'Модель (файл)' },
   { value: 'parameter', label: 'Параметр' },
 ];
 
@@ -81,6 +82,9 @@ export const operators: { value: ConditionOperator; label: string }[] = [
   { value: 'isEmpty', label: 'пусто' },
   { value: 'isNotEmpty', label: 'не пусто' },
 ];
+
+/** Модель (файл) сравнивается по ключу модели: «содержит» и сравнение чисел для неё смысла не имеют. */
+export const modelOperators: ConditionOperator[] = ['equals', 'oneOf', 'notEquals'];
 
 /** У «пусто» и «не пусто» значения нет. */
 export const needsValue = (operator: ConditionOperator) => operator !== 'isEmpty' && operator !== 'isNotEmpty';
