@@ -21,20 +21,23 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
       - name: Create release tag
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
         shell: bash
+        # Ввод — через переменную окружения, а не подстановкой в текст скрипта: иначе строка версии исполнилась бы как команда.
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
           set -e
-          git tag ${{ github.event.inputs.version }}
-          git push origin ${{ github.event.inputs.version }}
+          git tag "$VERSION"
+          git push origin "$VERSION"
 
       - name: Cache packages
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'Directory.Packages.props') }}
