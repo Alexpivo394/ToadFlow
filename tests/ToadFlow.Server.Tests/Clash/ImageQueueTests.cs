@@ -138,4 +138,30 @@ public class ImageQueueTests
         later.Release();
         await Task.WhenAll(first, laterTask, wantedTask, byPerson);
     }
+
+    [Test]
+    public async Task Abandoned_StillStopping_NewRequestStartsFresh()
+    {
+        var queue = new RenderQueue<int, int>(threads: 2, archiveWindow: 1, interactiveCapacity: 10);
+        // Брошенная отрисовка замечает отмену не сразу: пока она не остановилась, ключ не должен достаться новому запросу.
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancel = new CancellationTokenSource();
+        var first = queue.RunAsync(1, ImagePriority.Interactive, async ct =>
+        {
+            started.TrySetResult();
+            await stopping.Task;
+            ct.ThrowIfCancellationRequested();
+            return 1;
+        }, cancel.Token);
+        await started.Task;
+
+        cancel.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => first);
+        var second = await queue.RunAsync(1, ImagePriority.Interactive, _ => Task.FromResult(2), CancellationToken.None);
+
+        second.ShouldBe(2);
+        stopping.SetResult();
+        await Until(() => queue.Running == 0);
+    }
 }

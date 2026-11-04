@@ -83,9 +83,10 @@ public sealed class RenderQueue<TKey, TResult>(int threads, int archiveWindow, i
         {
             if (--entry.Waiters > 0 || entry.Result.Task.IsCompleted) return;
             entry.Cancel.Cancel();
+            // Ключ освобождается сразу: следующий запрос той же картинки начнёт новую отрисовку, а не присоединится к отменённой.
+            _entries.Remove(entry.Key);
             if (entry.Started) return; // начатая сама заметит отмену и освободит поток
             (entry.Priority == ImagePriority.Interactive ? _interactive : _archive).Remove(entry);
-            _entries.Remove(entry.Key);
             entry.Result.TrySetCanceled();
         }
     }
@@ -134,7 +135,8 @@ public sealed class RenderQueue<TKey, TResult>(int threads, int archiveWindow, i
             {
                 _running--;
                 if (entry.Priority == ImagePriority.Archive) _runningArchive--;
-                _entries.Remove(entry.Key);
+                // Брошенную отрисовку ключ уже не держит — под ним может идти новая.
+                if (_entries.TryGetValue(entry.Key, out var current) && current == entry) _entries.Remove(entry.Key);
                 Pump();
             }
 
