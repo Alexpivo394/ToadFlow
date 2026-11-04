@@ -67,6 +67,8 @@ public sealed class ClashServerModule : IServerModule
         services.AddSingleton<ReportArchives>();
         services.AddHostedService(provider => provider.GetRequiredService<ReportArchives>());
         services.AddHostedService<EngineLeaseSweeper>();
+        services.AddSingleton<EngineLiveness>();
+        services.AddSingleton<ToadFlow.Server.Health.IHealthProbe, ClashVolumeProbe>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
         services.AddAuthorization(options => options.AddPolicy(EngineAuthHandler.Policy,
             policy => policy.AddAuthenticationSchemes(EngineAuthHandler.SchemeName).RequireAuthenticatedUser()));
@@ -260,6 +262,9 @@ public sealed class ClashServerModule : IServerModule
         api.MapClashProjects();
         api.MapClashOverview();
         api.MapClashTriggeredRuns();
+        // Когда движок последний раз обращался к серверу — для «Движок не отвечает» в вебе.
+        api.MapGet("/clash/engine/status", async (EngineLiveness liveness, ToadFlowDb db, CancellationToken ct) => Results.Ok(new EngineStatusView(
+            liveness.LastSeenAt, liveness.StartedAt, await db.Set<EngineRun>().CountAsync(r => r.State == EngineRunState.Queued, ct))));
     }
 
     /// <summary>Проектировщику — только коллизии утверждённых проверок и версии; настройка проверок остаётся в <see cref="MapEndpoints" />.</summary>

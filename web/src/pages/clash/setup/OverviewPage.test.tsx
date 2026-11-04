@@ -50,4 +50,15 @@ describe('Coordinator overview: schedules and agents', () => {
     expect(screen.getByRole('link', { name: /Корпус 3 — нет регулярного прогона/ }).getAttribute('href')).toBe('/clash/checks/p3');
     expect(screen.queryByText(/Всё в порядке/)).toBeNull();
   });
+
+  it('Overview_EngineSilent_Warning', async () => {
+    renderApp('/clash/setup', {
+      '/api/clash/overview': empty,
+      '/api/clash/settings': settings,
+      '/api/clash/engine/status': { lastSeenAt: null, serverStartedAt: new Date(Date.now() - 30 * 60_000).toISOString(), queued: 2 },
+    });
+
+    expect(await screen.findByText('Движок не отвечает 30 мин')).toBeTruthy();
+    expect(screen.queryByText(/Всё в порядке/)).toBeNull();
+  });
 });

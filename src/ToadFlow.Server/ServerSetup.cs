@@ -6,6 +6,7 @@ using ToadFlow.Server.Dashboard;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Maintenance;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Health;
 using ToadFlow.Server.Modules;
 using ToadFlow.Server.Naming;
 using ToadFlow.Server.Queue;
@@ -57,7 +58,7 @@ public static class ServerSetup
 
         // Участники — любая роль, в том числе проектировщик; всё остальное ядра и модулей — от наблюдателя и старше.
         var members = app.MapGroup("/api").RequireAuthorization(Policies.Member);
-        members.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+        members.MapHealth();
         members.MapAuth();
         members.MapApiTokens();
         members.MapRegistration();

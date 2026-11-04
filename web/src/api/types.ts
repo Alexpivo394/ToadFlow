@@ -894,6 +894,13 @@ export interface DraftRunSummary {
   typicalSeconds?: number | null;
 }
 
+/** Движок коллизий: последнее обращение к серверу (null — ни разу с запуска сервера) и сколько прогонов ждут. */
+export interface EngineStatus {
+  lastSeenAt: string | null;
+  serverStartedAt: string;
+  queued: number;
+}
+
 /** Оценка HTML-выгрузки пары до скачивания. */
 export interface HtmlEstimate {
   rows: number;

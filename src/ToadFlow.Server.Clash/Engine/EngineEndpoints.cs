@@ -34,8 +34,9 @@ public static class EngineEndpoints
     ///     (advisory-блокировка): иначе два работника под READ COMMITTED оба увидели бы «ничего не идёт». Строки прежней попытки
     ///     стираются тут же: новая попытка пишет все части заново, а лишние части старой попали бы в сверку.
     /// </summary>
-    private static async Task<IResult> ClaimAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, CancellationToken ct)
+    private static async Task<IResult> ClaimAsync(ToadFlowDb db, TimeProvider time, IDomainEvents events, EngineLiveness liveness, CancellationToken ct)
     {
+        liveness.Seen(); // и пустой ответ — признак жизни: работник опрашивает очередь
         var now = time.GetUtcNow();
         var lease = now + EngineRun.Lease;
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -97,8 +98,9 @@ public static class EngineEndpoints
     }
 
     private static async Task<IResult> ProgressAsync(Guid id, EngineProgress progress, ToadFlowDb db, TimeProvider time, IDomainEvents events,
-        CancellationToken ct)
+        EngineLiveness liveness, CancellationToken ct)
     {
+        liveness.Seen();
         var lease = time.GetUtcNow() + EngineRun.Lease;
         var stage = string.IsNullOrWhiteSpace(progress.Text) ? progress.Stage : $"{progress.Stage}: {progress.Text}";
         var updated = await db.Set<EngineRun>().Where(r => r.Id == id && r.Attempt == progress.Attempt && r.State == EngineRunState.Running)

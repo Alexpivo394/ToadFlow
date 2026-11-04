@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Alert, Anchor, Badge, SimpleGrid, Stack } from '@mantine/core';
+import { Alert, Anchor, Badge, Box, SimpleGrid, Stack } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { ClashOverview, ClashSettingsView, OverviewPart } from '../../../api/types';
 import { Empty, PageTitle, Panel } from '../../../components/ui';
 import { t } from '../../../i18n/ru';
+import { EngineSilentAlert, useEngineSilence } from '../EngineSilence';
 
 /** «проверка», «проверки», «проверок» по числу. */
 export function checksWord(count: number): string {
@@ -48,11 +49,13 @@ export function OverviewPage() {
   const settings = useApi<ClashSettingsView>(['clash-settings'], '/api/clash/settings');
   const o = overview.data;
   const stuckDays = settings.data?.overview.stuckDays ?? 30;
+  const silent = useEngineSilence(true);
 
   return (
     <>
       <PageTitle>{t.clash.overviewTitle}</PageTitle>
-      {o && problemCount(o) === 0 && (
+      {silent != null && <Box mb="md"><EngineSilentAlert minutes={silent} /></Box>}
+      {o && problemCount(o) === 0 && silent == null && (
         <Empty>
           {o.checks > 0
             ? `Всё в порядке: ${o.checks} ${checksWord(o.checks)}, все прогнаны вовремя, агенты на связи`

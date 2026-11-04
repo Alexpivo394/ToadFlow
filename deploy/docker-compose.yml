@@ -40,11 +40,23 @@ services:
       Admin__Password: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD в .env}
       Clash__StorageRoot: /data/clash
       Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env — общий ключ сервера и движка коллизий}
+      # Картинки коллизий рисует сервер: столько потоков одновременно
+      Clash__ImageThreads: ${CLASH_IMAGE_THREADS:-2}
+    # Сервер держит оглавления слепков в памяти и рисует картинки: лимит, чтобы не вытеснить PostgreSQL
+    mem_limit: ${SERVER_MEMORY:-2g}
     volumes:
       # Выгрузки геометрии для коллизий: последние N на модель (Настройки → Коллизии)
       - clash:/data/clash
+    # В образе aspnet нет curl: сервер сам запрашивает свой /api/health (503, если нет базы)
+    healthcheck:
+      test: ["CMD", "dotnet", "ToadFlow.Server.Host.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # Движок коллизий: прогоны черновиков по одному. Лимиты — чтобы не душить сервер и PostgreSQL на той же машине.
+  # Движок коллизий: прогоны по одному. Лимиты — чтобы не душить сервер и PostgreSQL на той же машине; по умолчанию
+  # подходят хосту с 4 ядрами и 8 ГБ. Больше ядер и памяти — быстрее большие части (см. вики, «Сервер»).
   clash-engine:
     build:
       context: ..
@@ -52,9 +64,10 @@ services:
     restart: unless-stopped
     logging: *logging
     depends_on:
-      - server
-    mem_limit: 8g
-    cpus: 8
+      server:
+        condition: service_healthy
+    mem_limit: ${CLASH_ENGINE_MEMORY:-4g}
+    cpus: ${CLASH_ENGINE_CPUS:-2}
     environment:
       Clash__ServerUrl: http://server:8080
       Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env}
@@ -68,7 +81,8 @@ services:
     restart: unless-stopped
     logging: *logging
     depends_on:
-      - server
+      server:
+        condition: service_healthy
     ports:
       - "${WEB_PORT:-8080}:80"
 

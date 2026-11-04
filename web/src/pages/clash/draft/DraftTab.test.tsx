@@ -197,4 +197,28 @@ describe('Draft run state', () => {
 
     expect(await screen.findByText('В очереди: 3-й · обычно ≈ 2 мин')).toBeTruthy();
   });
+
+  it('RunLine_EngineSilent5Min_Warning', async () => {
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    renderApp('/clash/setup/parts/p1?tab=draft', {
+      ...responses,
+      '/api/clash/parts/p1/draft/run': { ...succeeded, state: 'Queued', finishedAt: null, hitCount: null, queuePosition: 1 },
+      '/api/clash/engine/status': { lastSeenAt: minutesAgo(12), serverStartedAt: minutesAgo(60), queued: 1 },
+    });
+
+    expect(await screen.findByText(/Движок не отвечает 12 мин/)).toBeTruthy();
+  });
+
+  it('RunLine_EngineAlive_NoWarning', async () => {
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    renderApp('/clash/setup/parts/p1?tab=draft', {
+      ...responses,
+      '/api/clash/parts/p1/draft/run': { ...succeeded, state: 'Queued', finishedAt: null, hitCount: null, queuePosition: 1 },
+      '/api/clash/engine/status': { lastSeenAt: minutesAgo(1), serverStartedAt: minutesAgo(60), queued: 1 },
+    });
+
+    expect(await screen.findByText(/В очереди: 1-й/)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.queryByText(/Движок не отвечает/)).toBeNull();
+  });
 });

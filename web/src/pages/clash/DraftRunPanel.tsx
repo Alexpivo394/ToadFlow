@@ -5,6 +5,7 @@ import type { ApprovedVersionView, DraftRunSummary, EngineRunState } from '../..
 import { askConfirm } from '../../components/ui';
 import { formatBytes, formatDateTime, formatDuration } from '../../lib/format';
 import { ApproveDialog } from './approved/ApproveDialog';
+import { EngineSilentAlert, useEngineSilence } from './EngineSilence';
 
 export const stateLabel: Record<EngineRunState, { label: string; color: string }> = {
   Queued: { label: 'в очереди', color: 'gray' },
@@ -38,6 +39,7 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
   const stats = current?.stats;
   const versions = useApi<ApprovedVersionView[]>(['clash-parts', partId, 'versions'], `/api/clash/parts/${partId}/versions`);
   const [approving, setApproving] = useState(false);
+  const silent = useEngineSilence(active);
   // Сводная строка — время прогона; число коллизий, элементы, время этапов и память — в подсказке.
   const details = current?.state === 'Succeeded'
     ? [current.hitCount != null ? `${current.hitCount.toLocaleString('ru-RU')} коллизий` : null,
@@ -73,6 +75,7 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
         {!readOnly && <Button ml="auto" variant="default" onClick={() => setApproving(true)}>Утвердить…</Button>}
       </Group>
       {dirty && !readOnly && <Text size="sm" c="orange">Черновик не сохранён: прогон возьмёт сохранённую версию.</Text>}
+      <EngineSilentAlert minutes={silent} />
       {current?.state === 'Failed' && current.error && <Alert color="red" title="Прогон не удался">{current.error}</Alert>}
       {approving && (
         <ApproveDialog partId={partId} nextVersion={(versions.data?.[0]?.version ?? 0) + 1} dirty={dirty} onSave={onSave} onClose={() => setApproving(false)} />
