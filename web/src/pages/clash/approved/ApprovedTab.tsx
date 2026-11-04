@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router';
 import { Alert, Badge, Box, Button, Group, Select, Stack, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -15,6 +15,7 @@ import { formatDateTime, formatDuration } from '../../../lib/format';
 import { ChecksList } from '../draft/DraftTab';
 import { queueText, stateLabel } from '../DraftRunPanel';
 import { HitScene } from '../viewer/HitScene';
+import { stepIndex, useListKeyboard } from '../../../hooks/useListKeyboard';
 import { RunsDrawer } from '../reports/RunsDrawer';
 import { CollisionCard } from './CollisionCard';
 
@@ -169,18 +170,10 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
   const index = items.findIndex((i) => i.row.id === collisionId);
   const current = index >= 0 ? items[index].row : null;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
-      if (!step || items.length === 0) return;
-      e.preventDefault();
-      update({ collision: items[Math.min(items.length - 1, Math.max(0, index + step))].row.id });
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [items, index, update]);
+  useListKeyboard({
+    onUp: () => { const i = stepIndex(items.length, index, -1); if (i != null) update({ collision: items[i].row.id }); },
+    onDown: () => { const i = stepIndex(items.length, index, 1); if (i != null) update({ collision: items[i].row.id }); },
+  });
 
   const open = (target: number | string) => {
     if (typeof target === 'string') update({ collision: target });

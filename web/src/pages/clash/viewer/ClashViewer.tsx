@@ -247,6 +247,8 @@ export default function ClashViewer({ scene, meshes, isolation, sectionBox, sele
       controls.dispose();
       dispose(world);
       renderer.dispose();
+      // Браузер держит ограниченное число контекстов WebGL (около 16): без этого после частых открытий 3D старые теряются.
+      renderer.forceContextLoss();
       host.removeChild(renderer.domElement);
       stage.current = null;
     };

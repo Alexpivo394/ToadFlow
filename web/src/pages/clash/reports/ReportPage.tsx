@@ -13,6 +13,7 @@ import { ClosedStatuses, OpenStatuses, type ListParams } from '../../../componen
 import { Panel } from '../../../components/ui';
 import { copyText } from '../../../lib/clipboard';
 import { formatDuration, formatFullDateTime } from '../../../lib/format';
+import { useListKeyboard } from '../../../hooks/useListKeyboard';
 import { ReportCollisionDrawer } from './ReportCollisionDrawer';
 import { ReportExport } from './ReportExport';
 import { NoLevel, ReportRows } from './ReportRows';
@@ -169,22 +170,8 @@ export function ReportPage() {
   const next = index >= 0 && index < items!.length - 1
     ? () => update({ collision: items![index + 1].collision.id }, false)
     : index >= 0 && page < pageCount ? () => update({ page: String(page + 1), collision: 'first' }, false) : undefined;
-  const step = useRef({ prev, next });
-  step.current = { prev, next };
   const drawerOpen = collisionId !== null;
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      const go = e.key === 'ArrowDown' ? step.current.next : e.key === 'ArrowUp' ? step.current.prev : undefined;
-      if (!go) return;
-      e.preventDefault();
-      go();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [drawerOpen]);
+  useListKeyboard({ onUp: () => prev?.(), onDown: () => next?.() }, drawerOpen);
 
   if (report.error) return <Alert color="red" title="Отчёт недоступен">{report.error.message}</Alert>;
   if (!view) return null;

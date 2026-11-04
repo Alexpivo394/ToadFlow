@@ -11,6 +11,7 @@ import { categoryLabel } from '../../../lib/categories';
 import type { ClashConfig } from '../../../lib/clashConfig';
 import { DraftRunPanel } from '../DraftRunPanel';
 import { HitScene, prefetchHit } from '../viewer/HitScene';
+import { useListKeyboard } from '../../../hooks/useListKeyboard';
 import { type LabeledEdit, SetPairMenu } from './SetPairMenu';
 import { type HitFilters, PageSize, useHitNavigation } from './useHitNavigation';
 
@@ -118,17 +119,7 @@ export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOp
     if (nav.upcoming) prefetchHit(queryClient, nav.upcoming.runId, nav.upcoming.number);
   }, [nav.upcoming, queryClient]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); nav.next(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); nav.prev(); }
-      else if (e.key === 'Enter') setFocus((f) => (f === 'A' ? 'B' : 'A'));
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [nav]);
+  useListKeyboard({ onUp: () => nav.prev(), onDown: () => nav.next(), onEnter: () => setFocus((f) => (f === 'A' ? 'B' : 'A')) });
 
   const current = nav.current;
   // Номер из поиска может быть не на этой странице и не в этой проверке: сцена берёт его из последнего прогона черновика.

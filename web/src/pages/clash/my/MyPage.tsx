@@ -14,6 +14,7 @@ import { t } from '../../../i18n/ru';
 import { formatDateTime } from '../../../lib/format';
 import { CollisionCard } from '../approved/CollisionCard';
 import { HitScene } from '../viewer/HitScene';
+import { stepIndex, useListKeyboard } from '../../../hooks/useListKeyboard';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 const PageSize = 50;
@@ -111,18 +112,10 @@ export function MyPage() {
   const index = items.findIndex((i) => i.row.id === collisionId);
   const current = index >= 0 ? items[index] : null;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
-      if (!step || items.length === 0) return;
-      e.preventDefault();
-      update({ collision: items[Math.min(items.length - 1, Math.max(0, index + step))].row.id });
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [items, index, update]);
+  useListKeyboard({
+    onUp: () => { const i = stepIndex(items.length, index, -1); if (i != null) update({ collision: items[i].row.id }); },
+    onDown: () => { const i = stepIndex(items.length, index, 1); if (i != null) update({ collision: items[i].row.id }); },
+  });
 
   const switchTo = (assignee: ListParams['assignee'] | 'new') => {
     if (assignee === 'new') {
