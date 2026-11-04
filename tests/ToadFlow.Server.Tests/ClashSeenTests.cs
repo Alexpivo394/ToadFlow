@@ -141,40 +141,6 @@ public class ClashSeenTests : ServerTest
     }
 
     [Test]
-    public async Task Seen_AfterMigration_ExistingOpenAreSeen()
-    {
-        var (admin, agent, partId, engine) = await SetupAsync();
-        await using var _ = agent;
-        await RunAsync(admin, engine, partId, [Hit(1), Hit(2), Hit(3)], approve: true);
-        var (ov, ar) = (await ClientAsync(UserRole.Designer, "ОВ"), await ClientAsync(UserRole.Designer, "АР"));
-        var created = await DbAsync(db => db.Set<ClashCollision>().Where(c => c.Number == 1).Select(c => c.CreatedAt).SingleAsync());
-        var returnedAt = created.AddMinutes(-30).AddDays(1);
-        // Как до обновления: ни отметок, ни opened_at; №2 возвращалась, №3 закрыта.
-        await DbAsync(async db =>
-        {
-            await db.Set<ClashCollision>().ExecuteUpdateAsync(c => c.SetProperty(x => x.OpenedAt, DateTimeOffset.UnixEpoch));
-            await db.Set<ClashCollision>().Where(c => c.Number == 3).ExecuteUpdateAsync(c => c.SetProperty(x => x.Status, CollisionStatus.Fixed));
-            var second = await db.Set<ClashCollision>().Where(c => c.Number == 2).Select(c => c.Id).SingleAsync();
-            db.Set<ClashCollisionEvent>().Add(new ClashCollisionEvent
-            {
-                Id = Guid.CreateVersion7(), CollisionId = second, At = returnedAt, Kind = CollisionEventKind.Status, FromStatus = CollisionStatus.Fixed,
-                ToStatus = CollisionStatus.Returned
-            });
-            await db.SaveChangesAsync();
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM clash_collision_seen");
-        });
-
-        await DbAsync(db => db.Database.ExecuteSqlRawAsync(ClashSeenBackfill.Sql));
-
-        var opened = await DbAsync(db => db.Set<ClashCollision>().OrderBy(c => c.Number).Select(c => c.OpenedAt).ToListAsync());
-        opened[0].ShouldBe(created, TimeSpan.FromMilliseconds(1));
-        opened[1].ShouldBe(returnedAt, TimeSpan.FromMilliseconds(1));
-        (await NewForMeAsync(ov)).ShouldBe(0);
-        (await NewForMeAsync(ar)).ShouldBe(0);
-        (await DbAsync(db => db.Set<ClashCollisionSeen>().CountAsync())).ShouldBe(4); // ОВ и АР — по две открытые
-    }
-
-    [Test]
     public async Task My_SummaryNewForMe()
     {
         var (admin, agent, partId, engine) = await SetupAsync();

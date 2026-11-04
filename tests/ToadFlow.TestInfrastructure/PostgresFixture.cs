@@ -93,6 +93,14 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
         await command.ExecuteNonQueryAsync();
     }
 
+    /// <summary>Пустая база без миграций — для проверки обновления схемы со старой версии.</summary>
+    public async Task<string> CreateEmptyDatabaseAsync()
+    {
+        var name = "e_" + Guid.NewGuid().ToString("N");
+        await ExecuteAsync($"create database {name}");
+        return ConnectionString(name);
+    }
+
     /// <summary>
     ///     Удаляет базу теста. <c>WITH (FORCE)</c> закрывает её подключения — иначе пулы соединений уже остановленных
     ///     серверов копятся и Postgres упирается в лимит подключений.

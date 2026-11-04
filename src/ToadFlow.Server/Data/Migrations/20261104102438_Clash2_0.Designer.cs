@@ -12,8 +12,8 @@ using ToadFlow.Server.Data;
 namespace ToadFlow.Server.Data.Migrations
 {
     [DbContext(typeof(ToadFlowDb))]
-    [Migration("20261031134028_ClashRunStartedBy")]
-    partial class ClashRunStartedBy
+    [Migration("20261104102438_Clash2_0")]
+    partial class Clash2_0
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,47 @@ namespace ToadFlow.Server.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("ToadFlow.Server.Auth.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("token_hash");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_refresh_tokens");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refresh_tokens_token_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_refresh_tokens_user_id");
+
+                    b.ToTable("refresh_tokens", (string)null);
+                });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Analytics.ClashCollisionStat", b =>
                 {
@@ -454,18 +495,6 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("found_now");
 
-                    b.Property<bool>("HasImage")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_image");
-
-                    b.Property<long?>("ImageFingerprintA")
-                        .HasColumnType("bigint")
-                        .HasColumnName("image_fingerprint_a");
-
-                    b.Property<long?>("ImageFingerprintB")
-                        .HasColumnType("bigint")
-                        .HasColumnName("image_fingerprint_b");
-
                     b.Property<Guid>("LastFoundRunId")
                         .HasColumnType("uuid")
                         .HasColumnName("last_found_run_id");
@@ -495,6 +524,10 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<int>("Number")
                         .HasColumnType("integer")
                         .HasColumnName("number");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
 
                     b.Property<Guid>("PartId")
                         .HasColumnType("uuid")
@@ -562,6 +595,12 @@ namespace ToadFlow.Server.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Checks"), "gin");
 
+                    b.HasIndex("ModelA")
+                        .HasDatabaseName("ix_clash_collisions_model_a");
+
+                    b.HasIndex("ModelB")
+                        .HasDatabaseName("ix_clash_collisions_model_b");
+
                     b.HasIndex("PartId", "LastFoundRunId")
                         .HasDatabaseName("ix_clash_collisions_part_id_last_found_run_id");
 
@@ -588,6 +627,10 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<DateTimeOffset>("At")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("at");
+
+                    b.Property<Guid?>("BulkId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bulk_id");
 
                     b.Property<Guid>("CollisionId")
                         .HasColumnType("uuid")
@@ -685,6 +728,72 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasName("pk_clash_collision_samples");
 
                     b.ToTable("clash_collision_samples", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashCollisionSeen", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("CollisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("collision_id");
+
+                    b.Property<DateTimeOffset>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.HasKey("UserId", "CollisionId")
+                        .HasName("pk_clash_collision_seen");
+
+                    b.HasIndex("CollisionId")
+                        .HasDatabaseName("ix_clash_collision_seen_collision_id");
+
+                    b.ToTable("clash_collision_seen", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashRunPairStat", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("run_id");
+
+                    b.Property<string>("DisciplinePair")
+                        .HasColumnType("text")
+                        .HasColumnName("discipline_pair");
+
+                    b.Property<int>("Fixed")
+                        .HasColumnType("integer")
+                        .HasColumnName("fixed");
+
+                    b.Property<int>("Found")
+                        .HasColumnType("integer")
+                        .HasColumnName("found");
+
+                    b.Property<int>("GoneByRules")
+                        .HasColumnType("integer")
+                        .HasColumnName("gone_by_rules");
+
+                    b.Property<int>("New")
+                        .HasColumnType("integer")
+                        .HasColumnName("new");
+
+                    b.Property<Guid>("PartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("part_id");
+
+                    b.Property<int>("Returned")
+                        .HasColumnType("integer")
+                        .HasColumnName("returned");
+
+                    b.HasKey("RunId", "DisciplinePair")
+                        .HasName("pk_clash_run_pair_stats");
+
+                    b.HasIndex("PartId")
+                        .HasDatabaseName("ix_clash_run_pair_stats_part_id");
+
+                    b.ToTable("clash_run_pair_stats", (string)null);
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashUserState", b =>
@@ -969,34 +1078,6 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("clash_engine_runs", (string)null);
                 });
 
-            modelBuilder.Entity("ToadFlow.Server.Clash.Images.ClashImageJob", b =>
-                {
-                    b.Property<Guid>("PartId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("part_id");
-
-                    b.Property<int>("Attempt")
-                        .HasColumnType("integer")
-                        .HasColumnName("attempt");
-
-                    b.Property<string>("Error")
-                        .HasColumnType("text")
-                        .HasColumnName("error");
-
-                    b.Property<DateTimeOffset?>("LeaseUntil")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("lease_until");
-
-                    b.Property<Guid>("RunId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("run_id");
-
-                    b.HasKey("PartId")
-                        .HasName("pk_clash_image_jobs");
-
-                    b.ToTable("clash_image_jobs", (string)null);
-                });
-
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashDraftVersion", b =>
                 {
                     b.Property<Guid>("PartId")
@@ -1134,6 +1215,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("configuration_json");
 
+                    b.Property<string>("ModelsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("models_json");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
@@ -1220,6 +1305,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("machine_name");
+
+                    b.PrimitiveCollection<string[]>("Modules")
+                        .HasColumnType("text[]")
+                        .HasColumnName("modules");
 
                     b.Property<long>("RamUsedMb")
                         .HasColumnType("bigint")
@@ -1838,6 +1927,12 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("role");
 
+                    b.Property<Guid>("SecurityStamp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("security_stamp")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id")
                         .HasName("pk_users");
 
@@ -2210,6 +2305,16 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("loi_profiles", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Auth.RefreshToken", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_refresh_tokens_users_user_id");
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Analytics.ClashCollisionStat", b =>
                 {
                     b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
@@ -2228,6 +2333,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_snapshots_clash_models_model_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashApprovedHit", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Engine.EngineRun", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_approved_hits_clash_engine_runs_run_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashCollision", b =>
@@ -2260,6 +2375,33 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasConstraintName("fk_clash_collision_samples_clash_collisions_collision_id");
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashCollisionSeen", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Collisions.ClashCollision", null)
+                        .WithMany()
+                        .HasForeignKey("CollisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_collision_seen_clash_collisions_collision_id");
+
+                    b.HasOne("ToadFlow.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_collision_seen_users_user_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashRunPairStat", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_run_pair_stats_clash_parts_part_id");
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Collisions.ClashUserState", b =>
                 {
                     b.HasOne("ToadFlow.Server.Data.Entities.User", null)
@@ -2270,6 +2412,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasConstraintName("fk_clash_user_states_users_user_id");
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Clash.Engine.ClashDraftHit", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
+                        .WithMany()
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clash_draft_hits_clash_parts_part_id");
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Clash.Engine.EngineRun", b =>
                 {
                     b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
@@ -2278,16 +2430,6 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clash_engine_runs_clash_parts_part_id");
-                });
-
-            modelBuilder.Entity("ToadFlow.Server.Clash.Images.ClashImageJob", b =>
-                {
-                    b.HasOne("ToadFlow.Server.Clash.Parts.ClashPart", null)
-                        .WithMany()
-                        .HasForeignKey("PartId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_clash_image_jobs_clash_parts_part_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Clash.Parts.ClashDraftVersion", b =>
