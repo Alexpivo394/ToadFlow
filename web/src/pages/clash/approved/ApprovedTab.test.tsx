@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { partResponses } from '../../../test/clashPart';
-import { navigateTo, renderApp } from '../../../test/renderApp';
+import { Failure, navigateTo, renderApp } from '../../../test/renderApp';
 
 vi.mock('../../../api/client', async (original) => ({ ...(await original<typeof import('../../../api/client')>()), downloadFile: vi.fn(async () => {}) }));
 const { downloadFile } = await import('../../../api/client');
@@ -79,6 +79,14 @@ describe('Approved tab', () => {
     expect(screen.getByText('Глубина 41 мм')).toBeTruthy();
     expect(screen.getByText('Найдена версией 2, глубина 41 мм')).toBeTruthy();
     expect(await screen.findByText('сцена 1')).toBeTruthy();
+  });
+
+  it('CollisionCard_Merged404_ShowsReason', async () => {
+    open({ '/api/clash/collisions/c1': new Failure(404, 'Коллизия объединена с №9') }, '/clash/checks/p1?collision=c1');
+
+    expect(await screen.findByText('Коллизия объединена с №9')).toBeTruthy();
+    const alert = screen.getByText('Коллизия не открылась').closest('[role="alert"]') as HTMLElement;
+    expect(within(alert).getByRole('button', { name: 'Повторить' })).toBeTruthy();
   });
 
   it('CollisionCard_FakeRequiresNote', async () => {

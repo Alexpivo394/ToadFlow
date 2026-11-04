@@ -4,6 +4,7 @@ import { Alert, Badge, Box, Button, Group, Select, Stack, Text } from '@mantine/
 import { notifications } from '@mantine/notifications';
 import { downloadFile } from '../../../api/client';
 import { useApi, useApiMutation } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { ApprovedRunView, ApprovedVersionView, ClashPartView, CollisionFacets, CollisionRow, CollisionSummary, ReportRunView } from '../../../api/types';
 import { CollisionList, type ListItem, type ListSource } from '../../../components/collisions/CollisionList';
 import { ListFilters } from '../../../components/collisions/ListFilters';
@@ -55,6 +56,7 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
           {s.reusedPairs > 0 ? ` · без пересчёта ${n(s.reusedPairs)} пар` : ''}
         </Text>
       )}
+      <QueryError query={run} title="Прогон не загрузился" />
       {current?.run.state === 'Failed' && current.run.error && <Alert color="red" title="Прогон не удался">{current.run.error}</Alert>}
       <RunsDrawer partId={partId} opened={runsOpened} onClose={() => setRunsOpened(false)} />
     </Stack>
@@ -194,6 +196,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
   return (
     <Stack gap="sm">
       <ApprovedRunLine partId={partId} canRun={canRun} />
+      <QueryError query={summary} title="Коллизии проверки не загрузились" />
       {list.stuckDays && (
         <Group gap="xs">
           <Badge color="orange" variant="light">Только висящие: без движения дольше {list.stuckDays} дн.</Badge>

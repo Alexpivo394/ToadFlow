@@ -3,6 +3,7 @@ import { Link as RouterLink } from 'react-router';
 import { Anchor, Autocomplete, Group, ScrollArea, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core';
 import { BarChart, LineChart } from '@mantine/charts';
 import { useApi } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { CheckView, ClashAnalyticsView } from '../../../api/types';
 import { Empty, PageTitle, Panel } from '../../../components/ui';
 import { t } from '../../../i18n/ru';
@@ -77,6 +78,7 @@ export function SummaryPage() {
         )}
       </Group>
 
+      <QueryError query={view} title="Сводка не загрузилась" />
       {v && (
         <Stack gap="md">
           <SimpleGrid cols={{ base: 2, md: 5 }}>

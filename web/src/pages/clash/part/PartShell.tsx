@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Alert, Anchor, Avatar, Badge, Breadcrumbs, Button, Group, List, Menu, Modal, SegmentedControl, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
+import { Alert, Anchor, Avatar, Badge, Breadcrumbs, Button, Center, Group, List, Loader, Menu, Modal, SegmentedControl, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { ApprovedVersionView, ClashPartView, ClashTemplateView, DraftView, PresenceView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { askConfirm, Panel } from '../../../components/ui';
@@ -130,7 +131,13 @@ export function PartShell() {
     });
   }, [blocker]);
 
-  if (!part.data || !draft.view || !draft.local) return null;
+  if (part.isError) return <QueryError query={part} title="Проверка не открылась" />;
+  if (!part.data || !draft.view || !draft.local)
+    return (
+      <Center py="xl">
+        <Loader size="sm" />
+      </Center>
+    );
   const config = draft.local;
   const leave = (to: string) => navigate(to);
 

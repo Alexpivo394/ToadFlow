@@ -153,6 +153,14 @@ describe('Part shell', () => {
 
     await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1/draft/reset' && init?.method === 'POST')).toBe(true));
   });
+
+  it('PartShell_404_ShowsReason', async () => {
+    renderApp('/clash/setup/parts/p1', { ...partResponses, '/api/clash/parts/p1': new Failure(404, 'Часть не найдена — её удалили') });
+
+    expect(await screen.findByText('Часть не найдена — её удалили')).toBeTruthy();
+    expect(screen.getByText('Проверка не открылась')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeTruthy();
+  });
 });
 
 vi.setConfig({ testTimeout: 15_000 });

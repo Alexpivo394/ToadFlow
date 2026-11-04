@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Box, Card, Group, Select, SimpleGrid, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useApi } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { CheckView, CollisionFacets, MySummary } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { CollisionList, type ListItem, type ListSource } from '../../../components/collisions/CollisionList';
@@ -147,7 +148,8 @@ export function MyPage() {
   return (
     <Stack gap="sm">
       <PageTitle>{t.clash.myTitle}</PageTitle>
-      {!isStaff && lastRunAt && <Text size="sm" c="dimmed">Последний прогон: {formatDateTime(lastRunAt)}</Text>}
+      <QueryError query={summary} title="«Мои» не загрузились" />
+      {!isStaff && lastRunAt &&<Text size="sm" c="dimmed">Последний прогон: {formatDateTime(lastRunAt)}</Text>}
       <SimpleGrid cols={3} spacing="sm" maw={720}>
         <Counter label="Мне править" value={summary.data?.toFix} active={!fresh && list.assignee === 'mine'} onClick={() => switchTo('mine')} />
         <Counter label="Взяла другая сторона" value={summary.data?.takenByOther} active={!fresh && list.assignee === 'taken'} onClick={() => switchTo('taken')} />

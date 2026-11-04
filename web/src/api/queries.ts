@@ -1,6 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { apiFetch } from './client';
+import { ApiError, apiFetch } from './client';
+
+/**
+ * Повтор неудачного запроса: ошибка клиента (4xx — нет прав, нет такой записи) от повтора не исправится, её показывают сразу;
+ * сбой сервера или сети повторяется один раз.
+ */
+export function retryPolicy(failures: number, error: unknown): boolean {
+  return !(error instanceof ApiError && error.status < 500) && failures < 1;
+}
 
 /**
  * GET-запрос с ключом: первый элемент ключа — сущность, по ней приходят живые обновления. `keepPrevious` — пока грузится
@@ -10,7 +18,8 @@ export function useApi<T>(key: unknown[], path: string | null, options: { refetc
   return useQuery({
     queryKey: key,
     // 204 — «ничего нет»: TanStack Query не принимает undefined, поэтому null.
-    queryFn: async () => ((await apiFetch<T>(path!)) ?? null) as T,
+    // Ушёл со страницы — запрос отменяется (signal), сервер не отвечает впустую.
+    queryFn: async ({ signal }) => ((await apiFetch<T>(path!, { signal })) ?? null) as T,
     enabled: path !== null,
     refetchInterval: options.refetchInterval,
     placeholderData: options.keepPrevious ? keepPreviousData : undefined,

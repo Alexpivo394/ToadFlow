@@ -13,6 +13,7 @@ import '@mantine/dates/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/notifications/styles.css';
 import { appRoutes } from './App';
+import { retryPolicy } from './api/queries';
 import { theme } from './theme';
 
 dayjs.locale('ru');
@@ -21,7 +22,7 @@ dayjs.locale('ru');
 const router = createBrowserRouter(appRoutes());
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 10_000, retry: 1, refetchOnWindowFocus: true } },
+  defaultOptions: { queries: { staleTime: 10_000, retry: retryPolicy, refetchOnWindowFocus: true } },
 });
 
 createRoot(document.getElementById('root')!).render(

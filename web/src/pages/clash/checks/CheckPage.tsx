@@ -1,6 +1,7 @@
 import { Link as RouterLink, useParams } from 'react-router';
 import { Anchor, Badge, Breadcrumbs, Button, Group, Stack, Text, Title } from '@mantine/core';
 import { useApi } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { CheckView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { Panel } from '../../../components/ui';
@@ -30,6 +31,7 @@ export function CheckPage() {
           <Button component={RouterLink} to={`/clash/setup/parts/${partId}`} size="xs" variant="default">Настроить</Button>
         )}
       </Group>
+      <QueryError query={check} title="Проверка не открылась" />
       {check.data && <ScheduleLine partId={partId} approved canEdit={can('Operator')} />}
       <Panel>
         <ApprovedTab partId={partId} canEdit={canWork} canRun={can('Operator')} />

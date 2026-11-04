@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Anchor, Badge, Button, Group, Popover, Radio, ScrollArea, Stack, Text, Textarea } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Center, Group, Loader, Popover, Radio, ScrollArea, Stack, Text, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { CollisionAssignee, CollisionCard as Card, CollisionPage, CollisionStatus, FeedEntry, UserCard } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
 import { CollisionImage } from '../../../components/CollisionImage';
@@ -113,7 +114,13 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true, pa
   const element = c ? (sideB ? `${c.modelB}:${c.uniqueIdB}` : `${c.modelA}:${c.uniqueIdA}`) : null;
   const others = useApi<CollisionPage>(['clash-collisions', 'element-count', partId, element],
     partId && element && onShowElement ? `/api/clash/parts/${partId}/approved/collisions?element=${encodeURIComponent(element)}&pageSize=1` : null);
-  if (!card.data || !c) return null;
+  if (card.isError) return <QueryError query={card} title="Коллизия не открылась" />;
+  if (!card.data || !c)
+    return (
+      <Center py="md">
+        <Loader size="sm" />
+      </Center>
+    );
   const more = Math.max(0, (others.data?.total ?? 0) - 1);
 
   const showInRevit = async () => {

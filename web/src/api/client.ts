@@ -191,5 +191,6 @@ export async function downloadFile(path: string, fileName: string): Promise<void
   const url = URL.createObjectURL(await response.blob());
   const link = Object.assign(document.createElement('a'), { href: url, download: fileName });
   link.click();
-  URL.revokeObjectURL(url);
+  // Браузер начинает скачивание после click асинхронно: освобождать адрес сразу — иногда скачать пустоту.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

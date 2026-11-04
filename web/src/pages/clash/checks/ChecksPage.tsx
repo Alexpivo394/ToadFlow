@@ -1,6 +1,7 @@
 import { Link as RouterLink, useSearchParams } from 'react-router';
 import { Anchor, Badge, Button, Group, Stack, Table, Text, Title } from '@mantine/core';
 import { useApi } from '../../../api/queries';
+import { QueryError } from '../../../components/QueryState';
 import type { CheckView } from '../../../api/types';
 import { Empty, PageTitle, Panel } from '../../../components/ui';
 import { t } from '../../../i18n/ru';
@@ -35,6 +36,7 @@ export function ChecksPage() {
           <Button size="compact-xs" variant="subtle" onClick={() => setParams({})}>все проверки</Button>
         </Group>
       )}
+      <QueryError query={checks} title="Проверки не загрузились" />
       {checks.data && checks.data.length === 0 && <Empty>Утверждённых проверок пока нет — их утверждает координатор в «Настройке проверок»</Empty>}
       <Stack gap="md">
         {[...byProject].map(([project, list]) => (
