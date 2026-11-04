@@ -42,7 +42,7 @@ export const partResponses = {
   '/api/clash/parts/p1/draft/run': null,
   '/api/clash/parts/p1/draft/summary': { total: 0, checks: [], legacy: false },
   '/api/clash/parts/p1/schedules': [],
-  '/api/clash/parts/p1/approve/preview': { draftRunAt: null, stale: false, neverRun: true, firstApproval: true, pairs: [], changes: [] },
+  '/api/clash/parts/p1/approve/preview': { draftRunAt: '2026-10-28T10:01:00Z', stale: false, neverRun: false, firstApproval: true, pairs: [], changes: [] },
   '/api/clash/catalog': { categories: [], parameters: [{ name: 'Марка', sharedGuid: null, count: 10, isNumeric: false, categories: [] }], families: [], types: [], levels: [], worksets: [] },
   '/api/clash/templates': [],
   '/api/clash/models': [],

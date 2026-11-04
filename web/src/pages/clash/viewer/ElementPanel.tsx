@@ -5,7 +5,7 @@ import type { ViewerElementProperties, ViewerElementView, ViewerSceneView } from
 import { categoryLabel } from '../../../lib/categories';
 import { roleColor } from '../../../lib/viewer';
 
-const roleName = { A: 'Элемент A', B: 'Элемент B', set: 'Элемент набора', context: 'Окружение' } as const;
+export const roleName = { A: 'Элемент A', B: 'Элемент B', set: 'Элемент набора', context: 'Окружение' } as const;
 
 function Brief({ element }: { element: ViewerElementView }) {
   return (

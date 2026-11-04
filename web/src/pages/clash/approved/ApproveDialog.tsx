@@ -5,7 +5,8 @@ import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiFetch } from '../../../api/client';
 import { useApi } from '../../../api/queries';
-import type { ApprovedVersionView, PartScheduleView } from '../../../api/types';
+import type { ApprovedVersionView, ApprovePreview, PartScheduleView } from '../../../api/types';
+import { askConfirm } from '../../../components/ui';
 import { describeRecurrence } from '../../schedules/recurrenceText';
 import { ApprovePreviewBlock } from './ApprovePreviewBlock';
 
@@ -53,6 +54,11 @@ export function ApproveDialog({ partId, nextVersion, dirty, onSave, onClose }: {
   const [busy, setBusy] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
   const schedules = useApi<PartScheduleView[]>(['clash-parts', partId, 'schedules'], `/api/clash/parts/${partId}/schedules`);
+  // Тот же запрос, что у блока «Если утвердить» (кеш общий): по нему — нечего ли утверждать и прогонялся ли черновик (W-4).
+  const preview = useApi<ApprovePreview>(['clash-parts', partId, 'approve-preview'], `/api/clash/parts/${partId}/approve/preview`);
+  // Несохранённые правки предпросмотр не видит — тогда не мешаем.
+  const same = !dirty && !!preview.data && !preview.data.firstApproval && preview.data.changes.length === 0;
+  const neverRun = !same && !!preview.data?.neverRun;
   const [chosen, setChosen] = useState<string[] | null>(null);
   useEffect(() => {
     if (schedules.data && chosen === null) setChosen(schedules.data.filter((s) => s.selected).map((s) => s.id));
@@ -95,6 +101,8 @@ export function ApproveDialog({ partId, nextVersion, dirty, onSave, onClose }: {
         <Divider />
         <Textarea label="Комментарий" placeholder="Что изменилось" autosize minRows={2} value={comment} onChange={(e) => setComment(e.currentTarget.value)} />
         <Checkbox label="Сразу прогнать утверждённую версию" checked={run} onChange={(e) => setRun(e.currentTarget.checked)} />
+        {same && <Text size="sm" c="dimmed">Черновик не отличается от утверждённой v{nextVersion - 1} — утверждать нечего</Text>}
+        {neverRun && <Alert color="yellow" p="xs">Черновик не прогонялся — последствия неизвестны</Alert>}
         {problems.length > 0 && (
           <Alert color="red" title="Утвердить нельзя">
             <List size="sm">{problems.map((p) => <List.Item key={p}>{p}</List.Item>)}</List>
@@ -102,7 +110,12 @@ export function ApproveDialog({ partId, nextVersion, dirty, onSave, onClose }: {
         )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Отмена</Button>
-          <Button loading={busy} onClick={approve}>Утвердить</Button>
+          <Button loading={busy} disabled={same}
+            onClick={() => (neverRun
+              ? askConfirm('Черновик не прогонялся — последствия для базы коллизий неизвестны. Всё равно утвердить?', () => void approve(), 'orange')
+              : void approve())}>
+            Утвердить
+          </Button>
         </Group>
       </Stack>
     </Modal>

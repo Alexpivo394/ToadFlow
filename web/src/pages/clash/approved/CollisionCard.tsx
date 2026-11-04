@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Anchor, Badge, Button, Center, Group, Loader, Popover, Radio, ScrollArea, Stack, Text, Textarea } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Center, Group, Loader, Popover, Radio, Stack, Text, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../api/client';
@@ -152,8 +152,9 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true, pa
   // Статус и «кто правит» проектировщик меняет только в коллизиях своего раздела; примечание пишет в любой.
   const canChange = !readOnly && (isStaff || mine);
 
+  // Карточка не ограничивает свою высоту: прокручивается вся колонка (W-1), и картинка с лентой достижимы при любом содержимом.
   return (
-    <Stack gap="xs" h="100%">
+    <Stack gap="xs">
       <Group gap="xs">
         <Text fw={700}>№ {c.number}</Text>
         <StatusBadge status={c.status} />
@@ -238,11 +239,9 @@ export function CollisionCard({ collisionId, canEdit, canMerge, image = true, pa
         </Group>
       )}
       {image && <CollisionImage collisionId={c.id} imageVersion={c.imageVersion} width={240} />}
-      <ScrollArea style={{ flex: 1 }} type="auto">
-        <Stack gap="xs">
-          {card.data.feed.map((e, i) => <FeedLine key={`${e.at}-${e.kind}-${i}`} entry={e} />)}
-        </Stack>
-      </ScrollArea>
+      <Stack gap="xs" data-testid="collision-feed">
+        {card.data.feed.map((e, i) => <FeedLine key={`${e.at}-${e.kind}-${i}`} entry={e} />)}
+      </Stack>
     </Stack>
   );
 }

@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../../test/renderApp';
 
-const empty = { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [] };
+const empty = { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null };
 const settings = { storage: { keepSnapshots: 3 }, overview: { staleDays: 7, noRunDays: 7, spikeShare: 0.1, spikeMin: 50, stuckDays: 30 } };
 
 const problems = {
@@ -32,3 +32,22 @@ describe('Coordinator overview', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Coordinator overview: schedules and agents', () => {
+  it('Overview_NoScheduleAndAgentsOffline_Shown', async () => {
+    renderApp('/clash/setup', {
+      '/api/clash/overview': {
+        ...empty,
+        noSchedule: [{ partId: 'p3', name: 'Корпус 3', object: 'Полковая', count: 0, reason: 'нет регулярного прогона' }],
+        agentsOffline: { minutes: 25, reason: 'Агенты не в сети 25 мин' },
+      },
+      '/api/clash/settings': settings,
+    });
+
+    expect(await screen.findByText('Агенты не в сети 25 мин')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Агенты' }).getAttribute('href')).toBe('/settings/agents');
+    expect(screen.getByText('Нет регулярного прогона')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Корпус 3 — нет регулярного прогона/ }).getAttribute('href')).toBe('/clash/checks/p3');
+    expect(screen.queryByText('Всё в порядке')).toBeNull();
+  });
+});

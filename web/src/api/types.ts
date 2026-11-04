@@ -1155,6 +1155,8 @@ export interface ClashOverviewSettings {
   spikeShare: number;
   spikeMin: number;
   stuckDays: number;
+  /** Ни одного агента в сети дольше, мин — «агенты не в сети». */
+  agentsOfflineMinutes: number;
 }
 
 export interface ClashSettingsView {
@@ -1186,6 +1188,10 @@ export interface ClashOverview {
   unchecked: OverviewPart[];
   spike: OverviewPart[];
   stuck: OverviewPart[];
+  /** Утверждённые проверки без включённого расписания выгрузки. */
+  noSchedule: OverviewPart[];
+  /** Ни одного агента в сети дольше порога; null — всё в порядке. */
+  agentsOffline: { minutes: number | null; reason: string } | null;
 }
 
 export interface ClashAnalyticsView {

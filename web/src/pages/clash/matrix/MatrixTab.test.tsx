@@ -107,3 +107,16 @@ describe('Matrix tab', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Matrix legend', () => {
+  it('Matrix_LegendFromActualTolerances', async () => {
+    renderApp('/clash/setup/parts/p1?tab=matrix', three);
+
+    expect(await screen.findByText(/Допуски в матрице: 20 мм$/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: '50 мм' }));
+    paint(screen.getByRole('button', { name: 'ОВ × ВК' }));
+
+    expect(await screen.findByText(/Проверяется, допуск по клетке.*Допуски в матрице: 20 мм, 50 мм$/)).toBeTruthy();
+    expect(screen.queryByText('проверяется, 20 мм')).toBeNull();
+  });
+});

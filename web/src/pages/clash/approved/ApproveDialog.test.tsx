@@ -147,3 +147,26 @@ describe('Approve dialog after review', () => {
     await waitFor(() => expect(order).toEqual(['save', 'run']));
   });
 });
+
+describe('Approve guard', () => {
+  it('Approve_DraftEqualsApproved_Disabled', async () => {
+    await openDialog({ '/api/clash/parts/p1/approve/preview': preview({ changes: [] }) });
+
+    expect(await screen.findByText(/^Черновик не отличается от утверждённой v\d+ — утверждать нечего$/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Утвердить' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Approve_NeverRun_WarnsAndConfirms', async () => {
+    await openDialog({
+      '/api/clash/parts/p1/approve/preview': preview({ neverRun: true, draftRunAt: null, pairs: [] }),
+      'POST /api/clash/parts/p1/approve': { version: 1, approvedAt: '2026-10-29T10:00:00Z', userName: 'Администратор', comment: null, runId: null },
+    });
+
+    expect(await screen.findByText('Черновик не прогонялся — последствия неизвестны')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Утвердить' }));
+    expect(await screen.findByText('Черновик не прогонялся — последствия для базы коллизий неизвестны. Всё равно утвердить?')).toBeTruthy();
+    expect(approvals()).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Да' }));
+    await waitFor(() => expect(approvals()).toHaveLength(1));
+  });
+});

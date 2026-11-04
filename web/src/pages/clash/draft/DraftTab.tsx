@@ -133,6 +133,7 @@ export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOp
   const current = nav.current;
   // Номер из поиска может быть не на этой странице и не в этой проверке: сцена берёт его из последнего прогона черновика.
   const run = useApi<DraftRunSummary | null>(['clash-parts', partId, 'run'], `/api/clash/parts/${partId}/draft/run`);
+  const runActive = run.data?.state === 'Queued' || run.data?.state === 'Running';
   const shown = current ?? (number != null && run.data ? { runId: run.data.runId, number } : null);
   const facetLists: CollisionFacets = { pairs: [], levels: facets.data?.levels ?? [], models: [], categories: [] };
   const checkInfo = checks.find((c) => c.key === check);
@@ -142,7 +143,8 @@ export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOp
       <DraftRunPanel partId={partId} readOnly={readOnly} dirty={dirty} onSave={onSave} />
       {summary.data?.legacy && <Alert color="orange">Результат получен до появления групп проверки — прогоните черновик заново, чтобы разложить коллизии по проверкам.</Alert>}
       {summary.data && summary.data.total === 0 && !summary.data.legacy ? (
-        <Empty>Коллизий пока нет — нажмите «Прогнать»</Empty>
+        // Пока идёт прогон, «нажмите Прогнать» вводит в заблуждение: кнопка выключена, результат ещё будет (W-3).
+        <Empty>{runActive ? 'Идёт прогон…' : 'Коллизий пока нет — нажмите «Прогнать»'}</Empty>
       ) : (
         <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 290px)" mih={520}
           style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8, overflow: 'hidden' }}>

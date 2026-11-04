@@ -50,6 +50,14 @@ async function pick(label: string, option: string, root: HTMLElement = document.
 }
 
 describe('Clash home', () => {
+  it('PartCard_DraftNotRun_SaysDraft', async () => {
+    renderApp('/clash/setup/parts', responses);
+
+    expect(await screen.findByText('черновик не прогонялся')).toBeTruthy();
+    expect(screen.getByText(/^черновик: прогон .* · 60\s896 коллизий$/)).toBeTruthy();
+    expect(screen.queryByText('не прогонялся')).toBeNull();
+  });
+
   it('ClashHome_ProjectsAndPartCards', async () => {
     renderApp('/clash/setup/parts', responses);
 
@@ -59,7 +67,6 @@ describe('Clash home', () => {
     expect(screen.getByText('Проезды')).toBeTruthy();
     expect(screen.getByText('ЭОМ: нет выгрузки')).toBeTruthy();
     expect(screen.getByText(/60 896/)).toBeTruthy();
-    expect(screen.getByText('не прогонялся')).toBeTruthy();
     expect(screen.getByText(/утверждена v2 · открытых 104/)).toBeTruthy();
     expect(screen.getByText('не утверждена')).toBeTruthy();
     await waitFor(() => expect(calls().some(([url]) => url === `/api/clash/parts?object=${encodeURIComponent('Полковая')}`)).toBe(true));

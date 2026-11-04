@@ -11,11 +11,11 @@ import type { ProjectKey } from './ProjectList';
 
 function RunLine({ part }: { part: ClashPartSummary }) {
   const run = part.lastRun;
-  if (!run) return <Text size="xs" c="dimmed">не прогонялся</Text>;
+  if (!run) return <Text size="xs" c="dimmed">черновик не прогонялся</Text>;
   if (run.state === 'Succeeded')
-    return <Text size="xs" c="dimmed">прогон {formatDateTime(run.finishedAt ?? run.createdAt)} · {(run.hitCount ?? 0).toLocaleString('ru-RU')} коллизий</Text>;
-  if (run.state === 'Failed') return <Text size="xs" c="red">прогон не удался</Text>;
-  return <Text size="xs" c="blue">прогон {run.state === 'Queued' ? 'в очереди' : 'идёт'}</Text>;
+    return <Text size="xs" c="dimmed">черновик: прогон {formatDateTime(run.finishedAt ?? run.createdAt)} · {(run.hitCount ?? 0).toLocaleString('ru-RU')} коллизий</Text>;
+  if (run.state === 'Failed') return <Text size="xs" c="red">черновик: прогон не удался</Text>;
+  return <Text size="xs" c="blue">черновик: прогон {run.state === 'Queued' ? 'в очереди' : 'идёт'}</Text>;
 }
 
 /** Утверждённая версия и итог её последнего прогона: открытых после прогона — новые, активные и вернувшиеся. */

@@ -106,6 +106,8 @@ describe('My collisions', () => {
     renderApp('/clash/my?collision=c1', responses());
 
     fireEvent.click(await screen.findByRole('button', { name: 'щёлкнуть элемент' }));
+    // Свойства свёрнуты (W-2): под сценой — строка выбранного элемента, панель — по «Свойства».
+    fireEvent.click(screen.getByRole('button', { name: 'Свойства' }));
 
     expect(await screen.findByText('Несущие')).toBeTruthy();
     expect(calls().some(([url]) => url.startsWith('/api/clash/runs/'))).toBe(false);

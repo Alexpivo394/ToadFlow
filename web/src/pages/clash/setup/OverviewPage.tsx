@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Anchor, Badge, SimpleGrid, Stack } from '@mantine/core';
+import { Alert, Anchor, Badge, SimpleGrid, Stack } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { ClashOverview, ClashSettingsView, OverviewPart } from '../../../api/types';
 import { Empty, PageTitle, Panel } from '../../../components/ui';
@@ -8,7 +8,8 @@ import { t } from '../../../i18n/ru';
 
 /** Сколько всего проблем в обзоре. */
 export function problemCount(o: ClashOverview): number {
-  return o.notUploaded.length + o.runFailed.length + o.noRecentRun.length + o.unchecked.length + o.spike.length + o.stuck.length;
+  return o.notUploaded.length + o.runFailed.length + o.noRecentRun.length + o.unchecked.length + o.spike.length + o.stuck.length
+    + o.noSchedule.length + (o.agentsOffline ? 1 : 0);
 }
 
 function Card({ title, count, color = 'orange', children }: { title: string; count: number; color?: string; children: ReactNode }) {
@@ -42,6 +43,12 @@ export function OverviewPage() {
     <>
       <PageTitle>{t.clash.overviewTitle}</PageTitle>
       {o && problemCount(o) === 0 && <Empty>Всё в порядке</Empty>}
+      {o?.agentsOffline && (
+        <Alert color="red" mb="md" title={o.agentsOffline.reason}>
+          Выгрузки для коллизий не идут, проверки устаревают.{' '}
+          <Anchor component={RouterLink} to="/settings/agents" size="sm">Агенты</Anchor>
+        </Alert>
+      )}
       {o && (
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
           <Card title="Не выгрузилось" count={o.notUploaded.length} color="red">
@@ -54,6 +61,9 @@ export function OverviewPage() {
           <Card title="Прогон не прошёл" count={o.runFailed.length + o.noRecentRun.length} color="red">
             <PartLinks parts={o.runFailed} to={(p) => `/clash/checks/${p.partId}`} />
             <PartLinks parts={o.noRecentRun} to={(p) => `/clash/checks/${p.partId}`} />
+          </Card>
+          <Card title="Нет регулярного прогона" count={o.noSchedule.length}>
+            <PartLinks parts={o.noSchedule} to={(p) => `/clash/checks/${p.partId}`} />
           </Card>
           <Card title="Не проверены" count={o.unchecked.length}>
             <PartLinks parts={o.unchecked} to={(p) => `/clash/checks/${p.partId}`} />

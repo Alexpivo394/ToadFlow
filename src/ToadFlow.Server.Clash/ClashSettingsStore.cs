@@ -17,7 +17,9 @@ public sealed record ClashStorageSettings(int KeepSnapshots = 3)
 /// <param name="SpikeShare">Всплеск: новых больше этой доли от активных…</param>
 /// <param name="SpikeMin">…и больше этого числа.</param>
 /// <param name="StuckDays">Открытая коллизия без записей в ленте дольше — «висит».</param>
-public sealed record ClashOverviewSettings(int StaleDays = 7, int NoRunDays = 7, double SpikeShare = 0.10, int SpikeMin = 50, int StuckDays = 30)
+/// <param name="AgentsOfflineMinutes">Ни одного агента в сети дольше — «агенты не в сети»: выгрузки для коллизий не идут.</param>
+public sealed record ClashOverviewSettings(int StaleDays = 7, int NoRunDays = 7, double SpikeShare = 0.10, int SpikeMin = 50, int StuckDays = 30,
+    int AgentsOfflineMinutes = 10)
 {
     public IReadOnlyList<string> Validate()
     {
@@ -27,6 +29,7 @@ public sealed record ClashOverviewSettings(int StaleDays = 7, int NoRunDays = 7,
         if (SpikeShare is <= 0 or > 1 || double.IsNaN(SpikeShare)) errors.Add("Доля всплеска — больше 0 % и не больше 100 %");
         if (SpikeMin is < 0 or > 1_000_000) errors.Add("Всплеск — от 0 до 1 000 000 новых");
         if (StuckDays is < 1 or > 3650) errors.Add("Висят — от 1 до 3650 дней");
+        if (AgentsOfflineMinutes is < 1 or > 10_080) errors.Add("Агенты не в сети — от 1 до 10 080 минут");
         return errors;
     }
 }

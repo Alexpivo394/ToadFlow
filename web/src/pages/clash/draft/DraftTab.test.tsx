@@ -175,3 +175,17 @@ describe('Draft run line', () => {
     expect(screen.getByText(/52 коллизий/)).toBeTruthy();
   });
 });
+
+describe('Draft run state', () => {
+  it('Draft_Running_NoEmptyHint_RunDisabled', async () => {
+    renderApp('/clash/setup/parts/p1?tab=draft', {
+      ...responses,
+      '/api/clash/parts/p1/draft/run': { ...succeeded, state: 'Running', stage: 'поиск', finishedAt: null, hitCount: null },
+      '/api/clash/parts/p1/draft/summary': { total: 0, checks: [], legacy: false },
+    });
+
+    expect(await screen.findByText('Идёт прогон…')).toBeTruthy();
+    expect(screen.queryByText('Коллизий пока нет — нажмите «Прогнать»')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Прогнать' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

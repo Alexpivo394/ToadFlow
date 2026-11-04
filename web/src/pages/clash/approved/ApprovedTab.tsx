@@ -253,7 +253,7 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
                 <HitScene runId="" number={current?.number ?? 0} collisionId={collisionId}
                   title={current ? `№ ${current.number} · глубина ${Math.round(current.depthMm)} мм` : undefined} />
               </Box>
-              <Box pt="xs" style={{ flex: 2, minHeight: 0 }}>
+              <Box pt="xs" data-testid="card-column" style={{ flex: 2, minHeight: 0, overflowY: 'auto' }}>
                 <CollisionCard key={collisionId} collisionId={collisionId} canEdit={canEdit} canMerge={canRun} partId={partId} partName={part.data?.name}
                   onShowElement={showElement} />
               </Box>

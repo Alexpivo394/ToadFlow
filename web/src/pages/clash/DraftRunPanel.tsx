@@ -36,7 +36,7 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
     <Stack gap="md">
       <Group gap="sm">
         {!readOnly && (
-          <Button loading={start.isPending}
+          <Button loading={start.isPending} disabled={active}
             onClick={() => (dirty && onSave
               ? askConfirm('Черновик не сохранён. Сохранить и прогнать?', async () => { await onSave(); start.mutate(); }, 'blue')
               : start.mutate())}>

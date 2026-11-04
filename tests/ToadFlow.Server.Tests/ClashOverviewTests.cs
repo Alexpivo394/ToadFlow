@@ -142,5 +142,50 @@ public class ClashOverviewTests : ServerTest
             .EnsureSuccessStatusCode();
 
         (await admin.GetJsonAsync<ClashSettingsView>("/api/clash/settings")).Overview.StuckDays.ShouldBe(14);
+        (await admin.PutJsonAsync("/api/clash/settings", new { storage = current.Storage, overview = new ClashOverviewSettings(AgentsOfflineMinutes: 0) }))
+            .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>Расписание выгрузки для коллизий с частями <paramref name="parts" />.</summary>
+    private Task ScheduleAsync(Guid[] parts, bool enabled) => DbAsync(async db =>
+    {
+        var schedule = Seed.Schedule(db, Seed.Source(db).Id);
+        schedule.ModuleKind = ModuleKinds.ClashExtract;
+        schedule.IsEnabled = enabled;
+        schedule.ModuleSettingsJson = System.Text.Json.JsonSerializer.Serialize(new ClashScheduleSettings("Navisworks", "", parts), ToadFlow.Server.Data.ToadFlowDb.Json);
+        await db.SaveChangesAsync();
+    });
+
+    [Test]
+    public async Task Overview_ApprovedCheckWithoutSchedule_Warning()
+    {
+        var (admin, agent, partId, _) = await CheckAsync();
+        await using var _ = agent;
+
+        var item = (await OverviewAsync(admin)).NoSchedule.ShouldHaveSingleItem();
+        (item.PartId, item.Reason).ShouldBe((partId, "нет регулярного прогона"));
+
+        await ScheduleAsync([partId], enabled: false);
+        (await OverviewAsync(admin)).NoSchedule.ShouldHaveSingleItem(); // выключенное расписание не прогоняет
+
+        await ScheduleAsync([partId], enabled: true);
+        (await OverviewAsync(admin)).NoSchedule.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Overview_AgentsOffline_Warning()
+    {
+        var (admin, agent, _, _) = await CheckAsync();
+        await using var _ = agent;
+        (await OverviewAsync(admin)).AgentsOffline.ShouldBeNull();
+
+        var seen = _time.GetUtcNow();
+        await DbAsync(db => db.Agents.ExecuteUpdateAsync(a => a.SetProperty(x => x.State, AgentState.Offline).SetProperty(x => x.LastSeenAt, seen)));
+        _time.Advance(TimeSpan.FromMinutes(5));
+        (await OverviewAsync(admin)).AgentsOffline.ShouldBeNull(); // меньше порога 10 мин
+
+        _time.Advance(TimeSpan.FromMinutes(20));
+        var offline = (await OverviewAsync(admin)).AgentsOffline.ShouldNotBeNull();
+        (offline.Minutes, offline.Reason).ShouldBe((25, "Агенты не в сети 25 мин"));
     }
 }

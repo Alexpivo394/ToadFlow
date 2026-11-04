@@ -30,7 +30,7 @@ const responses = {
   '/api/dashboard': { kpi: { exported: 0, failed: 0, failedPercent: 0, queued: 0, running: 0, avgSeconds: null, agentsOnline: 0, agentsTotal: 0 }, days: [], upcoming: [], recentErrors: [] },
   '/api/agents': [],
   '/api/settings': { silenceTimeoutMinutes: 10 },
-  '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [] },
+  '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null },
   '/api/clash/checks': [check],
   '/api/clash/checks/p1': check,
   '/api/clash/my': { total: 0, items: [] },

@@ -280,3 +280,16 @@ describe('Approved grouping by element', () => {
     expect(screen.getAllByLabelText('Раздел для группировки').some((e) => (e as HTMLInputElement).value === 'АР')).toBe(true);
   });
 });
+
+describe('Approved tab layout', () => {
+  it('Card_LongContent_Scrollable', async () => {
+    open({}, '/clash/checks/p1?collision=c1');
+
+    expect(await screen.findByText('Гильза есть')).toBeTruthy();
+    const column = screen.getByTestId('card-column');
+    expect(column.style.overflowY).toBe('auto');
+    // Лента — обычный блок внутри прокручиваемой колонки, а не своя область прокрутки, сжатая до нуля.
+    expect(within(column).getByTestId('collision-feed').textContent).toContain('Гильза есть');
+    expect(column.querySelector('.mantine-ScrollArea-root')).toBeNull();
+  });
+});

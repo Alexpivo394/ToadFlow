@@ -48,6 +48,9 @@ export function MatrixTab({ config, readOnly, onChange }: { config: ClashConfig;
   };
 
   const brushValue = brush === 'off' ? 'off' : presets.includes(brush) ? String(brush) : 'custom';
+  // Легенда — по допускам, которые в матрице есть на самом деле, а не «20 мм» вообще (W-7).
+  const tolerances = [...new Set(all().map(([a, b]) => matrixCell(config, a, b)).filter((c) => c?.enabled).map((c) => c!.toleranceMm))]
+    .sort((x, y) => x - y);
 
   return (
     <Stack gap="md" onMouseUp={() => setStroke(null)} onMouseLeave={() => setStroke(null)}>
@@ -123,10 +126,13 @@ export function MatrixTab({ config, readOnly, onChange }: { config: ClashConfig;
         </Table>
         <Stack gap="xs" maw={340}>
           <Group gap="md">
-            <Group gap={4}><div style={{ width: 14, height: 14, background: colors.standard, borderRadius: 2 }} /><Text size="xs">проверяется, 20 мм</Text></Group>
-            <Group gap={4}><div style={{ width: 14, height: 14, background: colors.custom, borderRadius: 2 }} /><Text size="xs">свой допуск</Text></Group>
+            <Group gap={4}><div style={{ width: 14, height: 14, background: colors.standard, borderRadius: 2 }} /><Text size="xs">20 мм</Text></Group>
+            <Group gap={4}><div style={{ width: 14, height: 14, background: colors.custom, borderRadius: 2 }} /><Text size="xs">другой допуск</Text></Group>
             <Group gap={4}><div style={{ width: 14, height: 14, background: colors.off, borderRadius: 2 }} /><Text size="xs">не проверяется</Text></Group>
           </Group>
+          <Text size="xs" c="dimmed">
+            {tolerances.length > 0 ? `Проверяется, допуск по клетке (цифра в клетке). Допуски в матрице: ${tolerances.map((t) => `${t.toLocaleString('ru-RU')} мм`).join(', ')}` : 'Ни одна клетка не проверяется'}
+          </Text>
           {!readOnly && (
             <Text size="xs" c="dimmed">
               Выберите кисть и щёлкните по клетке или протяните мышью по нескольким. Щелчок по клетке с тем же допуском выключает её.

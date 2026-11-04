@@ -3,8 +3,9 @@ import { Badge, Box as Area, Button, Center, Checkbox, Group, Loader, Paper, Ran
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchBinary } from '../../../api/client';
 import type { ViewerSceneView } from '../../../api/types';
+import { categoryLabel } from '../../../lib/categories';
 import { type Box, defaultSectionBox, type Isolation, parseMeshes } from '../../../lib/viewer';
-import { ElementPanel } from './ElementPanel';
+import { ElementPanel, roleName } from './ElementPanel';
 
 // three.js тяжёлый: грузится отдельным чанком, только когда открыт просмотрщик.
 const ClashViewer = lazy(() => import('./ClashViewer'));
@@ -62,7 +63,8 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
   const [sectionOn, setSectionOn] = useState(false);
   const [section, setSection] = useState<Box | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const [showProps, setShowProps] = useState(true);
+  // Свойства свёрнуты: сцена видна целиком, под ней — строка выбранного элемента; панель раскрывается по щелчку (W-2).
+  const [showProps, setShowProps] = useState(false);
 
   const path = collisionId ? `/api/clash/collisions/${collisionId}` : base(runId, number);
   const scene = useQuery(sceneAt(path, radius));
@@ -83,6 +85,7 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
     }
   }, [focus, scene.data]);
 
+  const picked = selected != null ? scene.data?.elements[selected] : undefined;
   const context = scene.data?.elements.filter((e) => e.role === 'context') ?? [];
   const withMesh = context.filter((e) => e.mesh).length;
   const limit = scene.data?.radiusMm ?? Number(radius);
@@ -110,7 +113,6 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
           </Text>
         )}
         {scene.data?.truncated && <Badge color="orange" variant="light">окружение урезано</Badge>}
-        <Button size="compact-xs" variant="subtle" ml="auto" onClick={() => setShowProps(!showProps)}>{showProps ? 'Скрыть свойства' : 'Свойства'}</Button>
       </Group>
 
       {sectionOn && section && (
@@ -157,6 +159,14 @@ export function HitScene({ runId, number, collisionId, title, focus, onRefresh }
           </Paper>
         )}
       </Area>
+      {scene.data && (
+        <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+          <Text size="xs" c="dimmed" truncate style={{ flex: 1, minWidth: 0 }}>
+            {picked ? `${roleName[picked.role]}: ${categoryLabel(picked.category)} · ${picked.family ?? '—'} · ID ${picked.elementId}` : 'Щёлкните элемент в сцене, чтобы выбрать его'}
+          </Text>
+          <Button size="compact-xs" variant="subtle" onClick={() => setShowProps(!showProps)}>{showProps ? 'Скрыть свойства' : 'Свойства'}</Button>
+        </Group>
+      )}
     </Stack>
   );
 }

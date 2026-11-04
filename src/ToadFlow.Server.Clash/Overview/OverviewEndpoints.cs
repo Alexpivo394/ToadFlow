@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ToadFlow.Contracts;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
@@ -13,14 +14,22 @@ public sealed record OverviewPart(Guid PartId, string Name, string? Object, int 
 
 public sealed record OverviewModel(Guid PartId, string PartName, Guid ModelId, string ModelName, string Reason);
 
-/// <summary>Где проблема по всем утверждённым проверкам. Пусто во всех списках — «всё в порядке».</summary>
+/// <summary>Ни одного агента в сети: выгрузки для коллизий не идут, проверки устаревают.</summary>
+/// <param name="Minutes">Сколько минут назад отозвался последний агент; null — ни один агент не подключался.</param>
+public sealed record OverviewAgents(int? Minutes, string Reason);
+
+/// <summary>Где проблема по всем утверждённым проверкам. Пусто во всех списках и нет <c>AgentsOffline</c> — «всё в порядке».</summary>
+/// <param name="NoSchedule">Утверждённые проверки, которых не прогоняет ни одно включённое расписание выгрузки.</param>
+/// <param name="AgentsOffline">Ни одного агента в сети дольше порога; null — агенты в порядке или проверок нет.</param>
 public sealed record OverviewView(
     IReadOnlyList<OverviewModel> NotUploaded,
     IReadOnlyList<OverviewPart> RunFailed,
     IReadOnlyList<OverviewPart> NoRecentRun,
     IReadOnlyList<OverviewPart> Unchecked,
     IReadOnlyList<OverviewPart> Spike,
-    IReadOnlyList<OverviewPart> Stuck);
+    IReadOnlyList<OverviewPart> Stuck,
+    IReadOnlyList<OverviewPart> NoSchedule,
+    OverviewAgents? AgentsOffline);
 
 /// <summary>Обзор координатора: первым делом утром — что не выгрузилось, не прогналось, всплески и висящие коллизии.</summary>
 public static class OverviewEndpoints
@@ -91,7 +100,25 @@ public static class OverviewEndpoints
         var stuck = parts.Where(p => stuckCounts.ContainsKey(p.Id))
             .Select(p => new OverviewPart(p.Id, p.Name, p.Object, stuckCounts[p.Id], $"висят {stuckCounts[p.Id]}")).ToList();
 
-        return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck);
+        // Регулярный прогон — включённое расписание выгрузки для коллизий с частью в настройках; выключенное не прогоняет.
+        var scheduled = (await PartSchedules.ClashSchedulesAsync(db, ct)).Where(s => s.Schedule.IsEnabled).SelectMany(s => s.Parts).ToHashSet();
+        var noSchedule = parts.Where(p => !scheduled.Contains(p.Id))
+            .Select(p => new OverviewPart(p.Id, p.Name, p.Object, 0, "нет регулярного прогона")).ToList();
+
+        return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck, noSchedule,
+            parts.Count == 0 ? null : await AgentsOfflineAsync(db, now, limits.AgentsOfflineMinutes, ct));
+    }
+
+    /// <summary>Ни одного агента в сети (или «не брать новые») дольше <paramref name="minutes" /> минут по последнему отклику.</summary>
+    private static async Task<OverviewAgents?> AgentsOfflineAsync(ToadFlowDb db, DateTimeOffset now, int minutes, CancellationToken ct)
+    {
+        var agents = await db.Agents.AsNoTracking().Where(a => a.State != AgentState.Disabled).Select(a => new { a.State, a.LastSeenAt }).ToListAsync(ct);
+        if (agents.Any(a => a.State is AgentState.Online or AgentState.Draining)) return null;
+        if (agents.Count == 0) return new OverviewAgents(null, "Нет ни одного агента");
+        var last = agents.Max(a => a.LastSeenAt);
+        if (last is null) return new OverviewAgents(null, "Агенты ни разу не подключались");
+        var offline = (int)(now - last.Value).TotalMinutes;
+        return offline < minutes ? null : new OverviewAgents(offline, $"Агенты не в сети {offline} мин");
     }
 
     /// <summary>Открытые коллизии без движения: ни одной записи в ленте (и создания) после <paramref name="before" />.</summary>

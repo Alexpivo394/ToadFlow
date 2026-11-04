@@ -187,7 +187,7 @@ export function MyPage() {
                 <HitScene runId="" number={current?.row.number ?? 0} collisionId={collisionId}
                   title={current?.my ? `№ ${current.row.number} · ${current.my.partName} · глубина ${Math.round(current.row.depthMm)} мм` : undefined} />
               </Box>
-              <Box pt="xs" style={{ flex: 2, minHeight: 0 }}>
+              <Box pt="xs" data-testid="card-column" style={{ flex: 2, minHeight: 0, overflowY: 'auto' }}>
                 <CollisionCard key={collisionId} collisionId={collisionId} canEdit={canWork} canMerge={can('Operator')}
                   partId={current?.my?.partId} partName={current?.my?.partName} />
               </Box>
