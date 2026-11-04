@@ -882,6 +882,16 @@ export interface DraftRunSummary {
   createdAt: string;
   finishedAt: string | null;
   stats: EngineRunStats | null;
+  /** Место в очереди движка, с 1 — только у прогона в очереди. */
+  queuePosition?: number | null;
+  /** Средняя длительность последних 5 удачных прогонов части того же вида, с; у прогона в очереди или идущего. */
+  typicalSeconds?: number | null;
+}
+
+/** Оценка HTML-выгрузки пары до скачивания. */
+export interface HtmlEstimate {
+  rows: number;
+  bytes: number;
 }
 
 /** Проверка — включённая клетка матрицы прогона; ключ — Id групп в форме N через «|». */

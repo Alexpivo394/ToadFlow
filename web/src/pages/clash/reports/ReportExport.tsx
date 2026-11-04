@@ -4,7 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, downloadFile } from '../../../api/client';
 import { useApi } from '../../../api/queries';
-import type { ReportArchiveView, ReportView } from '../../../api/types';
+import type { HtmlEstimate, ReportArchiveView, ReportView } from '../../../api/types';
 import { formatFullDateTime } from './ReportPage';
 import { inScope, type ReportSelection } from './ReportTree';
 
@@ -16,6 +16,14 @@ function pairsWord(count: number) {
   const ones = count % 10;
   const word = tens >= 11 && tens <= 14 ? 'пар' : ones === 1 ? 'пара' : ones >= 2 && ones <= 4 ? 'пары' : 'пар';
   return `${count} ${word}`;
+}
+
+/** «1 строка», «3 строки», «14 050 строк». */
+function rowsWord(count: number) {
+  const tens = count % 100;
+  const ones = count % 10;
+  const word = tens >= 11 && tens <= 14 ? 'строк' : ones === 1 ? 'строка' : ones >= 2 && ones <= 4 ? 'строки' : 'строк';
+  return `${count.toLocaleString('ru-RU')} ${word}`;
 }
 
 const megabytes = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024 / 1024)).toLocaleString('ru-RU')} МБ`;
@@ -137,6 +145,12 @@ export function ReportExport({ runId, view, selection, filters, total, fileBase 
     await client.invalidateQueries({ queryKey: currentKey });
   };
 
+  // Размер HTML пары — до скачивания: крупная пара весит десятки мегабайт.
+  const estimateQuery = new URLSearchParams(filters);
+  for (const key of ['collision', 'page']) estimateQuery.delete(key); // выбор строки и страница размер не меняют
+  const estimate = useApi<HtmlEstimate>(['clash-collisions', runId, 'html-estimate', estimateQuery.toString()],
+    selection.kind === 'pair' ? `/api/clash/reports/${runId}/export.html/estimate?${estimateQuery}` : null);
+
   const selectionLabel = selection.kind === 'pair' ? pair?.label ?? selection.pair : selection.kind === 'discipline' ? selection.name : null;
   const archiveName = `${[fileBase, archive?.discipline ?? 'все пары', day].filter(Boolean).join(' ')}.zip`;
 
@@ -145,9 +159,14 @@ export function ReportExport({ runId, view, selection, filters, total, fileBase 
       {archive && <ArchiveStatus archive={archive} fileName={archiveName} onCancel={cancel} />}
       <Button size="xs" variant="default" loading={busy === 'xlsx'} onClick={() => download('xlsx', selectionLabel)}>Excel</Button>
       {selection.kind === 'pair' ? (
-        <Button size="xs" variant="default" loading={busy === 'html'} onClick={() => download('html', selectionLabel)}>
-          HTML: {pair?.label ?? selection.pair}{total !== undefined ? ` (${total.toLocaleString('ru-RU')})` : ''}
-        </Button>
+        <>
+          {estimate.data && (
+            <Text size="xs" c="dimmed">≈ {rowsWord(estimate.data.rows)}, около {megabytes(estimate.data.bytes)}</Text>
+          )}
+          <Button size="xs" variant="default" loading={busy === 'html'} onClick={() => download('html', selectionLabel)}>
+            HTML: {pair?.label ?? selection.pair}{total !== undefined ? ` (${total.toLocaleString('ru-RU')})` : ''}
+          </Button>
+        </>
       ) : (
         <Button size="xs" variant="default" loading={busy === 'archive'} disabled={polling || archivePairs === 0} onClick={startArchive}>
           HTML: {selection.kind === 'discipline' ? `раздел ${selection.name}` : 'всё'} — архив ({pairsWord(archivePairs)})

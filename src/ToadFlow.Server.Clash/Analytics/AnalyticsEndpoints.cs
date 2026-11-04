@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Clash.Collisions;
+using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Overview;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Clash.Projects;
@@ -60,7 +61,7 @@ public static class AnalyticsEndpoints
     /// <param name="object">Проект; <see cref="ProjectEndpoints.Unparsed" /> — части без проекта.</param>
     /// <param name="from">Первый день периода; по умолчанию — 30 дней до <paramref name="to" />.</param>
     /// <param name="to">Последний день периода; по умолчанию — сегодня.</param>
-    /// <param name="groupBy"><c>discipline</c> (по умолчанию), <c>object</c>, <c>part</c> — разбивка «кто отстаёт».</param>
+    /// <param name="groupBy"><c>discipline</c> (по умолчанию), <c>object</c>, <c>part</c>, <c>pair</c> — разбивка «кто отстаёт».</param>
     private static async Task<ClashAnalyticsView> AnalyticsAsync(string? @object, Guid? partId, string? discipline, DateOnly? from, DateOnly? to,
         string? groupBy, ToadFlowDb db, ISettingsStore general, ClashSettingsStore settings, TimeProvider time, CancellationToken ct)
     {
@@ -113,6 +114,7 @@ public static class AnalyticsEndpoints
         {
             "object" => await LaggingByPartAsync(open, stuck, OpenAt(totals, start), id => (names[id].Project, null), ct),
             "part" => await LaggingByPartAsync(open, stuck, OpenAt(totals, start), id => (names[id].Part, id), ct),
+            "pair" => await LaggingByPairAsync(db, ids, open, stuck, start, end, ct),
             _ => await LaggingByDisciplineAsync(open, stuck, rows, start, key, ct)
         };
 
@@ -193,6 +195,27 @@ public static class AnalyticsEndpoints
             .GroupBy(keyOf)
             .Select(g => new AnalyticsLagging(g.Key.Key, g.Sum(openByPart.GetValueOrDefault), g.Sum(id => openByPart.GetValueOrDefault(id) - startByPart.GetValueOrDefault(id)),
                 g.Sum(stuckByPart.GetValueOrDefault), g.Key.PartId))
+            .OrderByDescending(l => l.Open).ThenBy(l => l.Key, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    ///     По парам разделов. Снимков открытых по парам нет, поэтому рост — переходы пары за период из счётчиков прогонов
+    ///     (<see cref="ClashRunPairStat" />): новые и вернувшиеся минус исправленные и ушедшие из-за правил. Ручные статусы в рост не входят.
+    /// </summary>
+    private static async Task<IReadOnlyList<AnalyticsLagging>> LaggingByPairAsync(ToadFlowDb db, Guid[] partIds, IQueryable<ClashCollision> open,
+        IQueryable<ClashCollision> stuck, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+    {
+        var openBy = await open.GroupBy(c => c.DisciplinePair).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+        var stuckBy = await stuck.GroupBy(c => c.DisciplinePair).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
+        var runs = db.Set<EngineRun>().Where(r => partIds.Contains(r.PartId) && r.FinishedAt >= start && r.FinishedAt < end).Select(r => r.Id);
+        var growthBy = await db.Set<ClashRunPairStat>().AsNoTracking()
+            .Where(s => runs.Contains(s.RunId) && s.DisciplinePair != ClashRunPairStat.Marker)
+            .GroupBy(s => s.DisciplinePair).Select(g => new { g.Key, Growth = g.Sum(s => s.New + s.Returned - s.Fixed - s.GoneByRules) })
+            .ToDictionaryAsync(g => g.Key, g => g.Growth, ct);
+        // Строки — пары с открытыми коллизиями (висящие — их часть); фильтр раздела уже наложен на open.
+        return openBy.Keys
+            .Select(p => new AnalyticsLagging(p, openBy.GetValueOrDefault(p), growthBy.GetValueOrDefault(p), stuckBy.GetValueOrDefault(p)))
             .OrderByDescending(l => l.Open).ThenBy(l => l.Key, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
     }

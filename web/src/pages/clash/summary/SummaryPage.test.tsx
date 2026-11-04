@@ -57,15 +57,45 @@ describe('Clash summary', () => {
     expect(screen.queryByText(/сторона/)).toBeNull();
   });
 
-  it('Summary_LaggingRowOpensList', async () => {
+  it('Summary_Laggard_OpensCheckCollisionsFiltered', async () => {
     renderApp('/clash/summary', responses);
+    const href = (name: string) => decodeURIComponent((screen.getByRole('link', { name }) as HTMLAnchorElement).getAttribute('href')!);
+
+    // ОВК — в одной проверке: сразу её коллизии с фильтром раздела; «Висят» — ещё только висящие.
+    await screen.findByRole('link', { name: 'ОВК' });
+    expect(href('ОВК')).toBe('/clash/checks/p1?discipline=ОВК');
+    expect(href('Висят: ОВК')).toBe('/clash/checks/p1?discipline=ОВК&stuckDays=14');
+    expect(screen.queryByRole('link', { name: 'Висят: КР' })).toBeNull(); // висящих нет — не ссылка
+  });
+
+  it('Summary_Laggard_SeveralChecks_OpensChecksFiltered', async () => {
+    renderApp('/clash/summary', {
+      ...responses,
+      '/api/clash/checks': [...responses['/api/clash/checks'], check('p3', 'Корпус 3', 'DON', ['ОВК', 'ВК'])],
+    });
 
     fireEvent.click(await screen.findByRole('link', { name: 'ОВК' }));
 
     expect(await screen.findByRole('heading', { name: 'Проверки' })).toBeTruthy();
-    expect(await screen.findByText('Корпус 1')).toBeTruthy();
+    expect(await screen.findByText('Корпус 3')).toBeTruthy();
     expect(screen.queryByText('Корпус 2')).toBeNull(); // нет моделей ОВК
     expect(screen.getByText(/Раздел: ОВК/)).toBeTruthy();
+    expect(decodeURIComponent(screen.getByRole('link', { name: 'Корпус 1' }).getAttribute('href')!)).toBe('/clash/checks/p1?discipline=ОВК');
+  });
+
+  it('Summary_PairSlice', async () => {
+    renderApp('/clash/summary', {
+      ...responses,
+      '/api/clash/analytics': (url: string) => new URL(url, 'http://x').searchParams.get('groupBy') === 'pair'
+        ? view([{ key: 'КР × ОВК', open: 40, growth: 3, stuck: 2, partId: null }])
+        : view([]),
+    });
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Пары' }));
+
+    const link = await screen.findByRole('link', { name: 'КР × ОВК' });
+    expect(decodeURIComponent(link.getAttribute('href')!)).toBe('/clash/checks/p1?pair=КР × ОВК'.replace(/ /g, '+'));
+    expect(analytics().some((p) => p.get('groupBy') === 'pair')).toBe(true);
   });
 });
 

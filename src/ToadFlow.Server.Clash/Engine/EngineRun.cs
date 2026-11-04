@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts.Clash;
 using ToadFlow.Server.Clash.Collisions;
+using ToadFlow.Server.Data;
 
 namespace ToadFlow.Server.Clash.Engine;
 
@@ -111,6 +113,11 @@ public sealed class ClashDraftHit
     public static string PairOf(string a, string b) => string.Compare(a, b, StringComparison.OrdinalIgnoreCase) <= 0 ? $"{a} × {b}" : $"{b} × {a}";
 }
 
+/// <param name="QueuePosition">Место в очереди движка, с 1 — только у прогона в очереди.</param>
+/// <param name="TypicalSeconds">
+///     Обычная длительность: среднее последних 5 удачных прогонов части того же вида — у прогона в очереди или идущего; без истории —
+///     <see langword="null" />.
+/// </param>
 public sealed record DraftRunSummary(
     Guid RunId,
     EngineRunState State,
@@ -119,9 +126,31 @@ public sealed record DraftRunSummary(
     string? Error,
     DateTimeOffset CreatedAt,
     DateTimeOffset? FinishedAt,
-    EngineRunStats? Stats)
+    EngineRunStats? Stats,
+    int? QueuePosition = null,
+    double? TypicalSeconds = null)
 {
+    private const int TypicalOf = 5;
+
     public static DraftRunSummary Of(EngineRun run) => new(run.Id, run.State, run.Stage, run.HitCount, run.Error, run.CreatedAt, run.FinishedAt, run.Stats);
+
+    /// <summary>Как <see cref="Of" />, а у прогона в очереди или идущего — ещё место в очереди и обычная длительность.</summary>
+    public static async Task<DraftRunSummary> DescribeAsync(EngineRun run, ToadFlowDb db, CancellationToken ct)
+    {
+        var summary = Of(run);
+        if (run.State is not (EngineRunState.Queued or EngineRunState.Running)) return summary;
+
+        // Очередь движка — по времени постановки, как выдача работнику (ORDER BY created_at).
+        int? position = run.State == EngineRunState.Queued
+            ? await db.Set<EngineRun>().CountAsync(r => r.State == EngineRunState.Queued && r.CreatedAt < run.CreatedAt, ct) + 1
+            : null;
+        var durations = await db.Set<EngineRun>().AsNoTracking()
+            .Where(r => r.PartId == run.PartId && r.Kind == run.Kind && r.State == EngineRunState.Succeeded && r.StartedAt != null && r.FinishedAt != null)
+            .OrderByDescending(r => r.FinishedAt).Take(TypicalOf)
+            .Select(r => new { r.StartedAt, r.FinishedAt }).ToListAsync(ct);
+        double? typical = durations.Count == 0 ? null : Math.Round(durations.Average(d => (d.FinishedAt!.Value - d.StartedAt!.Value).TotalSeconds));
+        return summary with { QueuePosition = position, TypicalSeconds = typical };
+    }
 }
 
 /// <summary>Состояние или ход прогона черновика части изменились — странице части пора обновиться. В журнал не пишется.</summary>

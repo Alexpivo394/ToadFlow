@@ -10,16 +10,25 @@ import { formatDateTime } from '../../../lib/format';
 const noProject = 'Без проекта';
 
 /**
- * «Коллизии → Проверки»: утверждённые проверки по проектам; строка ведёт на страницу проверки. Фильтры <c>object</c> и
- * <c>discipline</c> в адресе — из «Сводки»: проверки проекта или с моделями раздела.
+ * «Коллизии → Проверки»: утверждённые проверки по проектам; строка ведёт на страницу проверки. Фильтры <c>object</c>,
+ * <c>discipline</c>, <c>pair</c> и <c>stuckDays</c> в адресе — из «Сводки»: проверки проекта, с моделями раздела или пары;
+ * раздел, пара и «висят» переходят в список коллизий проверки.
  */
 export function ChecksPage() {
   const [params, setParams] = useSearchParams();
   const object = params.get('object');
   const discipline = params.get('discipline');
+  const pair = params.get('pair');
+  const stuckDays = params.get('stuckDays');
   const checks = useApi<CheckView[]>(['clash-checks'], '/api/clash/checks');
+  const has = (c: CheckView, d: string) => c.models.some((m) => m.discipline === d);
   const shown = (checks.data ?? []).filter((c) => (!object || (c.object ?? noProject) === object)
-    && (!discipline || c.models.some((m) => m.discipline === discipline)));
+    && (!discipline || has(c, discipline)) && (!pair || pair.split(' × ').every((d) => has(c, d))));
+  const listQuery = new URLSearchParams();
+  if (discipline) listQuery.set('discipline', discipline);
+  if (pair) listQuery.set('pair', pair);
+  if (stuckDays) listQuery.set('stuckDays', stuckDays);
+  const listTail = listQuery.toString() ? `?${listQuery}` : '';
   const byProject = new Map<string, CheckView[]>();
   for (const check of shown) {
     const key = check.object ?? noProject;
@@ -29,10 +38,12 @@ export function ChecksPage() {
   return (
     <>
       <PageTitle>{t.nav.clashChecks}</PageTitle>
-      {(object || discipline) && (
+      {(object || discipline || pair || stuckDays) && (
         <Group gap="xs" mb="sm">
           {object && <Badge variant="light">Проект: {object}</Badge>}
           {discipline && <Badge variant="light">Раздел: {discipline}</Badge>}
+          {pair && <Badge variant="light">Пара: {pair}</Badge>}
+          {stuckDays && <Badge variant="light" color="orange">Висят дольше {stuckDays} дн.</Badge>}
           <Button size="compact-xs" variant="subtle" onClick={() => setParams({})}>все проверки</Button>
         </Group>
       )}
@@ -56,7 +67,7 @@ export function ChecksPage() {
                   <Table.Tr key={check.partId}>
                     <Table.Td>
                       <Group gap="xs">
-                        <Anchor component={RouterLink} to={`/clash/checks/${check.partId}`} fw={600}>{check.name}</Anchor>
+                        <Anchor component={RouterLink} to={`/clash/checks/${check.partId}${listTail}`} fw={600}>{check.name}</Anchor>
                         <Badge variant="light" color="green" size="sm">v{check.version}</Badge>
                       </Group>
                     </Table.Td>

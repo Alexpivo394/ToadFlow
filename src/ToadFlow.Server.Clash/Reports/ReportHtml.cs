@@ -13,6 +13,15 @@ namespace ToadFlow.Server.Clash.Reports;
 public static class ReportHtml
 {
     public const int MaxImages = 1000;
+
+    // Средние по выгрузке самой крупной пары DON (14 050 строк, 64 МБ): карточка с картинкой base64 — 57 КБ, строка таблицы — 650 Б.
+    private const long HeaderBytes = 20_000;
+    private const long CardBytes = 57_000;
+    private const long TableRowBytes = 650;
+
+    /// <summary>Примерный размер файла пары из <paramref name="rows" /> строк: карточки с картинками у первых <see cref="MaxImages" />, дальше — таблица.</summary>
+    public static long EstimateBytes(int rows) =>
+        HeaderBytes + Math.Min(rows, MaxImages) * CardBytes + Math.Max(0, rows - MaxImages) * TableRowBytes;
     public const string ContentType = "text/html; charset=utf-8";
     public const string NoLevel = "Без уровня";
 

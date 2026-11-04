@@ -14,6 +14,20 @@ export const stateLabel: Record<EngineRunState, { label: string; color: string }
   Cancelled: { label: 'отменён', color: 'gray' },
 };
 
+/** «≈ 2 мин», «≈ 1 ч 10 мин». */
+function about(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes < 60 ? `≈ ${minutes} мин` : `≈ ${Math.floor(minutes / 60)} ч${minutes % 60 ? ` ${minutes % 60} мин` : ''}`;
+}
+
+/** Очередь и обычная длительность: «В очереди: 3-й · обычно ≈ 2 мин»; у идущего — «обычно ≈ 2 мин»; иначе пусто. */
+export function queueText(run: DraftRunSummary | null | undefined): string {
+  if (!run || (run.state !== 'Queued' && run.state !== 'Running')) return '';
+  const parts = [run.state === 'Queued' && run.queuePosition ? `В очереди: ${run.queuePosition}-й` : null,
+    run.typicalSeconds ? `обычно ${about(run.typicalSeconds)}` : null];
+  return parts.filter(Boolean).join(' · ');
+}
+
 /** Прогон черновика: «Прогнать», состояние и ход, итоги по времени и памяти, результаты последнего удачного прогона. */
 export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: string; readOnly: boolean; dirty: boolean; onSave?: () => Promise<void> }) {
   const run = useApi<DraftRunSummary | null>(['clash-parts', partId, 'run'], `/api/clash/parts/${partId}/draft/run`);
@@ -50,6 +64,7 @@ export function DraftRunPanel({ partId, readOnly, dirty, onSave }: { partId: str
         )}
         {current && <Badge color={stateLabel[current.state].color} variant="light">{stateLabel[current.state].label}</Badge>}
         {current?.stage && <Text size="sm">{current.stage}</Text>}
+        {queueText(current) && <Text size="sm" c="dimmed">{queueText(current)}</Text>}
         {current && (
           <Tooltip multiline w={360} withArrow disabled={!details} label={details}>
             <Text size="xs" c="dimmed">запущен {formatDateTime(current.createdAt)}</Text>

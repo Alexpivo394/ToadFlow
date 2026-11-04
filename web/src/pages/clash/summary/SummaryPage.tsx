@@ -10,7 +10,7 @@ import { t } from '../../../i18n/ru';
 import { Stat } from '../../analytics/parts';
 
 type Period = 'week' | 'month' | 'custom';
-type GroupBy = 'discipline' | 'object' | 'part';
+type GroupBy = 'discipline' | 'object' | 'part' | 'pair';
 
 const noProject = 'Без проекта';
 const n = (value: number) => value.toLocaleString('ru-RU');
@@ -27,10 +27,31 @@ function daysAgo(days: number): string {
   return isoDay(date);
 }
 
-/** Куда ведёт строка «Кто отстаёт»: в «Проверки» с фильтром по разделу или проекту, проверка — на свою страницу. */
-function laggingLink(groupBy: GroupBy, key: string, partId: string | null): string {
-  if (groupBy === 'part' && partId) return `/clash/checks/${partId}`;
-  return `/clash/checks?${new URLSearchParams(groupBy === 'object' ? { object: key } : { discipline: key })}`;
+const disciplinesOf = (check: CheckView) => new Set(check.models.map((m) => m.discipline).filter((d): d is string => !!d));
+
+/**
+ * Куда ведёт строка «Кто отстаёт» — в коллизии с фильтром строки (раздел или пара) и раздела «Сводки», а из «Висят» — ещё
+ * только висящие. Одна подходящая проверка — её страница; несколько — «Проверки» с тем же фильтром.
+ */
+function laggingLink(groupBy: GroupBy, row: { key: string; partId: string | null }, checks: CheckView[],
+  filters: { project: string | null; partId: string | null; discipline: string }, stuckDays?: number): string {
+  const list = new URLSearchParams();
+  const discipline = groupBy === 'discipline' ? row.key : filters.discipline.trim();
+  if (discipline) list.set('discipline', discipline);
+  if (groupBy === 'pair') list.set('pair', row.key);
+  if (stuckDays) list.set('stuckDays', String(stuckDays));
+  const tail = list.toString() ? `?${list}` : '';
+  if (groupBy === 'part' && row.partId) return `/clash/checks/${row.partId}${tail}`;
+
+  const pair = groupBy === 'pair' ? row.key.split(' × ') : [];
+  const project = groupBy === 'object' ? row.key : filters.project;
+  const fits = checks.filter((c) => (!project || (c.object ?? noProject) === project)
+    && (!filters.partId || c.partId === filters.partId)
+    && (!discipline || disciplinesOf(c).has(discipline))
+    && pair.every((d) => disciplinesOf(c).has(d)));
+  if (fits.length === 1) return `/clash/checks/${fits[0].partId}${tail}`;
+  if (project) list.set('object', project);
+  return `/clash/checks?${list}`;
 }
 
 /**
@@ -56,6 +77,7 @@ export function SummaryPage() {
 
   const projects = [...new Set((checks.data ?? []).map((c) => c.object ?? noProject))];
   const parts = (checks.data ?? []).filter((c) => !project || (c.object ?? noProject) === project);
+  const filters = { project, partId, discipline };
   const disciplines = [...new Set((checks.data ?? []).flatMap((c) => c.models.map((m) => m.discipline).filter((d): d is string => !!d)))].sort();
 
   return (
@@ -129,13 +151,13 @@ export function SummaryPage() {
 
           <Panel title="Кто отстаёт" actions={
             <SegmentedControl size="xs" value={groupBy} onChange={(value) => setGroupBy(value as GroupBy)}
-              data={[{ value: 'discipline', label: 'Разделы' }, { value: 'object', label: 'Проекты' }, { value: 'part', label: 'Проверки' }]} />
+              data={[{ value: 'discipline', label: 'Разделы' }, { value: 'object', label: 'Проекты' }, { value: 'part', label: 'Проверки' }, { value: 'pair', label: 'Пары' }]} />
           }>
             {v.lagging.length === 0 ? <Empty>Открытых коллизий нет</Empty> : (
               <Table highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>{groupBy === 'discipline' ? 'Раздел' : groupBy === 'object' ? 'Проект' : 'Проверка'}</Table.Th>
+                    <Table.Th>{{ discipline: 'Раздел', object: 'Проект', part: 'Проверка', pair: 'Пара' }[groupBy]}</Table.Th>
                     <Table.Th ta="right">Активных</Table.Th>
                     <Table.Th ta="right">Рост за период</Table.Th>
                     <Table.Th ta="right">
@@ -148,10 +170,14 @@ export function SummaryPage() {
                 <Table.Tbody>
                   {v.lagging.map((l) => (
                     <Table.Tr key={`${l.key}-${l.partId ?? ''}`}>
-                      <Table.Td><Anchor component={RouterLink} to={laggingLink(groupBy, l.key, l.partId)} size="sm">{l.key}</Anchor></Table.Td>
+                      <Table.Td><Anchor component={RouterLink} to={laggingLink(groupBy, l, checks.data ?? [], filters)} size="sm">{l.key}</Anchor></Table.Td>
                       <Table.Td ta="right">{n(l.open)}</Table.Td>
                       <Table.Td ta="right" c={l.growth > 0 ? 'red' : l.growth < 0 ? 'green' : undefined}>{l.growth > 0 ? `+${n(l.growth)}` : n(l.growth)}</Table.Td>
-                      <Table.Td ta="right">{n(l.stuck)}</Table.Td>
+                      <Table.Td ta="right">
+                        {l.stuck > 0
+                          ? <Anchor component={RouterLink} to={laggingLink(groupBy, l, checks.data ?? [], filters, v.stuckDays)} size="sm" aria-label={`Висят: ${l.key}`}>{n(l.stuck)}</Anchor>
+                          : n(l.stuck)}
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

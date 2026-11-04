@@ -21,6 +21,18 @@ describe('Report export', () => {
     localStorage.clear();
   });
 
+  it('Html_ShowsSizeBeforeDownload', async () => {
+    renderApp(pairUrl('ВК × ОВ') + '&status=New', responses({
+      '/api/clash/reports/r2/export.html/estimate': { rows: 14_050, bytes: 63_000_000 },
+    }));
+
+    expect(await screen.findByText('≈ 14 050 строк, около 60 МБ')).toBeTruthy();
+    const [path] = calls().find(([url]) => url.startsWith('/api/clash/reports/r2/export.html/estimate'))!;
+    const url = new URL(path, 'http://x');
+    expect(url.searchParams.get('pair')).toBe('ВК × ОВ');
+    expect(url.searchParams.get('status')).toBe('New');
+  });
+
   it('Pair_HtmlButton_DownloadsFileWithPairLabelAndCount', async () => {
     renderApp(pairUrl('ВК × ОВ') + '&status=New', responses({
       '/api/clash/reports/r2/collisions': { total: 30, items: [row(1)] },

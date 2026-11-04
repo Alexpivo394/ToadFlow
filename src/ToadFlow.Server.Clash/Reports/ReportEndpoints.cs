@@ -5,6 +5,9 @@ using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Clash.Reports;
 
+/// <summary>Оценка HTML-выгрузки пары: строк и примерно байт.</summary>
+public sealed record HtmlEstimate(int Rows, long Bytes);
+
 /// <summary>Отчёт утверждённого прогона, список прогонов проверки и текст для чата. Открыто любой роли, как «Проверки».</summary>
 public static class ReportEndpoints
 {
@@ -30,6 +33,7 @@ public static class ReportEndpoints
                 (export, body) => ReportPairFile.WriteAsync(body, export.View, export.Context, export.Selection, export.Filter.Pair!, db, images, export.Web,
                     export.Zone, ct), ct);
         });
+        report.MapGet("/export.html/estimate", EstimateHtmlAsync);
         members.MapGet("/clash/parts/{id:guid}/approved/runs", async (Guid id, RunReports reports, CancellationToken ct) =>
             Results.Ok(await reports.RunsAsync(id, ct)));
     }
@@ -46,6 +50,17 @@ public static class ReportEndpoints
         var (total, items) = await reports.PageAsync(context, Scope(scope), filter, sort, order, Math.Max(1, page ?? 1), size, ct);
         var suggested = await CollisionEndpoints.NumbersAsync(db, items.Select(r => r.Collision.SuggestedPredecessorId).OfType<Guid>().ToList(), ct);
         return Results.Ok(new ReportPage(total, items.Select(r => RunReports.Row(r, context.ModelNames, suggested)).ToList()));
+    }
+
+    /// <summary>Сколько строк попадёт в HTML пары с этими фильтрами и примерный размер файла — до скачивания.</summary>
+    private static async Task<IResult> EstimateHtmlAsync(Guid runId, string? scope, HttpRequest request, RunReports reports, CancellationToken ct)
+    {
+        var filter = CollisionFilter.From(request);
+        if (filter.Pair is null) return Results.BadRequest(new { error = "HTML выгружается по паре; раздел или всё — архивом" });
+        if (await reports.ContextAsync(runId, ct) is not { } context) return Results.NotFound();
+        var selection = await reports.SelectAsync(context, Scope(scope), filter, null, ct);
+        var rows = await selection.Rows.CountAsync(ct);
+        return Results.Ok(new HtmlEstimate(rows, ReportHtml.EstimateBytes(rows)));
     }
 
     /// <summary>Уровни выборки по парам, в порядке строк, с числами — заголовки групп и фильтр уровня.</summary>

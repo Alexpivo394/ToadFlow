@@ -9,6 +9,8 @@ export type ListParams = {
   q?: string;
   /** Пресет (`open`, `closed`, `all`) или статусы через запятую. */
   status: 'open' | 'closed' | 'all' | string;
+  /** Раздел любой из сторон — из «Сводки → Кто отстаёт». */
+  discipline?: string;
   pair?: string;
   level?: string;
   assignee?: 'all' | 'mine' | 'taken';
@@ -28,7 +30,7 @@ export const baseListParams: ListParams = { status: 'open', sort: 'depth', group
 export const OpenStatuses = 'New,Active,Returned,FixedPending,Unchecked';
 export const ClosedStatuses = 'Fixed,GoneByRules,Fake';
 
-const keys = ['q', 'status', 'pair', 'level', 'assignee', 'sort', 'group', 'side', 'model', 'category', 'stuckDays', 'page'] as const;
+const keys = ['q', 'status', 'discipline', 'pair', 'level', 'assignee', 'sort', 'group', 'side', 'model', 'category', 'stuckDays', 'page'] as const;
 type Key = (typeof keys)[number];
 const numeric: Key[] = ['stuckDays', 'page'];
 
@@ -111,7 +113,7 @@ export function toQuery(p: ListParams): string {
   const query = new URLSearchParams();
   const status = p.status === 'open' ? OpenStatuses : p.status === 'closed' ? ClosedStatuses : p.status;
   if (status) query.set('status', status);
-  const text: [string, string | undefined][] = [['q', p.q?.trim()], ['pair', p.pair], ['level', p.level], ['model', p.model], ['category', p.category]];
+  const text: [string, string | undefined][] = [['q', p.q?.trim()], ['discipline', p.discipline], ['pair', p.pair], ['level', p.level], ['model', p.model], ['category', p.category]];
   for (const [key, value] of text) if (value) query.set(key, value);
   if (p.stuckDays) query.set('stuckDays', String(p.stuckDays));
   if (p.assignee === 'mine') query.set('scope', 'tofix');

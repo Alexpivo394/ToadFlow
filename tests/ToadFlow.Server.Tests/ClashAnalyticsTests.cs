@@ -186,6 +186,20 @@ public class ClashAnalyticsTests : ServerTest
         (await AnalyticsAsync(admin, $"?partId={other}")).Current.Open.ShouldBe(3);
     }
 
+    /// <summary>Срез «пара»: «кто отстаёт» по парам разделов; рост — переходы пары за период.</summary>
+    [Test]
+    public async Task Analytics_PairSlice()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        await RunAsync(admin, engine, partId, [Hit(1), Hit(2), Hit(3, disciplineB: "ВК")], approve: true);
+
+        var view = await AnalyticsAsync(admin, "?groupBy=pair");
+
+        view.Lagging.Select(l => (l.Key, l.Open, l.Growth, l.Stuck)).ShouldBe([("АР × ОВ", 2, 2, 0), ("АР × ВК", 1, 1, 0)]);
+        (await AnalyticsAsync(admin, "?groupBy=pair&discipline=ВК")).Lagging.Select(l => l.Key).ShouldBe(["АР × ВК"]);
+    }
+
     /// <summary>«На ком коллизии»: по разделу — сколько он правит сам и сколько ещё не решено, кто правит.</summary>
     [Test]
     public async Task Analytics_LoadByDiscipline()

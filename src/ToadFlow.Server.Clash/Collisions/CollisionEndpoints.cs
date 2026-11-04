@@ -160,7 +160,7 @@ public static class CollisionEndpoints
     {
         var run = await db.Set<EngineRun>().AsNoTracking().Where(r => r.PartId == id && r.Kind == EngineRunKind.Approved)
             .OrderByDescending(r => r.CreatedAt).FirstOrDefaultAsync(ct);
-        return run is null ? Results.NoContent() : Results.Ok(new ApprovedRunView(DraftRunSummary.Of(run), run.Version, run.Summary));
+        return run is null ? Results.NoContent() : Results.Ok(new ApprovedRunView(await DraftRunSummary.DescribeAsync(run, db, ct), run.Version, run.Summary));
     }
 
     private static async Task<IResult> StartAsync(Guid id, ApprovedRuns runs, HttpContext http, CancellationToken ct)

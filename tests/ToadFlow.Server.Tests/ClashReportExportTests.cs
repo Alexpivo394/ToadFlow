@@ -230,6 +230,22 @@ public class ClashReportExportTests : ServerTest
         html.ShouldNotContain("картинки — у первых");
     }
 
+    /// <summary>Размер HTML заранее: строки выборки с фильтрами выгрузки и байты по средней строке — карточке с картинкой и строке таблицы.</summary>
+    [Test]
+    public async Task Html_Estimate()
+    {
+        var (admin, agent, _, runId) = await RunAsync(Hits(3));
+        await using var _ = agent;
+
+        var estimate = await admin.GetJsonAsync<HtmlEstimate>($"/api/clash/reports/{runId}/export.html/estimate?scope=open{Pair}");
+        var one = await admin.GetJsonAsync<HtmlEstimate>($"/api/clash/reports/{runId}/export.html/estimate?scope=open&q=1{Pair}");
+
+        (estimate.Rows, one.Rows).ShouldBe((3, 1));
+        estimate.Bytes.ShouldBe(ReportHtml.EstimateBytes(3));
+        ReportHtml.EstimateBytes(14_050).ShouldBeInRange(55L * 1024 * 1024, 70L * 1024 * 1024); // самая крупная пара DON — 64 МБ
+        (await admin.GetAsync($"/api/clash/reports/{runId}/export.html/estimate")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
     [Test]
     public async Task ExportHtml_NoPair_400()
     {

@@ -13,7 +13,7 @@ import { Empty } from '../../../components/ui';
 import { categoryLabel } from '../../../lib/categories';
 import { formatDateTime, formatDuration } from '../../../lib/format';
 import { ChecksList } from '../draft/DraftTab';
-import { stateLabel } from '../DraftRunPanel';
+import { queueText, stateLabel } from '../DraftRunPanel';
 import { HitScene } from '../viewer/HitScene';
 import { RunsDrawer } from '../reports/RunsDrawer';
 import { CollisionCard } from './CollisionCard';
@@ -43,6 +43,7 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
         {current && <Text size="sm" fw={500}>v{current.version}</Text>}
         {current && <Badge color={stateLabel[current.run.state].color} variant="light">{stateLabel[current.run.state].label}</Badge>}
         {current?.run.stage && <Text size="sm">{current.run.stage}</Text>}
+        {queueText(current?.run) && <Text size="sm" c="dimmed">{queueText(current?.run)}</Text>}
         {current && <Text size="xs" c="dimmed">{formatDateTime(current.run.finishedAt ?? current.run.createdAt)}</Text>}
         {stats && <Text size="xs" c="dimmed">· поиск {formatDuration(stats.broadSeconds + stats.narrowSeconds)}</Text>}
         {!current && <Text size="sm" c="dimmed">утверждённая версия ещё не прогонялась</Text>}
@@ -101,7 +102,11 @@ function ExportButtons({ partId, filters }: { partId: string; filters: URLSearch
     <Group gap={4}>
       <Text size="xs" c="dimmed">Выгрузить список:</Text>
       <Button size="compact-xs" variant="default" loading={exporting === 'xlsx'} onClick={() => exportFile('xlsx')}>Excel</Button>
-      <Button size="compact-xs" variant="default" loading={exporting === 'html'} onClick={() => exportFile('html')}>HTML</Button>
+      {/* HTML сервер выгружает только по паре — без выбранной пары кнопка объясняет, что сделать. */}
+      <Tooltip label="Выберите пару разделов — HTML выгружается по паре" disabled={!!filters.get('pair')}>
+        <Button size="compact-xs" variant="default" loading={exporting === 'html'} data-disabled={!filters.get('pair') || undefined}
+          onClick={() => { if (filters.get('pair')) void exportFile('html'); }}>HTML</Button>
+      </Tooltip>
     </Group>
   );
 }
@@ -204,10 +209,12 @@ export function ApprovedTab({ partId, canEdit, canRun }: { partId: string; canEd
     <Stack gap="sm">
       <ApprovedRunLine partId={partId} canRun={canRun} />
       <QueryError query={summary} title="Коллизии проверки не загрузились" />
-      {list.stuckDays && (
+      {(list.discipline || list.stuckDays) && (
         <Group gap="xs">
-          <Badge color="orange" variant="light">Только висящие: без движения дольше {list.stuckDays} дн.</Badge>
-          <Button size="compact-xs" variant="subtle" onClick={() => setList({ stuckDays: undefined })}>показать все</Button>
+          {list.discipline && <Badge variant="light">Раздел: {list.discipline}</Badge>}
+          {list.discipline && <Button size="compact-xs" variant="subtle" onClick={() => setList({ discipline: undefined })}>все разделы</Button>}
+          {list.stuckDays && <Badge color="orange" variant="light">Только висящие: без движения дольше {list.stuckDays} дн.</Badge>}
+          {list.stuckDays && <Button size="compact-xs" variant="subtle" onClick={() => setList({ stuckDays: undefined })}>показать все</Button>}
         </Group>
       )}
       <Group align="stretch" gap={0} wrap="nowrap" h="calc(100vh - 290px)" mih={560}

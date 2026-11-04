@@ -188,4 +188,13 @@ describe('Draft run state', () => {
     expect(screen.queryByText('Коллизий пока нет — нажмите «Прогнать»')).toBeNull();
     expect((screen.getByRole('button', { name: 'Прогнать' }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('RunPanel_QueuedShowsPositionAndTypical', async () => {
+    renderApp('/clash/setup/parts/p1?tab=draft', {
+      ...responses,
+      '/api/clash/parts/p1/draft/run': { ...succeeded, state: 'Queued', finishedAt: null, hitCount: null, queuePosition: 3, typicalSeconds: 118 },
+    });
+
+    expect(await screen.findByText('В очереди: 3-й · обычно ≈ 2 мин')).toBeTruthy();
+  });
 });

@@ -33,6 +33,21 @@ public class ClashCollisionListTests : ServerTest
     private static async Task<int[]> NumbersAsync(HttpClient client, Guid partId, string query) =>
         (await client.GetJsonAsync<CollisionPage>($"/api/clash/parts/{partId}/approved/collisions{query}")).Items.Select(c => c.Number).ToArray();
 
+    /// <summary>Раздел из «Сводки → Кто отстаёт»: коллизии, где раздел — любая из сторон; вместе с «висят».</summary>
+    [Test]
+    public async Task Filter_Discipline_AnySide()
+    {
+        var (admin, agent, partId) = await SetupAsync(
+            Hit(1, disciplineA: "АР", disciplineB: "ОВ"),
+            Hit(2, disciplineA: "ВК", disciplineB: "АР"),
+            Hit(3, disciplineA: "КР", disciplineB: "ВК"));
+        await using var _ = agent;
+
+        (await NumbersAsync(admin, partId, "?discipline=АР&sort=number")).ShouldBe([1, 2]);
+        (await NumbersAsync(admin, partId, "?discipline=ВК&sort=number")).ShouldBe([2, 3]);
+        (await NumbersAsync(admin, partId, "?discipline=ВК&stuckDays=30")).ShouldBeEmpty(); // только что найдены — не висят
+    }
+
     [Test]
     public async Task Facets_PairIgnoresOwnFilter()
     {
