@@ -187,3 +187,16 @@ describe('My collisions without live updates', () => {
     }
   });
 });
+
+describe('My: lighter rows', () => {
+  it('My_ProjectAndPartInGroupHeading', async () => {
+    renderApp('/clash/my', {
+      ...responses(),
+      '/api/clash/my': { total: 2, items: [row(1), row(2, 'SideB')] },
+    });
+
+    expect(await screen.findByRole('button', { name: 'Коллизия 2' })).toBeTruthy();
+    expect(screen.getAllByTestId('list-heading').map((h) => h.textContent)).toEqual(['DON · Корпус 1']);
+    expect(screen.queryByText('Корпус 1 · DON')).toBeNull();
+  });
+});

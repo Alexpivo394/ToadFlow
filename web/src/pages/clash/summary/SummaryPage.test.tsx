@@ -21,6 +21,7 @@ const view = (lagging: object[]) => ({
   period: { new: 40, fixed: 25, returned: 3 },
   series: [{ date: '2026-10-30', open: 110 }, { date: '2026-10-31', open: 120 }],
   lagging,
+  stuckDays: 14,
 });
 
 const responses = {
@@ -69,3 +70,18 @@ describe('Clash summary', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Clash summary: clearer', () => {
+  it('Summary_AllInFilters_HintsAndNoInnerScroll', async () => {
+    renderApp('/clash/summary', responses);
+
+    expect(await screen.findByText('за период, включая уже закрытые')).toBeTruthy();
+    const input = (label: string) => screen.getAllByLabelText(label).find((e) => e.tagName === 'INPUT') as HTMLInputElement;
+    expect([input('Проект').placeholder, input('Проверка').placeholder]).toEqual(['Все', 'Все']);
+    const load = screen.getByRole('table', { name: 'На ком коллизии' });
+    expect(load.closest('.mantine-ScrollArea-root')).toBeNull();
+
+    fireEvent.mouseEnter(screen.getByText('Висят'));
+    expect(await screen.findByText('Открыты дольше 14 дней без движения')).toBeTruthy();
+  });
+});

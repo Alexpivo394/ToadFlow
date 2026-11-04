@@ -165,7 +165,9 @@ export function PartShell() {
           {approved
             ? (
               <Group gap={6}>
-                <Badge variant="light" color="green">Утверждена v{approved.version} · {formatDateTime(approved.approvedAt)} · {approved.userName}</Badge>
+                <Tooltip label={`Утверждена ${formatDateTime(approved.approvedAt)}, ${approved.userName}`} withArrow>
+                  <Badge variant="light" color="green" aria-label={`Утверждена версия ${approved.version}`}>v{approved.version}</Badge>
+                </Tooltip>
                 <Button size="compact-xs" variant="subtle" onClick={() => setShowVersions(true)}>Версии</Button>
                 <Anchor component={RouterLink} to={`/clash/checks/${partId}`} size="sm">Коллизии этой проверки</Anchor>
               </Group>
@@ -177,9 +179,9 @@ export function PartShell() {
         {!readOnly && (
           <Group gap="xs">
             <Menu>
-              <Menu.Target><Button size="xs" variant="default">Шаблоны</Button></Menu.Target>
+              <Menu.Target><Button size="xs" variant="default">Шаблон ▾</Button></Menu.Target>
               <Menu.Dropdown>
-                <Menu.Label>Применить к этой части</Menu.Label>
+                <Menu.Label>Применить шаблон</Menu.Label>
                 {(templates.data ?? []).map((t) => (
                   <Menu.Item key={t.id} onClick={() => askConfirm(`Заменить черновик части шаблоном «${t.name}»?`,
                     () => act(`/api/clash/templates/${t.id}/apply/${partId}`, `Применён шаблон «${t.name}»`), 'blue')}>
@@ -188,11 +190,12 @@ export function PartShell() {
                 ))}
                 {(templates.data ?? []).length === 0 && <Menu.Item disabled>Шаблонов нет</Menu.Item>}
                 <Menu.Divider />
+                <Menu.Label>Сохранить как шаблон</Menu.Label>
                 <Stack gap={4} p="xs">
                   <TextInput size="xs" placeholder="Название шаблона" value={templateName} onChange={(e) => setTemplateName(e.currentTarget.value)} />
                   <Button size="xs" disabled={!templateName.trim() || draft.dirty}
                     onClick={() => act('/api/clash/templates', `Шаблон «${templateName}» сохранён`, { name: templateName, partId })}>
-                    Сохранить черновик как шаблон
+                    Сохранить
                   </Button>
                 </Stack>
               </Menu.Dropdown>

@@ -80,7 +80,8 @@ export function AppShell() {
           <Box mt="auto" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
             <Group justify="space-between" wrap="nowrap" px="sm">
               <Box style={{ minWidth: 0 }}>
-                <Anchor component={RouterLink} to="/profile" fw={600} size="sm" c="inherit" display="block" truncate onClick={close}>
+                <Anchor component={RouterLink} to="/profile" fw={600} size="sm" c="inherit" display="block" title={user?.displayName}
+                  style={{ overflowWrap: 'anywhere' }} onClick={close}>
                   {user?.displayName}
                 </Anchor>
                 <Text size="xs" c="dimmed">

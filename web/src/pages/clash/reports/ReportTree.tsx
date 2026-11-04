@@ -33,7 +33,7 @@ function Count({ c, scope }: { c: Counts; scope: string }) {
   const n = (v: number) => v.toLocaleString('ru-RU');
   return scope === 'open'
     ? <Text size="xs" c="dimmed" title="открыто">{n(c.open)}</Text>
-    : <Text size="xs" c="dimmed" title="новых / вернулось / исправлено">{n(c.new)} / {n(c.returned)} / {n(c.fixed)}</Text>;
+    : <Text size="xs" c="dimmed" title="новых / вернулись / исправлено">{n(c.new)} / {n(c.returned)} / {n(c.fixed)}</Text>;
 }
 
 function Node({ label, aria, active, indent, onClick, children }: {
@@ -77,6 +77,12 @@ export function ReportTree({ view, scope, selection, myDisciplines, mine, onMine
           data={[{ value: 'mine', label: 'Мои разделы' }, { value: 'all', label: 'Все' }]} />
       )}
       <Node label="Сводка" aria="Сводка" indent={0} active={selection.kind === 'summary'} onClick={() => onSelect({ kind: 'summary' })} />
+      {disciplines.length > 0 && (
+        <Group justify="space-between" wrap="nowrap" gap={6} pl={0} pr={6} pt={4} data-testid="tree-columns">
+          <Text size="xs" c="dimmed">Раздел, пара</Text>
+          <Text size="xs" c="dimmed">{scope === 'open' ? 'открыто' : 'новых / вернулись / исправлено'}</Text>
+        </Group>
+      )}
       {disciplines.map((d) => (
         <Box key={d.name} data-testid="tree-discipline" data-name={d.name}>
           <Stack gap={0}>

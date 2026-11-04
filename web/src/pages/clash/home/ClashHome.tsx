@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
-import { Group, Table, Tabs, Text } from '@mantine/core';
+import { Group, Table, Text } from '@mantine/core';
 import { useApi, useApiMutation } from '../../../api/queries';
 import type { ClashProjectView, ClashTemplateView } from '../../../api/types';
 import { useAuth } from '../../../auth/AuthContext';
@@ -13,7 +12,7 @@ import { UploadsTab } from './UploadsTab';
 
 export type ClashTab = 'checks' | 'uploads' | 'templates';
 
-const paths: Record<ClashTab, string> = { checks: '/clash/setup/parts', uploads: '/clash/setup/snapshots', templates: '/clash/setup/templates' };
+const titles: Record<ClashTab, string> = { checks: t.nav.setupParts, uploads: t.nav.setupSnapshots, templates: t.nav.setupTemplates };
 
 function TemplatesTab() {
   const { can } = useAuth();
@@ -55,7 +54,6 @@ function TemplatesTab() {
 
 /** «Настройка проверок»: части по проектам, выгрузки моделей по проектам и шаблоны. */
 export function ClashHome({ tab }: { tab: ClashTab }) {
-  const navigate = useNavigate();
   const projects = useApi<ClashProjectView[]>(['clash-projects'], '/api/clash/projects');
   const [selected, setSelected] = useState<ProjectKey | null>(storedProject);
 
@@ -83,17 +81,11 @@ export function ClashHome({ tab }: { tab: ClashTab }) {
 
   return (
     <>
-      <PageTitle>{t.nav.clashSetup}</PageTitle>
-      <Tabs value={tab} onChange={(v) => navigate(paths[(v as ClashTab) ?? 'checks'])} keepMounted={false}>
-        <Tabs.List mb="md">
-          <Tabs.Tab value="checks">Части</Tabs.Tab>
-          <Tabs.Tab value="uploads">Выгрузки</Tabs.Tab>
-          <Tabs.Tab value="templates">Шаблоны</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="checks">{body((p) => <PartCards key={p} project={p} />, (p) => p.parts)}</Tabs.Panel>
-        <Tabs.Panel value="uploads">{body((p) => <UploadsTab key={p} project={p} />, (p) => p.models)}</Tabs.Panel>
-        <Tabs.Panel value="templates"><TemplatesTab /></Tabs.Panel>
-      </Tabs>
+      {/* Части, выгрузки и шаблоны — пункты меню «Настройка проверок»; своих вкладок у страницы нет, чтобы не дублировать меню. */}
+      <PageTitle>{titles[tab]}</PageTitle>
+      {tab === 'checks' && body((p) => <PartCards key={p} project={p} />, (p) => p.parts)}
+      {tab === 'uploads' && body((p) => <UploadsTab key={p} project={p} />, (p) => p.models)}
+      {tab === 'templates' && <TemplatesTab />}
     </>
   );
 }

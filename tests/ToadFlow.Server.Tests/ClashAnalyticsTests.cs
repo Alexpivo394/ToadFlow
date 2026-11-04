@@ -88,8 +88,9 @@ public class ClashAnalyticsTests : ServerTest
         var stats = (await StatsAsync(runId)).ToDictionary(s => s.Discipline);
         (stats["ОВК"].Open, stats["ОВК"].New).ShouldBe((2, 2));
         (stats["КР"].Open, stats[""].Open).ShouldBe((1, 2));
-        var lagging = (await AnalyticsAsync(admin, "?groupBy=discipline")).Lagging;
-        lagging.Single(l => l.Key == "ОВК").Open.ShouldBe(2);
+        var view = await AnalyticsAsync(admin, "?groupBy=discipline");
+        view.StuckDays.ShouldBe(30); // порог «висят» — для подсказки в вебе
+        view.Lagging.Single(l => l.Key == "ОВК").Open.ShouldBe(2);
     }
 
     [Test]

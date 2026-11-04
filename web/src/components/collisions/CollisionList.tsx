@@ -1,7 +1,7 @@
 import { Badge, Box, Button, Checkbox, CloseButton, Group, ScrollArea, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
-import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Fragment, type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiFetch } from '../../api/client';
 import { useApi } from '../../api/queries';
 import type {
@@ -183,7 +183,7 @@ function errorText(e: unknown, fallback: string): string {
  * Список коллизий: строки страницами или группы по элементу своей стороны (`group=element`). С `bulk` — флажки, полоса
  * выделения и массовые действия. Флажок строки виден при наведении или когда что-то выделено; Shift — диапазон на странице.
  */
-export function CollisionList({ source, params, selectedId, onSelect, bulk = false, canEdit = true, onParams, onItems, extra }: {
+export function CollisionList({ source, params, selectedId, onSelect, bulk = false, canEdit = true, onParams, onItems, extra, heading }: {
   source: ListSource;
   params: ListParams;
   selectedId: string | null;
@@ -195,6 +195,11 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
   onItems?: (items: ListItem[]) => void;
   /** Дополнительная строка над сторонами — например, проверка в «Моих». */
   extra?: (item: ListItem) => ReactNode;
+  /**
+   * Заголовок группы строк: показывается над строкой, когда он отличается от предыдущей («Мои»: проект и часть) — чтобы не
+   * повторять одно и то же в каждой строке.
+   */
+  heading?: (item: ListItem) => string | null;
 }) {
   const queryClient = useQueryClient();
   const grouped = params.group === 'element';
@@ -377,10 +382,19 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
     }
   };
 
-  const renderRows = (list: ListItem[]) => list.map((item, index) => (
-    <CollisionLine key={item.row.id} item={item} active={item.row.id === selectedId} checked={byFilter || selected.has(item.row.id)}
-      showBox={count > 0} bulk={bulk} onSelect={() => onSelect(item.row.id, item)} onCheck={(e) => toggle(list, index, e)} extra={extra?.(item)} />
-  ));
+  const renderRows = (list: ListItem[]) => list.map((item, index) => {
+    const title = heading?.(item) ?? null;
+    const header = title !== null && (index === 0 || heading!(list[index - 1]) !== title);
+    return (
+      <Fragment key={item.row.id}>
+        {header && (
+          <Text size="xs" fw={700} c="dimmed" px="xs" pt={6} pb={2} truncate data-testid="list-heading">{title}</Text>
+        )}
+        <CollisionLine item={item} active={item.row.id === selectedId} checked={byFilter || selected.has(item.row.id)}
+          showBox={count > 0} bulk={bulk} onSelect={() => onSelect(item.row.id, item)} onCheck={(e) => toggle(list, index, e)} extra={extra?.(item)} />
+      </Fragment>
+    );
+  });
 
   const size = pageSizeOf(url);
   const pages = Math.max(1, Math.ceil((groups ? groups.groups : flat?.total ?? 0) / size));

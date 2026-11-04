@@ -293,3 +293,15 @@ describe('Approved tab layout', () => {
     expect(column.querySelector('.mantine-ScrollArea-root')).toBeNull();
   });
 });
+
+describe('Approved run line', () => {
+  it('CheckRun_SummaryChips_ReusedInTooltip', async () => {
+    open();
+
+    const chips = within(await screen.findByTestId('run-summary'));
+    expect(chips.getByText('Найдено 3')).toBeTruthy();
+    expect(chips.getByText('новых 2')).toBeTruthy();
+    expect(chips.getByText('исправлено 4')).toBeTruthy();
+    expect(screen.queryByText(/без пересчёта/)).toBeNull(); // только в подсказке «Найдено»
+  });
+});

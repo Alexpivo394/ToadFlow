@@ -131,7 +131,8 @@ describe('Part shell', () => {
   it('PartShell_ShowsApprovedVersion', async () => {
     await openSets({ ...partResponses, '/api/clash/parts/p1/versions': approved });
 
-    expect(await screen.findByText(/Утверждена v3/)).toBeTruthy();
+    // Значок — коротко «v3», кто и когда утвердил — в подсказке.
+    expect((await screen.findByLabelText('Утверждена версия 3')).textContent).toBe('v3');
     fireEvent.click(screen.getByRole('button', { name: 'Версии' }));
     expect(await screen.findByText('допуск 50')).toBeTruthy();
     expect(screen.getByText('v2')).toBeTruthy();
@@ -164,3 +165,13 @@ describe('Part shell', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Part shell: navigation', () => {
+  it('PartShell_TemplateMenu_ApplyOrSave', async () => {
+    await openSets();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Шаблон ▾' }));
+    expect(await screen.findByText('Применить шаблон')).toBeTruthy();
+    expect(screen.getByText('Сохранить как шаблон')).toBeTruthy();
+  });
+});

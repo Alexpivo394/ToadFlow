@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router';
-import { Alert, Badge, Box, Button, Group, Select, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Box, Button, Group, Select, Stack, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { downloadFile } from '../../../api/client';
 import { useApi, useApiMutation } from '../../../api/queries';
@@ -50,11 +50,18 @@ function ApprovedRunLine({ partId, canRun }: { partId: string; canRun: boolean }
         {latest && <Button size="compact-sm" variant="subtle" onClick={() => setRunsOpened(true)}>Все прогоны</Button>}
       </Group>
       {s && (
-        <Text size="sm" c="dimmed">
-          Найдено {n(s.found)}: новых {n(s.new)}, активных {n(s.active)}, вернулись {n(s.returned)}; исправлено {n(s.fixed)}, ушли из-за правил {n(s.goneByRules)},
-          не проверено {n(s.unchecked)}, фиктивных {n(s.fake)}
-          {s.reusedPairs > 0 ? ` · без пересчёта ${n(s.reusedPairs)} пар` : ''}
-        </Text>
+        // Итог прогона — чипы с числами, как плитки отчёта; служебное «без пересчёта N пар» — в подсказке «Найдено».
+        <Group gap={6} wrap="wrap" data-testid="run-summary">
+          <Tooltip disabled={s.reusedPairs === 0} label={`Без пересчёта ${n(s.reusedPairs)} пар: элементы не менялись с прошлого прогона`}>
+            <Text size="sm" fw={500}>Найдено {n(s.found)}</Text>
+          </Tooltip>
+          {([
+            ['новых', s.new, 'red'], ['вернулись', s.returned, 'grape'], ['активных', s.active, 'orange'], ['исправлено', s.fixed, 'green'],
+            ['ушли из-за правил', s.goneByRules, 'gray'], ['не проверено', s.unchecked, 'yellow'], ['фиктивных', s.fake, 'gray'],
+          ] as const).map(([label, value, color]) => (
+            <Badge key={label} size="sm" variant="light" color={value > 0 ? color : 'gray'} tt="none">{label} {n(value)}</Badge>
+          ))}
+        </Group>
       )}
       <QueryError query={run} title="Прогон не загрузился" />
       {current?.run.state === 'Failed' && current.run.error && <Alert color="red" title="Прогон не удался">{current.run.error}</Alert>}

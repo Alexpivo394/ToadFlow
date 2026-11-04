@@ -21,6 +21,7 @@ public sealed record OverviewAgents(int? Minutes, string Reason);
 /// <summary>Где проблема по всем утверждённым проверкам. Пусто во всех списках и нет <c>AgentsOffline</c> — «всё в порядке».</summary>
 /// <param name="NoSchedule">Утверждённые проверки, которых не прогоняет ни одно включённое расписание выгрузки.</param>
 /// <param name="AgentsOffline">Ни одного агента в сети дольше порога; null — агенты в порядке или проверок нет.</param>
+/// <param name="Checks">Сколько утверждённых проверок в обзоре — для «всё в порядке: N проверок…».</param>
 public sealed record OverviewView(
     IReadOnlyList<OverviewModel> NotUploaded,
     IReadOnlyList<OverviewPart> RunFailed,
@@ -29,7 +30,8 @@ public sealed record OverviewView(
     IReadOnlyList<OverviewPart> Spike,
     IReadOnlyList<OverviewPart> Stuck,
     IReadOnlyList<OverviewPart> NoSchedule,
-    OverviewAgents? AgentsOffline);
+    OverviewAgents? AgentsOffline,
+    int Checks);
 
 /// <summary>Обзор координатора: первым делом утром — что не выгрузилось, не прогналось, всплески и висящие коллизии.</summary>
 public static class OverviewEndpoints
@@ -106,7 +108,7 @@ public static class OverviewEndpoints
             .Select(p => new OverviewPart(p.Id, p.Name, p.Object, 0, "нет регулярного прогона")).ToList();
 
         return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck, noSchedule,
-            parts.Count == 0 ? null : await AgentsOfflineAsync(db, now, limits.AgentsOfflineMinutes, ct));
+            parts.Count == 0 ? null : await AgentsOfflineAsync(db, now, limits.AgentsOfflineMinutes, ct), parts.Count);
     }
 
     /// <summary>Ни одного агента в сети (или «не брать новые») дольше <paramref name="minutes" /> минут по последнему отклику.</summary>

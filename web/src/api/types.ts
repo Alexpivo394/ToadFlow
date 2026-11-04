@@ -1192,6 +1192,8 @@ export interface ClashOverview {
   noSchedule: OverviewPart[];
   /** Ни одного агента в сети дольше порога; null — всё в порядке. */
   agentsOffline: { minutes: number | null; reason: string } | null;
+  /** Сколько утверждённых проверок в обзоре. */
+  checks: number;
 }
 
 export interface ClashAnalyticsView {
@@ -1208,6 +1210,8 @@ export interface ClashAnalyticsView {
   period: { new: number; fixed: number; returned: number };
   series: { date: string; open: number }[];
   lagging: { key: string; open: number; growth: number; stuck: number; partId: string | null }[];
+  /** Порог «висят»: открыта без движения дольше стольких дней. */
+  stuckDays: number;
 }
 
 /** Прогон в шапке отчёта и в списке прогонов проверки. */

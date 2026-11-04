@@ -390,3 +390,12 @@ describe('Report: who fixes', () => {
     await waitFor(() => expect(rowCalls().some((p) => p.get('fixer') === 'ОВ' && !p.has('assignee'))).toBe(true));
   });
 });
+
+describe('Report tree columns', () => {
+  it('Tree_ColumnsLabelled', async () => {
+    renderApp('/clash/reports/r2', responses());
+
+    await screen.findByRole('heading', { name: /Отчёт от 31\.10\.2026/ });
+    expect(within(screen.getByTestId('report-tree')).getByTestId('tree-columns').textContent).toContain('новых / вернулись / исправлено');
+  });
+});

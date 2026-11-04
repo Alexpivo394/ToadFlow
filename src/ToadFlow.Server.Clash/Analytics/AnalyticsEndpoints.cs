@@ -35,13 +35,15 @@ public sealed record AnalyticsPoint(DateOnly Date, int Open);
 public sealed record AnalyticsLagging(string Key, int Open, int Growth, int Stuck, Guid? PartId = null);
 
 /// <summary>Сводка коллизий утверждённых проверок за период по часовому поясу из «Общих».</summary>
+/// <param name="StuckDays">Порог «висят» из настроек обзора: открыта без движения дольше стольких дней.</param>
 public sealed record ClashAnalyticsView(
     DateOnly From,
     DateOnly To,
     AnalyticsCurrent Current,
     AnalyticsPeriod Period,
     IReadOnlyList<AnalyticsPoint> Series,
-    IReadOnlyList<AnalyticsLagging> Lagging);
+    IReadOnlyList<AnalyticsLagging> Lagging,
+    int StuckDays);
 
 /// <summary>
 ///     Сводка коллизий (аналитика): «сейчас» и «кто отстаёт» — по коллизиям, переходы и динамика — по снимкам сверки
@@ -103,7 +105,8 @@ public static class AnalyticsEndpoints
         var series = Enumerable.Range(0, last.DayNumber - first.DayNumber + 1).Select(first.AddDays)
             .Select(day => new AnalyticsPoint(day, OpenAt(totals, Start(day.AddDays(1), zone)).Values.Sum())).ToList();
 
-        var stuckBefore = now - TimeSpan.FromDays((await settings.OverviewAsync(ct)).StuckDays);
+        var stuckDays = (await settings.OverviewAsync(ct)).StuckDays;
+        var stuckBefore = now - TimeSpan.FromDays(stuckDays);
         var stuck = OverviewEndpoints.Stuck(db, collisions, stuckBefore);
         var names = parts.ToDictionary(p => p.Id, p => (Part: p.Name, Project: ProjectOf(p.Object)));
         IReadOnlyList<AnalyticsLagging> lagging = groupBy switch
@@ -113,7 +116,7 @@ public static class AnalyticsEndpoints
             _ => await LaggingByDisciplineAsync(open, stuck, rows, start, key, ct)
         };
 
-        return new ClashAnalyticsView(first, last, current, period, series, lagging);
+        return new ClashAnalyticsView(first, last, current, period, series, lagging, stuckDays);
     }
 
     private sealed record StatPoint(Guid PartId, string Discipline, DateTimeOffset At, int Open, int New, int Fixed, int Returned);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router';
-import { Anchor, Autocomplete, Group, ScrollArea, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Anchor, Autocomplete, Group, SegmentedControl, Select, SimpleGrid, Stack, Table, Text, TextInput, Tooltip } from '@mantine/core';
 import { BarChart, LineChart } from '@mantine/charts';
 import { useApi } from '../../../api/queries';
 import { QueryError } from '../../../components/QueryState';
@@ -62,9 +62,9 @@ export function SummaryPage() {
     <>
       <PageTitle>{t.nav.clashSummary}</PageTitle>
       <Group gap="xs" mb="md" wrap="wrap" align="flex-end">
-        <Select size="xs" w={160} label="Проект" clearable data={projects} value={project} onChange={(value) => { setProject(value); setPartId(null); }} />
-        <Select size="xs" w={200} label="Проверка" clearable data={parts.map((c) => ({ value: c.partId, label: c.name }))} value={partId} onChange={setPartId} />
-        <Autocomplete size="xs" w={140} label="Раздел" data={disciplines} value={discipline} onChange={setDiscipline} />
+        <Select size="xs" w={160} label="Проект" placeholder="Все" clearable data={projects} value={project} onChange={(value) => { setProject(value); setPartId(null); }} />
+        <Select size="xs" w={200} label="Проверка" placeholder="Все" clearable data={parts.map((c) => ({ value: c.partId, label: c.name }))} value={partId} onChange={setPartId} />
+        <Autocomplete size="xs" w={140} label="Раздел" placeholder="Все" data={disciplines} value={discipline} onChange={setDiscipline} />
         <Stack gap={2}>
           <Text size="xs" fw={500}>Период</Text>
           <SegmentedControl size="xs" value={period} onChange={(value) => setPeriod(value as Period)}
@@ -83,7 +83,7 @@ export function SummaryPage() {
         <Stack gap="md">
           <SimpleGrid cols={{ base: 2, md: 5 }}>
             <Stat title="Активных" value={n(v.current.open)} hint="открытых сейчас" />
-            <Stat title="Добавилось" value={n(v.period.new)} hint="за период" />
+            <Stat title="Добавилось" value={n(v.period.new)} hint="за период, включая уже закрытые" />
             <Stat title="Исправлено" value={n(v.period.fixed)} hint="за период" />
             <Stat title="Вернулось" value={n(v.period.returned)} hint="за период" />
             <Stat title="Доля фиктивных" value={`${Math.round(v.current.fakeShare * 100)} %`} hint={`${n(v.current.fake)} фиктивных`} />
@@ -105,26 +105,24 @@ export function SummaryPage() {
               </Text>
               <Text size="xs" c="dimmed" mb="xs">Пока «кто правит» — обе стороны, коллизия висит на двух разделах. Решают «Беру» и «Передать…» в карточке.</Text>
               {v.current.byDiscipline.length === 0 ? <Empty>Открытых нет</Empty> : (
-                <ScrollArea.Autosize mah={200}>
-                  <Table aria-label="На ком коллизии" highlightOnHover>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Раздел</Table.Th>
-                        <Table.Th ta="right">Правит сам</Table.Th>
-                        <Table.Th ta="right">Не решено</Table.Th>
+                <Table aria-label="На ком коллизии" highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Раздел</Table.Th>
+                      <Table.Th ta="right">Правит сам</Table.Th>
+                      <Table.Th ta="right">Не решено</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {v.current.byDiscipline.map((d) => (
+                      <Table.Tr key={d.discipline}>
+                        <Table.Td>{d.discipline || 'без раздела'}</Table.Td>
+                        <Table.Td ta="right">{n(d.assigned)}</Table.Td>
+                        <Table.Td ta="right" c={d.undecided > 0 ? 'orange' : undefined}>{n(d.undecided)}</Table.Td>
                       </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {v.current.byDiscipline.map((d) => (
-                        <Table.Tr key={d.discipline}>
-                          <Table.Td>{d.discipline || 'без раздела'}</Table.Td>
-                          <Table.Td ta="right">{n(d.assigned)}</Table.Td>
-                          <Table.Td ta="right" c={d.undecided > 0 ? 'orange' : undefined}>{n(d.undecided)}</Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </ScrollArea.Autosize>
+                    ))}
+                  </Table.Tbody>
+                </Table>
               )}
             </Panel>
           </SimpleGrid>
@@ -140,7 +138,11 @@ export function SummaryPage() {
                     <Table.Th>{groupBy === 'discipline' ? 'Раздел' : groupBy === 'object' ? 'Проект' : 'Проверка'}</Table.Th>
                     <Table.Th ta="right">Активных</Table.Th>
                     <Table.Th ta="right">Рост за период</Table.Th>
-                    <Table.Th ta="right">Висят</Table.Th>
+                    <Table.Th ta="right">
+                      <Tooltip label={`Открыты дольше ${v.stuckDays ?? 30} дней без движения`} withArrow>
+                        <span>Висят</span>
+                      </Tooltip>
+                    </Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>

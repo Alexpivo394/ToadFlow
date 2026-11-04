@@ -30,7 +30,7 @@ const responses = {
   '/api/dashboard': { kpi: { exported: 0, failed: 0, failedPercent: 0, queued: 0, running: 0, avgSeconds: null, agentsOnline: 0, agentsTotal: 0 }, days: [], upcoming: [], recentErrors: [] },
   '/api/agents': [],
   '/api/settings': { silenceTimeoutMinutes: 10 },
-  '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null },
+  '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null, checks: 3 },
   '/api/clash/checks': [check],
   '/api/clash/checks/p1': check,
   '/api/clash/my': { total: 0, items: [] },
@@ -140,5 +140,17 @@ describe('Menu names', () => {
     const menu = within(nav());
     expect(menu.getByText('Обзор проверок')).toBeTruthy();
     expect(menu.getByText('Хранение и пороги коллизий')).toBeTruthy();
+  });
+});
+
+describe('Setup menu', () => {
+  it('Setup_NoDuplicateTabs_UserNameNotTruncated', async () => {
+    renderApp('/clash/setup/parts', { ...responses, '/api/auth/me': { ...user('Admin'), displayName: 'Александра Константиновна Преображенская-Длинная' } });
+
+    expect(await screen.findByRole('heading', { name: 'Части' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Выгрузки' })).toBeNull();
+    const name = within(nav()).getByText('Александра Константиновна Преображенская-Длинная');
+    expect(name.getAttribute('title')).toBe('Александра Константиновна Преображенская-Длинная');
+    expect(name.className).not.toMatch(/truncate/);
   });
 });

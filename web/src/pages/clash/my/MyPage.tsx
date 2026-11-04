@@ -180,13 +180,9 @@ export function MyPage() {
         <Stack gap={0} w={{ base: 400, xl: 460 }} style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-default-border)' }}>
           <CollisionList source={source} params={list} selectedId={collisionId} onSelect={(id) => update({ collision: id })} bulk={canWork} canEdit={canWork}
             onParams={setList} onItems={setItems}
-            extra={(item) => item.my && (
-              <>
-                <Text size="xs" fw={600} truncate>{item.my.partName} · {item.my.object ?? NoProject}</Text>
-                {item.my.takenBy && !item.my.mineToFix && (
-                  <Text size="xs" c="dimmed">взял {item.my.takenBy}{item.my.takenAt ? `, ${formatDateTime(item.my.takenAt)}` : ''}</Text>
-                )}
-              </>
+            heading={(item) => (item.my ? `${item.my.object ?? NoProject} · ${item.my.partName}` : null)}
+            extra={(item) => item.my?.takenBy && !item.my.mineToFix && (
+              <Text size="xs" c="dimmed">взял {item.my.takenBy}{item.my.takenAt ? `, ${formatDateTime(item.my.takenAt)}` : ''}</Text>
             )} />
         </Stack>
 

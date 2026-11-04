@@ -6,6 +6,16 @@ import type { ClashOverview, ClashSettingsView, OverviewPart } from '../../../ap
 import { Empty, PageTitle, Panel } from '../../../components/ui';
 import { t } from '../../../i18n/ru';
 
+/** «проверка», «проверки», «проверок» по числу. */
+export function checksWord(count: number): string {
+  const tens = count % 100;
+  const ones = count % 10;
+  if (tens >= 11 && tens <= 14) return 'проверок';
+  if (ones === 1) return 'проверка';
+  if (ones >= 2 && ones <= 4) return 'проверки';
+  return 'проверок';
+}
+
 /** Сколько всего проблем в обзоре. */
 export function problemCount(o: ClashOverview): number {
   return o.notUploaded.length + o.runFailed.length + o.noRecentRun.length + o.unchecked.length + o.spike.length + o.stuck.length
@@ -42,7 +52,13 @@ export function OverviewPage() {
   return (
     <>
       <PageTitle>{t.clash.overviewTitle}</PageTitle>
-      {o && problemCount(o) === 0 && <Empty>Всё в порядке</Empty>}
+      {o && problemCount(o) === 0 && (
+        <Empty>
+          {o.checks > 0
+            ? `Всё в порядке: ${o.checks} ${checksWord(o.checks)}, все прогнаны вовремя, агенты на связи`
+            : 'Утверждённых проверок пока нет — утвердите часть в «Частях»'}
+        </Empty>
+      )}
       {o?.agentsOffline && (
         <Alert color="red" mb="md" title={o.agentsOffline.reason}>
           Выгрузки для коллизий не идут, проверки устаревают.{' '}

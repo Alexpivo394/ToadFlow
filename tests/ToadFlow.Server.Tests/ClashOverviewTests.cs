@@ -162,7 +162,9 @@ public class ClashOverviewTests : ServerTest
         var (admin, agent, partId, _) = await CheckAsync();
         await using var _ = agent;
 
-        var item = (await OverviewAsync(admin)).NoSchedule.ShouldHaveSingleItem();
+        var overview = await OverviewAsync(admin);
+        overview.Checks.ShouldBe(1);
+        var item = overview.NoSchedule.ShouldHaveSingleItem();
         (item.PartId, item.Reason).ShouldBe((partId, "нет регулярного прогона"));
 
         await ScheduleAsync([partId], enabled: false);
