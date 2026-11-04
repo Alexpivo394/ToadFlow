@@ -89,10 +89,23 @@ export const emptyConfig = (): ClashConfig => ({ groups: [], sets: [], matrix: [
 
 export const emptyCondition = (): Condition => ({ property: { kind: 'category' }, operator: 'isNotEmpty', value: null });
 
-export const newGroup = (name: string, source: GroupSource): SetGroup => ({ id: crypto.randomUUID(), name, source });
+/**
+ * Новый UUID v4. `crypto.randomUUID` есть только в защищённом контексте (HTTPS или localhost),
+ * а сервер часто открывают по http://имя-машины — там UUID собирается из `crypto.getRandomValues`.
+ */
+export function newId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export const newGroup = (name: string, source: GroupSource): SetGroup => ({ id: newId(), name, source });
 
 export const newSet = (groupId: string, name: string): SelectionSet => ({
-  id: crypto.randomUUID(),
+  id: newId(),
   groupId,
   name,
   anyOf: [{ all: [emptyCondition()] }],
@@ -102,7 +115,7 @@ export const newSet = (groupId: string, name: string): SelectionSet => ({
 export function copySet(config: ClashConfig, id: string): ClashConfig {
   const index = config.sets.findIndex((s) => s.id === id);
   if (index < 0) return config;
-  const copy = { ...structuredClone(config.sets[index]), id: crypto.randomUUID(), name: `${config.sets[index].name} (копия)` };
+  const copy = { ...structuredClone(config.sets[index]), id: newId(), name: `${config.sets[index].name} (копия)` };
   return { ...config, sets: [...config.sets.slice(0, index + 1), copy, ...config.sets.slice(index + 1)] };
 }
 

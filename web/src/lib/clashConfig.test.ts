@@ -8,6 +8,22 @@ const ar = newGroup('АР', { disciplines: ['АР'], modelKeys: [] });
 const ov = newGroup('ОВ', { disciplines: ['ОВ'], modelKeys: [] });
 
 describe('clashConfig', () => {
+  it('clashConfig_insecureContextWithoutRandomUuid_newAndCopyStillGetUuids', () => {
+    // По http:// (не localhost) браузер не даёт crypto.randomUUID.
+    const original = crypto.randomUUID;
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
+    try {
+      const set = newSet(ar.id, 'Стены');
+      const config: ClashConfig = { ...emptyConfig(), groups: [ar], sets: [set] };
+      const copied = copySet(config, set.id);
+      const ids = [set.id, copied.sets[1].id, newGroup('КР', { disciplines: ['КР'], modelKeys: [] }).id];
+      for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      expect(new Set(ids).size).toBe(3);
+    } finally {
+      Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true });
+    }
+  });
+
   it('clashConfig_removeSet_dropsItsExclusions', () => {
     const walls = newSet(ar.id, 'Стены');
     const ducts = newSet(ov.id, 'Воздуховоды');
