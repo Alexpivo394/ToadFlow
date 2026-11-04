@@ -328,3 +328,17 @@ describe('CollisionList seen action', () => {
     expect(screen.queryByText('нов')).toBeNull();
   });
 });
+
+describe('CollisionList: who fixes', () => {
+  it('Bulk_AssigneeByDisciplines', async () => {
+    list(base, { ...flat, 'POST /api/clash/collisions/bulk': { done: 1, refused: [] } });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Выделить №1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Кто правит ▾' }));
+
+    expect(await screen.findByRole('menuitem', { name: 'ОВК' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'КР' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'КР и ОВК' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Сторона A' })).toBeNull();
+  });
+});

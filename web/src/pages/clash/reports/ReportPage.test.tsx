@@ -372,3 +372,21 @@ describe('Report on the shared filter bar', () => {
     expect(rowCalls().some((p) => p.get('status') === 'open' || p.get('status') === 'closed')).toBe(false);
   }, 15_000);
 });
+
+describe('Report: who fixes', () => {
+  it('Report_AssigneeByDisciplines', async () => {
+    renderApp(pairUrl('АР × ОВ'), responses());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ещё' }));
+    const select = (await screen.findAllByLabelText('Кто правит')).find((e) => e.tagName === 'INPUT')!;
+    fireEvent.click(select);
+    expect(await screen.findByRole('option', { name: 'Правит АР', hidden: true })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Правит ОВ', hidden: true })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'не решено (обе стороны)', hidden: true })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'сторона A', hidden: true })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Правит ВК', hidden: true })).toBeNull();
+
+    fireEvent.click(screen.getByRole('option', { name: 'Правит ОВ', hidden: true }));
+    await waitFor(() => expect(rowCalls().some((p) => p.get('fixer') === 'ОВ' && !p.has('assignee'))).toBe(true));
+  });
+});

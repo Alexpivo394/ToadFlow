@@ -131,3 +131,14 @@ describe('Role workspaces', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Menu names', () => {
+  it('Menu_OverviewOfChecks', async () => {
+    as('Admin', '/settings/clash');
+    await waitFor(() => expect(within(nav()).getByText('Хранение и пороги коллизий')).toBeTruthy());
+
+    const menu = within(nav());
+    expect(menu.getByText('Обзор проверок')).toBeTruthy();
+    expect(menu.getByText('Хранение и пороги коллизий')).toBeTruthy();
+  });
+});

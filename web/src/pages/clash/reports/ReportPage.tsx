@@ -31,7 +31,27 @@ export function formatFullDateTime(iso: string | null | undefined): string {
 }
 
 /** Выбор и фильтры отчёта — в строке адреса: ссылку можно переслать. */
-const filterKeys = ['discipline', 'pair', 'status', 'assignee', 'level', 'model', 'q', 'sort'] as const;
+const filterKeys = ['discipline', 'pair', 'status', 'assignee', 'fixer', 'level', 'model', 'q', 'sort'] as const;
+
+/**
+ * Пункты фильтра «Кто правит» разделами: «Правит ОВК» (параметр <c>fixer</c>) по разделам выбранной пары или пар раздела и
+ * «не решено» (обе стороны). В выборке из нескольких моделей «сторона A» — разные разделы, поэтому сторон в списке нет; старая
+ * ссылка со стороной показывает её пунктом, чтобы фильтр было видно и можно было снять.
+ */
+export function assigneeOptions(view: ReportView, selection: ReportSelection, legacy: string | null) {
+  const pairs = selection.kind === 'pair'
+    ? view.pairs.filter((p) => p.pair === selection.pair)
+    : selection.kind === 'discipline'
+      ? view.pairs.filter((p) => p.disciplineA === selection.name || p.disciplineB === selection.name)
+      : view.pairs;
+  const disciplines = view.disciplines.map((d) => d.name).filter((d) => pairs.some((p) => p.disciplineA === d || p.disciplineB === d));
+  const options = [
+    { value: 'Both', label: 'не решено (обе стороны)' },
+    ...disciplines.map((d) => ({ value: `fixer:${d}`, label: `Правит ${d}` })),
+  ];
+  if (legacy === 'SideA' || legacy === 'SideB') options.push({ value: legacy, label: legacy === 'SideA' ? 'сторона A' : 'сторона B' });
+  return options;
+}
 
 const reportSorts = [{ value: 'level', label: 'По уровням' }, { value: 'depth', label: 'По глубине' }, { value: 'number', label: 'По номеру' }];
 
@@ -199,7 +219,10 @@ export function ReportPage() {
     writeMine(value);
   };
 
-  const more = [params.get('model'), params.get('assignee')].filter(Boolean).length;
+  const more = [params.get('model'), params.get('assignee') ?? params.get('fixer')].filter(Boolean).length;
+  const assigneeValue = params.get('fixer') ? `fixer:${params.get('fixer')}` : params.get('assignee');
+  const onAssignee = (v: string | null) =>
+    update(v?.startsWith('fixer:') ? { fixer: v.slice('fixer:'.length), assignee: null } : { assignee: v, fixer: null });
 
   return (
     <Stack gap="sm">
@@ -264,8 +287,8 @@ export function ReportPage() {
                           <Select size="xs" w={220} placeholder="Модель" clearable searchable comboboxProps={{ withinPortal: false }}
                             data={view.models.map((m) => m.name)} value={params.get('model')} onChange={(v) => update({ model: v })} />
                           <Select size="xs" w={220} placeholder="Кто правит" clearable comboboxProps={{ withinPortal: false }}
-                            value={params.get('assignee')} onChange={(v) => update({ assignee: v })}
-                            data={[{ value: 'Both', label: 'обе стороны' }, { value: 'SideA', label: 'сторона A' }, { value: 'SideB', label: 'сторона B' }]} />
+                            aria-label="Кто правит" value={assigneeValue} onChange={onAssignee}
+                            data={assigneeOptions(view, selection, params.get('assignee'))} />
                         </Stack>
                       </Popover.Dropdown>
                     </Popover>

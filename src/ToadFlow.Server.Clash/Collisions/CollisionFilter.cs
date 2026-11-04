@@ -27,6 +27,10 @@ public sealed record CollisionFacets(
 /// <param name="StuckDays">Только висящие: открытые, без записей в ленте столько дней (из обзора координатора).</param>
 /// <param name="Element">Элемент любой из сторон: <c>{модель:N}:{UniqueId}</c>.</param>
 /// <param name="Category">Категория элемента любой из сторон.</param>
+/// <param name="Fixer">
+///     Правит раздел: назначенная сторона из этого раздела, или «обе стороны», когда обе из него. В выборке из нескольких моделей
+///     «сторона A» — разные разделы, поэтому отчёт фильтрует по разделу, а не по стороне.
+/// </param>
 public sealed record CollisionFilter(
     string? Status,
     string? Check,
@@ -38,7 +42,8 @@ public sealed record CollisionFilter(
     string? Q,
     int? StuckDays,
     string? Element = null,
-    string? Category = null)
+    string? Category = null,
+    string? Fixer = null)
 {
     public static CollisionFilter From(HttpRequest request)
     {
@@ -58,7 +63,8 @@ public sealed record CollisionFilter(
             Text("q"),
             int.TryParse(Text("stuckDays"), out var days) ? days : null,
             Text("element")?.Trim(),
-            Text("category")?.Trim());
+            Text("category")?.Trim(),
+            Text("fixer")?.Trim());
     }
 
     /// <param name="modelNames">Имена моделей части по ключу — фильтр модели принимает и имя.</param>
@@ -78,6 +84,10 @@ public sealed record CollisionFilter(
         if (Discipline is { } discipline) query = query.Where(c => c.DisciplineA == discipline || c.DisciplineB == discipline);
         if (Pair is { } pair) query = query.Where(c => c.DisciplinePair == pair);
         if (Assignee is { } who) query = query.Where(c => c.Assignee == who);
+        if (Fixer is { } fixer)
+            query = query.Where(c => (c.Assignee == CollisionAssignee.SideA && c.DisciplineA == fixer)
+                                     || (c.Assignee == CollisionAssignee.SideB && c.DisciplineB == fixer)
+                                     || (c.Assignee == CollisionAssignee.Both && c.DisciplineA == fixer && c.DisciplineB == fixer));
         query = ByLevel(query, Level);
 
         if (!string.IsNullOrWhiteSpace(Model))

@@ -286,6 +286,8 @@ public class ClashReportTests : ServerTest
         (await NumbersAsync("discipline=ВК")).ShouldBe([2, 4]);
         (await NumbersAsync("pair=" + Uri.EscapeDataString("АР × ОВ"))).ShouldBe([1, 3]);
         (await NumbersAsync("assignee=SideB")).ShouldBe([4]);
+        (await NumbersAsync("fixer=ОВ")).ShouldBe([4]);
+        (await NumbersAsync("fixer=ВК")).ShouldBeEmpty();
         (await NumbersAsync("level=" + Uri.EscapeDataString("этаж 2"))).ShouldBe([3]);
         (await NumbersAsync("model=c")).ShouldBe([3]);
         (await NumbersAsync("status=New&discipline=ОВ")).ShouldBe([1, 3, 4]);

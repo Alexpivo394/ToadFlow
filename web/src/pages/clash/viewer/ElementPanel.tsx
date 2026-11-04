@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Badge, Group, Loader, ScrollArea, Stack, Table, Text, TextInput } from '@mantine/core';
 import { useApi } from '../../../api/queries';
 import type { ViewerElementProperties, ViewerElementView, ViewerSceneView } from '../../../api/types';
+import { categoryLabel } from '../../../lib/categories';
 import { roleColor } from '../../../lib/viewer';
 
 const roleName = { A: 'Элемент A', B: 'Элемент B', set: 'Элемент набора', context: 'Окружение' } as const;
@@ -13,7 +14,7 @@ function Brief({ element }: { element: ViewerElementView }) {
         <Badge color={roleColor(element.role).color} variant="filled" size="sm">{roleName[element.role]}</Badge>
         <Text size="xs" c="dimmed">{element.discipline}</Text>
       </Group>
-      <Text size="sm">{element.category} · {element.family ?? '—'} · {element.type ?? '—'}</Text>
+      <Text size="sm">{categoryLabel(element.category)} · {element.family ?? '—'} · {element.type ?? '—'}</Text>
       <Text size="xs" c="dimmed">{element.modelName} · ID {element.elementId} · {element.level ?? 'без уровня'}</Text>
     </Stack>
   );
@@ -37,7 +38,7 @@ function Properties({ runId, collisionId, element }: { runId: string; collisionI
       <Table withRowBorders={false} verticalSpacing={2} fz="xs">
         <Table.Tbody>
           {[
-            ['Категория', p.category],
+            ['Категория', categoryLabel(p.category)],
             ['Модель', `${p.modelName} (${p.discipline})`],
             ['Уровень', p.level ?? '—'],
             ['Рабочий набор', p.workset ?? '—'],

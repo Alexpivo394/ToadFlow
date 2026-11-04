@@ -39,8 +39,21 @@ export type ListItem = { row: CollisionRow; partId?: string; my?: MyCollisionRow
 
 type AnyPage = CollisionPage | MyCollisionPage;
 
-/** Выделенная коллизия: её часть (массовое действие идёт по частям) и имя части — для итога. */
-type Picked = { partId?: string; partName?: string };
+/** Выделенная коллизия: её часть (массовое действие идёт по частям), имя части — для итога, разделы сторон — для подписей «Кто правит». */
+type Picked = { partId?: string; partName?: string; disciplineA?: string; disciplineB?: string };
+
+/** Разделы сторон, если у всех выделенных они одни и различаются; иначе null — подписи «сторона A / B». */
+function commonSides(selected: Map<string, Picked>): { a: string; b: string } | null {
+  let sides: { a: string; b: string } | null = null;
+  for (const picked of selected.values()) {
+    const a = picked.disciplineA?.trim() ?? '';
+    const b = picked.disciplineB?.trim() ?? '';
+    if (!a || !b || a.toLowerCase() === b.toLowerCase()) return null;
+    if (sides && (sides.a !== a || sides.b !== b)) return null;
+    sides ??= { a, b };
+  }
+  return sides;
+}
 
 /** Итог массового действия, если в нём есть что показать: отказы, «без изменений», ошибки частей. */
 type Outcome = { done: number; unchanged: number; refused: BulkRefusal[]; failures: string[] };
@@ -219,7 +232,9 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
   const count = byFilter ? total : selected.size;
   const filterTotal = source.partId && !grouped ? total : null;
 
-  const pick = (item: ListItem): Picked => ({ partId: item.partId ?? source.partId, partName: item.my?.partName });
+  const pick = (item: ListItem): Picked => ({
+    partId: item.partId ?? source.partId, partName: item.my?.partName, disciplineA: item.row.disciplineA, disciplineB: item.row.disciplineB,
+  });
 
   const toggle = (list: ListItem[], index: number, e: MouseEvent) => {
     const item = list[index];
@@ -379,6 +394,7 @@ export function CollisionList({ source, params, selectedId, onSelect, bulk = fal
     <Stack gap={0} style={{ flex: 1, minHeight: 0 }}>
       {bulk && count > 0 && (
         <SelectionBar count={count} filterTotal={filterTotal} byFilter={byFilter} canEdit={canEdit} canSeen={!!source.my && canEdit}
+          sides={byFilter ? null : commonSides(selected)}
           onAllByFilter={() => setByFilter(true)}
           onClear={clear} onAction={(c) => { setConflict(null); setChoice(c); }} />
       )}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Alert, Button, Checkbox, Group, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from '@mantine/core';
+import { Alert, Anchor, Button, Checkbox, Group, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
@@ -130,7 +130,21 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
     });
   }
 
-  const run = useApiMutation<void>('POST', () => `/api/schedules/${schedule!.id}/run`, { invalidate: ['runs'], success: 'Запуск создан — смотрите «Историю»' });
+  const run = useApiMutation<void, { runId: string }>('POST', () => `/api/schedules/${schedule!.id}/run`, { invalidate: ['runs'] });
+  // Тост ведёт прямо на созданный запуск: искать его в «Истории» не нужно. Уведомления — вне роутера, поэтому переход — через navigate.
+  const runNow = () => run.mutate(undefined, {
+    onSuccess: ({ runId }) => {
+      const id = notifications.show({
+        color: 'green',
+        title: 'Запуск создан',
+        message: (
+          <Anchor component="button" size="sm" onClick={() => { notifications.hide(id); navigate(`/history/runs/${runId}`); }}>
+            Открыть запуск
+          </Anchor>
+        ),
+      });
+    },
+  });
   const toggle = useApiMutation<boolean>('POST', () => `/api/schedules/${schedule!.id}/enabled`, {
     invalidate: ['schedules'],
     json: (isEnabled) => ({ isEnabled }),
@@ -314,7 +328,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
           </Button>
           {schedule && (
             <>
-              <Button variant="default" onClick={() => run.mutate()} loading={run.isPending}>
+              <Button variant="default" onClick={runNow} loading={run.isPending}>
                 Запустить сейчас
               </Button>
               <Button variant="default" onClick={() => toggle.mutate(!schedule.isEnabled)}>

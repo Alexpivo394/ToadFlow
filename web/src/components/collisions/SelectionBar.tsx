@@ -21,8 +21,13 @@ export const bulkChoices = {
  * Полоса выделения: «Выделено N · Выделить все по фильтру (M) · Снять» и действия. «Все по фильтру» есть, когда фильтр
  * шире выделения и сервер может применить действие по фильтру; больше предела сервера — кнопка выключена с подсказкой сузить.
  */
-export function SelectionBar({ count, filterTotal, byFilter, canEdit, canSeen, onAllByFilter, onClear, onAction }: {
+export function SelectionBar({ count, filterTotal, byFilter, canEdit, canSeen, sides = null, onAllByFilter, onClear, onAction }: {
   count: number;
+  /**
+   * Разделы сторон, если они у всех выделенных коллизий одни и различаются: тогда «Кто правит» — разделами («ОВК»), иначе
+   * «сторона A» значила бы для разных строк разные разделы и остаётся «сторона A / B».
+   */
+  sides?: { a: string; b: string } | null;
   /** Сколько коллизий под фильтром; null — «все по фильтру» недоступно. */
   filterTotal: number | null;
   byFilter: boolean;
@@ -50,9 +55,15 @@ export function SelectionBar({ count, filterTotal, byFilter, canEdit, canSeen, o
               <Button size="compact-xs" variant="light">Кто правит ▾</Button>
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Item onClick={() => onAction(bulkChoices.both)}>Обе стороны</Menu.Item>
-              <Menu.Item onClick={() => onAction(bulkChoices.sideA)}>Сторона A</Menu.Item>
-              <Menu.Item onClick={() => onAction(bulkChoices.sideB)}>Сторона B</Menu.Item>
+              <Menu.Item onClick={() => onAction(sides ? { ...bulkChoices.both, label: `Кто правит: ${sides.a} и ${sides.b}` } : bulkChoices.both)}>
+                {sides ? `${sides.a} и ${sides.b}` : 'Обе стороны'}
+              </Menu.Item>
+              <Menu.Item onClick={() => onAction(sides ? { ...bulkChoices.sideA, label: `Кто правит: ${sides.a}` } : bulkChoices.sideA)}>
+                {sides ? sides.a : 'Сторона A'}
+              </Menu.Item>
+              <Menu.Item onClick={() => onAction(sides ? { ...bulkChoices.sideB, label: `Кто правит: ${sides.b}` } : bulkChoices.sideB)}>
+                {sides ? sides.b : 'Сторона B'}
+              </Menu.Item>
             </Menu.Dropdown>
           </Menu>
           <Button size="compact-xs" variant="light" onClick={() => onAction(bulkChoices.fake)}>Фиктивные…</Button>
