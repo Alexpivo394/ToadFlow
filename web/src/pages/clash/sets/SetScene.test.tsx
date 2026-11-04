@@ -78,7 +78,8 @@ describe('Set in 3D', () => {
 
     expect(await screen.findByText('Категория равно «Стены»')).toBeTruthy();
     const why = (fetch as unknown as FetchMock).mock.calls.find(([url]) => url === '/api/clash/parts/p1/draft/sets/why')!;
-    expect(JSON.parse(String(why[1]!.body)).element).toEqual({ model: 'm1', uniqueId: 'u1' });
+    const sent = JSON.parse(String(why[1]!.body));
+    expect({ model: sent.model, uniqueId: sent.uniqueId }).toEqual({ model: 'm1', uniqueId: 'u1' }); // сервер ждёт их в корне тела
   });
 
   it('SetScene_Refresh_SameConfig_Refetches', async () => {

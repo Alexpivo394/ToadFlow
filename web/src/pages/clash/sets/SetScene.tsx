@@ -22,7 +22,7 @@ function Why({ partId, body, element }: { partId: string; body: { configuration:
   const why = useQuery({
     queryKey: ['clash-set-why', partId, body, element.modelId, element.uniqueId],
     queryFn: () => apiFetch<string[]>(`/api/clash/parts/${partId}/draft/sets/why`, {
-      method: 'POST', json: { ...body, element: { model: element.modelId, uniqueId: element.uniqueId } },
+      method: 'POST', json: { ...body, model: element.modelId, uniqueId: element.uniqueId },
     }),
   });
   return (
@@ -83,7 +83,7 @@ export function SetScene({ partId, config, setId, focus }: { partId: string; con
   const element = selected != null ? scene.data?.elements[selected] : undefined;
 
   return (
-    <Stack gap={6} h="100%">
+    <Stack gap={6} style={{ flex: 1, minHeight: 0 }}>
       <Group gap="sm">
         {scene.data && (scene.data.truncated
           ? <Text size="sm">Показано {n(members)} из {n(scene.data.total ?? members)}</Text>
@@ -94,10 +94,13 @@ export function SetScene({ partId, config, setId, focus }: { partId: string; con
         {scene.error ? (
           <Center h="100%"><Text c="red">{scene.error.message}</Text></Center>
         ) : scene.data ? (
-          <Suspense fallback={<Center h="100%"><Loader /></Center>}>
-            <ClashViewer scene={scene.data} meshes={meshes.data} isolation="all" sectionBox={null} selected={selected} onPick={setSelected}
-              frame={focusIndex} />
-          </Suspense>
+          // Холст — во всю область: у области только minHeight, процентная высота от неё не считается.
+          <div style={{ position: 'absolute', inset: 0 }}>
+            <Suspense fallback={<Center h="100%"><Loader /></Center>}>
+              <ClashViewer scene={scene.data} meshes={meshes.data} isolation="all" sectionBox={null} selected={selected} onPick={setSelected}
+                frame={focusIndex} />
+            </Suspense>
+          </div>
         ) : (
           <Center h="100%"><Loader /></Center>
         )}

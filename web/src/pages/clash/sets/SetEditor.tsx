@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, ActionIcon, Badge, Button, Drawer, Group, MultiSelect, Paper, Select, Stack, Table, Text, TextInput, Autocomplete } from '@mantine/core';
+import { Alert, ActionIcon, Badge, Button, Group, Modal, MultiSelect, Paper, Select, Stack, Table, Text, TextInput, Autocomplete } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconCube, IconTrash } from '@tabler/icons-react';
 import { useApiPost } from '../../../api/queries';
@@ -10,6 +10,12 @@ import {
   setCondition,
 } from '../../../lib/clashConfig';
 import { type SetFocus, SetScene } from './SetScene';
+
+/** Набор в 3D — на весь экран: тело окна тянется по высоте, сцена занимает всё под заголовком. */
+const fullScreenBody = {
+  content: { display: 'flex', flexDirection: 'column' as const },
+  body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' as const },
+};
 
 const propertyValue = (p: PropertyRef) => (p.kind === 'parameter' ? `parameter:${p.sharedGuid ?? ''}:${p.parameterName ?? ''}` : p.kind);
 
@@ -161,9 +167,9 @@ export function SetEditor({ partId, config, set, source, catalog, readOnly, edit
         </Stack>
       )}
       {scene3d !== undefined && (
-        <Drawer opened onClose={() => setScene3d(undefined)} position="right" size="xl" title={`Набор «${set.name}» в 3D`}>
+        <Modal opened onClose={() => setScene3d(undefined)} fullScreen title={`Набор «${set.name}» в 3D`} styles={fullScreenBody}>
           <SetScene key={scene3d ? `${scene3d.model}/${scene3d.uniqueId}` : 'all'} partId={partId} config={config} setId={set.id} focus={scene3d} />
-        </Drawer>
+        </Modal>
       )}
     </Stack>
   );
