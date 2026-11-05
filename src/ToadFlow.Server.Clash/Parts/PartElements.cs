@@ -14,15 +14,23 @@ public sealed record CachedSnapshot(ModelIndex Index, ModelParameters Parameters
 /// <summary>
 ///     Разобранные слепки для предпросмотра наборов и просмотрщика: оглавление TCG и параметры TCP, без сеток.
 ///     Редактор спрашивает предпросмотр на каждое изменение условия, поэтому слепок держится в памяти, пока им пользуются.
+///     Предел — по оценке занятой памяти, а не по числу элементов: опись и параметры весят больше элементов.
 /// </summary>
-public sealed class PartElementsCache : IDisposable
+/// <param name="byteLimit">Сколько памяти держать под слепки, байт; слепок больше предела отдаётся, но не запоминается.</param>
+public sealed class PartElementsCache(long byteLimit = PartElementsCache.DefaultByteLimit) : IDisposable
 {
-    /// <summary>Сколько элементов держать в памяти — около 200 МБ на крупных моделях.</summary>
-    public const long ElementLimit = 2_000_000;
+    /// <summary>Предел по умолчанию — 512 МБ: сервер работает в контейнере на 2 ГБ, остальное — загрузкам, картинкам и запросам.</summary>
+    public const long DefaultByteLimit = 512L << 20;
+
+    // Замер на 10 реальных моделях: оглавление — 0,9–1,9 КБ на элемент без описи, запись описи — около 130 Б,
+    // разобранные параметры — в 3,7–6,5 раза больше файла. Множители взяты с запасом.
+    private const long BytesPerElement = 2_000;
+    private const long BytesPerInventoryEntry = 160;
+    private const long BytesPerParametersFileByte = 8;
 
     private static readonly TimeSpan Sliding = TimeSpan.FromMinutes(10);
 
-    private readonly MemoryCache _cache = new(new MemoryCacheOptions { SizeLimit = ElementLimit });
+    private readonly MemoryCache _cache = new(new MemoryCacheOptions { SizeLimit = byteLimit });
     private readonly ConcurrentDictionary<Guid, Lazy<CachedSnapshot>> _loading = new();
     private int _loads;
 
@@ -55,11 +63,22 @@ public sealed class PartElementsCache : IDisposable
         ModelIndex index;
         using (var geometry = File.OpenRead(Path.Combine(folder, "model.tcg"))) index = ModelGeometryFile.ReadIndex(geometry);
         ModelParameters parameters;
-        using (var values = File.OpenRead(Path.Combine(folder, "model.tcp"))) parameters = ModelParametersFile.Read(values);
+        long parametersFileBytes;
+        using (var values = File.OpenRead(Path.Combine(folder, "model.tcp")))
+        {
+            parametersFileBytes = values.Length;
+            parameters = ModelParametersFile.Read(values);
+        }
+
         var snapshot = new CachedSnapshot(index, parameters);
-        _cache.Set(snapshotId, snapshot, new MemoryCacheEntryOptions { Size = Math.Max(1, index.Elements.Count), SlidingExpiration = Sliding });
+        _cache.Set(snapshotId, snapshot, new MemoryCacheEntryOptions { Size = EstimatedBytes(index, parametersFileBytes), SlidingExpiration = Sliding });
         return snapshot;
     }
+
+    /// <summary>Оценка памяти разобранного слепка, байт: элементы оглавления, опись и параметры по размеру файла.</summary>
+    public static long EstimatedBytes(ModelIndex index, long parametersFileBytes) =>
+        Math.Max(1, index.Elements.Count * BytesPerElement + index.Inventory.Count * BytesPerInventoryEntry
+                    + parametersFileBytes * BytesPerParametersFileByte);
 
     public void Dispose() => _cache.Dispose();
 }

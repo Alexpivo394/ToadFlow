@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Alexpivo394.Revit.Clash.Geometry;
 using Alexpivo394.Revit.Clash.Rules;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -126,6 +127,36 @@ public class ClashSetPreviewTests : ServerTest
         snapshots.Distinct().Count().ShouldBe(1);
         cache.Get(snapshotId, folder).ShouldBeSameAs(snapshots[0]);
         cache.Loads.ShouldBe(1);
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_SnapshotOverMemoryLimit_ReturnedButNotKept()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        using var cache = new PartElementsCache(byteLimit: 1);
+        var snapshotId = Guid.NewGuid();
+
+        cache.Get(snapshotId, folder).Elements.Count.ShouldBe(2);
+        cache.Get(snapshotId, folder).Elements.Count.ShouldBe(2);
+
+        cache.Loads.ShouldBe(2);
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_EstimatedBytes_CountsElementsInventoryAndParameters()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        ModelIndex index;
+        using (var geometry = File.OpenRead(Path.Combine(folder, "model.tcg"))) index = ModelGeometryFile.ReadIndex(geometry);
+
+        var small = PartElementsCache.EstimatedBytes(index, parametersFileBytes: 1_000);
+        var large = PartElementsCache.EstimatedBytes(index, parametersFileBytes: 10_000_000);
+
+        small.ShouldBeGreaterThan(0);
+        // Разобранные параметры занимают в 4–6,5 раза больше файла (замер на реальных моделях): оценка не меньше этого.
+        (large - small).ShouldBeGreaterThanOrEqualTo(6 * (10_000_000L - 1_000));
         Directory.Delete(folder, recursive: true);
     }
 

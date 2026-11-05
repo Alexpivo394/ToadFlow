@@ -18,7 +18,7 @@ public sealed class SnapshotRejectedException(string message) : Exception(messag
 ///     читаемость TCP. Каталог загрузки переносится в хранилище одним <see cref="Directory.Move(string, string)" />,
 ///     поэтому неполного слепка в хранилище не бывает. Лишние старые слепки модели удаляются.
 /// </summary>
-public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, ClashSettingsStore settings, TimeProvider time)
+public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, ClashSettingsStore settings, TimeProvider time, ILogger<SnapshotPublisher> logger)
 {
     /// <exception cref="SnapshotRejectedException">Проверка не прошла; каталог и запись загрузки удалены.</exception>
     public async Task<ClashExtractResult> PublishAsync(ClashUpload upload, CancellationToken ct)
@@ -39,8 +39,11 @@ public sealed class SnapshotPublisher(ToadFlowDb db, ClashStorage storage, Clash
                 throw new SnapshotRejectedException("слепок другой модели: ключ в файле не совпадает с заданием");
             catalog = ModelCatalog.Build(index, ReadParameters(parametersPath));
         }
-        catch (SnapshotRejectedException)
+        catch (SnapshotRejectedException rejected)
         {
+            // Агент пишет причину только в журнал задания: без этой строки отказ на сервере не видно.
+            logger.LogWarning("Слепок модели {Model} (задание {Job}, загрузка {Upload}) отклонён: {Reason}", upload.ModelId, upload.JobId, upload.Id,
+                rejected.Message);
             await DiscardAsync(upload, ct);
             throw;
         }
