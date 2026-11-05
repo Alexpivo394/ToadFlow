@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Alert, Badge, Box, Group, NavLink, NumberInput, ScrollArea, Select, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Alert, Badge, Box, Button, Group, NavLink, NumberInput, ScrollArea, Select, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../../../api/queries';
 import type { CheckCount, CollisionFacets, DraftFacets, DraftHitView, DraftRunSummary, DraftSummary, SetPairCount } from '../../../api/types';
@@ -13,7 +13,7 @@ import { DraftRunPanel } from '../DraftRunPanel';
 import { HitScene, prefetchHit } from '../viewer/HitScene';
 import { useListKeyboard } from '../../../hooks/useListKeyboard';
 import { type LabeledEdit, SetPairMenu } from './SetPairMenu';
-import { type HitFilters, PageSize, useHitNavigation } from './useHitNavigation';
+import { type HitFilters, useHitNavigation } from './useHitNavigation';
 
 const n = (value: number) => value.toLocaleString('ru-RU');
 
@@ -161,7 +161,10 @@ export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOp
                 </Group>
               )}
             </Stack>
-            <ScrollArea style={{ flex: 1 }} type="auto">
+            <ScrollArea style={{ flex: 1 }} type="auto" onBottomReached={nav.loadMore}>
+              {nav.hasPrevious && (
+                <Button variant="subtle" size="xs" fullWidth loading={nav.fetching} onClick={nav.loadPrevious}>Показать предыдущие</Button>
+              )}
               {nav.items.map((h, i) => {
                 const header = grouped && (i === 0 || nav.items[i - 1].setPairKey !== h.setPairKey);
                 const pair = pairNames.get(h.setPairKey);
@@ -202,10 +205,16 @@ export function DraftTab({ partId, readOnly, dirty, onSave, config, onEdit, onOp
                   </Fragment>
                 );
               })}
+              {nav.hasMore && (
+                // Прокрутка к концу догружает сама; кнопка — на случай, когда список короче окна и прокручивать нечего.
+                <Button variant="subtle" size="xs" fullWidth loading={nav.fetching} onClick={nav.loadMore}>
+                  Показать ещё (показано {n(nav.items.length)} из {n(nav.hits?.total ?? 0)})
+                </Button>
+              )}
             </ScrollArea>
             <Group justify="space-between" px="xs" py={4} style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
               <Text size="xs" c="dimmed">
-                {nav.index >= 0 ? `${n((nav.page - 1) * PageSize + nav.index + 1)} из ${n(nav.hits?.total ?? 0)}` : `${n(nav.hits?.total ?? 0)} коллизий`}
+                {nav.ordinal > 0 ? `${n(nav.ordinal)} из ${n(nav.hits?.total ?? 0)}` : `${n(nav.hits?.total ?? 0)} коллизий`}
                 {checkInfo ? ` в «${checkInfo.groupAName} × ${checkInfo.groupBName}»` : ''}
               </Text>
               <Text size="xs" c="dimmed">↑ ↓ листать · Enter — свойства</Text>

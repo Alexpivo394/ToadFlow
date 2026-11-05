@@ -92,6 +92,18 @@ describe('Draft tab', () => {
     expect(await screen.findByText('сцена 51', {}, { timeout: 5000 })).toBeTruthy();
   });
 
+  it('DraftTab_ShowMoreLoadsNextPageIntoList', async () => {
+    open('&check=k-arov');
+    expect(await screen.findByLabelText('Коллизия 50', {}, { timeout: 5000 })).toBeTruthy();
+    expect(screen.queryByLabelText('Коллизия 51')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Показать ещё/ }));
+
+    expect(await screen.findByLabelText('Коллизия 51', {}, { timeout: 5000 })).toBeTruthy();
+    expect(screen.getByLabelText('Коллизия 1')).toBeTruthy(); // первая страница остаётся в списке
+    expect(screen.queryByRole('button', { name: /Показать ещё/ })).toBeNull();
+  });
+
   it('DraftTab_FacetsAsDropdowns', async () => {
     open();
     await screen.findByText('сцена 1');

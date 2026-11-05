@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useApi } from '../../../api/queries';
+import { useQueries } from '@tanstack/react-query';
+import { apiFetch } from '../../../api/client';
 import type { CheckCount, DraftHitView, HitPage } from '../../../api/types';
 
 export const PageSize = 50;
@@ -23,9 +24,12 @@ export function hitsQuery(check: string, filters: HitFilters, page: number) {
   return query.toString();
 }
 
+interface Range { first: number; last: number }
+
 /**
- * Листание коллизий проверки стрелками: сквозь страницы, после последней — первая коллизия следующей непустой проверки,
- * перед первой — последняя предыдущей. Выбранная коллизия задаётся номером: он живёт в адресе страницы.
+ * Коллизии проверки списком из подряд загруженных страниц `first…last`: прокрутка к краю (или «Показать ещё») добавляет
+ * соседнюю страницу, а не заменяет показанную. Стрелки листают сквозь страницы, после последней — первая коллизия
+ * следующей непустой проверки, перед первой — последняя предыдущей. Выбранная коллизия задаётся номером: он живёт в адресе.
  */
 export function useHitNavigation({ partId, checks, check, number, filters, onCheck, onNumber }: {
   partId: string;
@@ -36,27 +40,42 @@ export function useHitNavigation({ partId, checks, check, number, filters, onChe
   onCheck: (key: string) => void;
   onNumber: (number: number | null) => void;
 }) {
-  const [page, setPage] = useState(1);
+  const [range, setRange] = useState<Range>({ first: 1, last: 1 });
   const [pending, setPending] = useState<{ where: 'first' | 'last'; check: string; page: number } | null>(null);
-  const query = check ? hitsQuery(check, filters, page) : null;
-  const hits = useApi<HitPage>(['clash-parts', partId, 'hits', query], query ? `/api/clash/parts/${partId}/draft/hits?${query}` : null);
-  const items = useMemo(() => hits.data?.items ?? [], [hits.data]);
-  const pages = Math.max(1, Math.ceil((hits.data?.total ?? 0) / PageSize));
+  const pageNumbers = check ? Array.from({ length: range.last - range.first + 1 }, (_, i) => range.first + i) : [];
+  // Ключ — как у одной страницы раньше: живые обновления сущности `clash-parts` обновляют все загруженные страницы.
+  const { loaded, fetching } = useQueries({
+    queries: pageNumbers.map((page) => {
+      const query = hitsQuery(check!, filters, page);
+      return {
+        queryKey: ['clash-parts', partId, 'hits', query],
+        queryFn: async ({ signal }: { signal: AbortSignal }) =>
+          ((await apiFetch<HitPage>(`/api/clash/parts/${partId}/draft/hits?${query}`, { signal })) ?? null) as HitPage,
+      };
+    }),
+    combine: (results) => ({ loaded: results.map((r) => r.data), fetching: results.some((r) => r.isFetching) }),
+  });
+  const hits = loaded.find((d) => d != null) ?? undefined;
+  const items = useMemo(() => loaded.flatMap((d) => d?.items ?? []), [loaded]);
+  const pages = Math.max(1, Math.ceil((hits?.total ?? 0) / PageSize));
 
   // Новая проверка или фильтр — первая страница; при переходе стрелкой назад — последняя страница предыдущей проверки.
   const landing = useRef<number | null>(null);
   useEffect(() => {
-    setPage(landing.current ?? 1);
+    const page = landing.current ?? 1;
+    setRange({ first: page, last: page });
     landing.current = null;
   }, [check, JSON.stringify(filters)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Страница пришла после перехода стрелкой: выбрать её первую или последнюю коллизию. Ждём именно целевую проверку и
   // страницу — иначе выбор сработал бы на старой странице раньше, чем адрес переключится на новую проверку.
+  const target = pending && pending.check === check && pending.page >= range.first && pending.page <= range.last
+    ? loaded[pending.page - range.first] : undefined;
   useEffect(() => {
-    if (!pending || pending.check !== check || pending.page !== page || !hits.data || hits.isFetching) return;
-    if (items.length > 0) onNumber(pending.where === 'first' ? items[0].number : items[items.length - 1].number);
+    if (!pending || !target || fetching) return;
+    if (target.items.length > 0) onNumber(pending.where === 'first' ? target.items[0].number : target.items[target.items.length - 1].number);
     setPending(null);
-  }, [pending, check, page, hits.data, hits.isFetching, items, onNumber]);
+  }, [pending, target, fetching, onNumber]);
 
   // Ничего не выбрано — первая коллизия проверки.
   useEffect(() => {
@@ -67,12 +86,23 @@ export function useHitNavigation({ partId, checks, check, number, filters, onChe
   const current: DraftHitView | undefined = index >= 0 ? items[index] : undefined;
   const nonEmpty = checks.filter((c) => c.count > 0);
   const position = nonEmpty.findIndex((c) => c.key === check);
+  const hasMore = range.last < pages;
+  const hasPrevious = range.first > 1;
+
+  /** Догрузить страницу после показанных: прокрутка к концу списка или «Показать ещё». */
+  const loadMore = () => {
+    if (!fetching && hasMore) setRange((r) => ({ ...r, last: r.last + 1 }));
+  };
+  /** Догрузить страницу перед показанными: список открыт с середины (стрелка назад из следующей проверки). */
+  const loadPrevious = () => {
+    if (!fetching && hasPrevious) setRange((r) => ({ ...r, first: r.first - 1 }));
+  };
 
   const next = () => {
     if (index >= 0 && index + 1 < items.length) return onNumber(items[index + 1].number);
-    if (page < pages && check) {
-      setPage(page + 1);
-      setPending({ where: 'first', check, page: page + 1 });
+    if (hasMore && check) {
+      setRange((r) => ({ ...r, last: r.last + 1 }));
+      setPending({ where: 'first', check, page: range.last + 1 });
       return;
     }
     const following = nonEmpty[position + 1];
@@ -84,9 +114,9 @@ export function useHitNavigation({ partId, checks, check, number, filters, onChe
 
   const prev = () => {
     if (index > 0) return onNumber(items[index - 1].number);
-    if (page > 1 && check) {
-      setPage(page - 1);
-      setPending({ where: 'last', check, page: page - 1 });
+    if (hasPrevious && check) {
+      setRange((r) => ({ ...r, first: r.first - 1 }));
+      setPending({ where: 'last', check, page: range.first - 1 });
       return;
     }
     const preceding = position > 0 ? nonEmpty[position - 1] : undefined;
@@ -100,6 +130,8 @@ export function useHitNavigation({ partId, checks, check, number, filters, onChe
 
   /** Следующая коллизия после выбранной — её сцену стоит загрузить заранее. */
   const upcoming = index >= 0 && index + 1 < items.length ? items[index + 1] : undefined;
+  /** Порядковый номер выбранной коллизии в проверке с единицы (с учётом страниц перед показанными), -1 — не выбрана. */
+  const ordinal = index >= 0 ? (range.first - 1) * PageSize + index + 1 : -1;
 
-  return { hits: hits.data, items, page, pages, setPage, current, index, next, prev, upcoming };
+  return { hits, items, pages, fetching, current, index, ordinal, next, prev, upcoming, loadMore, loadPrevious, hasMore, hasPrevious };
 }
