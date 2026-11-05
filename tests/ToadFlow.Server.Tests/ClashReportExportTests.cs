@@ -444,7 +444,9 @@ public class ClashReportExportTests : ServerTest
         Regex.Matches(html, "нет картинки").Count.ShouldBe(2);
     }
 
+    // Рост памяти меряется по куче всего процесса: параллельные тесты добавляли в замер свои десятки мегабайт (CI 2.2.0 — 79 МБ).
     [Test]
+    [NotInParallel]
     public async Task ExportXlsx_10kRows_StreamedAllRows()
     {
         var (admin, agent, _, runId) = await RunAsync(Hits(10_000));
