@@ -169,7 +169,7 @@ internal sealed class AgentPipeClient(Guid instanceId, int revitYear, bool hasNw
     ///     Простаивающий Revit обрабатывает внешние события, только когда в его цикле сообщений что-то происходит.
     ///     Пустое сообщение главному окну будит цикл — иначе задание ждало бы движения мыши.
     /// </summary>
-    private static void Nudge()
+    internal static void Nudge()
     {
         var window = Process.GetCurrentProcess().MainWindowHandle;
         if (window != IntPtr.Zero) PostMessage(window, WmNull, IntPtr.Zero, IntPtr.Zero);

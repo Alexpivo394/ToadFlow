@@ -6,8 +6,10 @@ using Alexpivo394.Revit.ParamCheck.Profiles;
 using Alexpivo394.Revit.ParamCheck.Reports;
 using Alexpivo394.Revit.ParamCheck.Services;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using ToadFlow.Contracts;
+using ToadFlow.Contracts.Export;
 using ToadFlow.Contracts.Pipe;
 using ToadFlow.Revit.Addin.Logic;
 using ExportValidator = Alexpivo394.Revit.Export.Core.RunValidator;
@@ -32,6 +34,11 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
 
     public void Enqueue(JobMessage job) => _jobs.Enqueue(job);
 
+    private string? _startupNote;
+
+    /// <summary>Строка о запуске Revit (прогрев), которую первое задание запишет в свой журнал. Пишут поток Revit или таймер.</summary>
+    public void SetStartupNote(string note) => Interlocked.Exchange(ref _startupNote, note);
+
     public void Execute(UIApplication application)
     {
         while (_jobs.TryDequeue(out var job)) Run(application, job);
@@ -42,6 +49,7 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
     private void Run(UIApplication application, JobMessage job)
     {
         progress.Begin(job.JobId);
+        if (Interlocked.Exchange(ref _startupNote, null) is { } startup) progress.Step("", startup);
         _result = null;
         string? recycle = null;
         var openBefore = OpenModels(application);
@@ -120,12 +128,74 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
 
         // Revit пишет файлы в локальную папку задания, в папку результатов они попадают только готовыми (ResultPublisher):
         // зависший или упавший экспорт не трогает прошлую выгрузку. Папку с замком брошенной после сбоя уберёт CleanupUnused.
-        using var staging = TempWorkspace.Create();
-        progress.Status("Начало выгрузки");
-        var model = new ModelExporter(application.Application).Export(modelJob, options, staging.Directory, progress, progress);
+        var staging = TempWorkspace.Create();
+        try
+        {
+            progress.Status("Начало выгрузки");
+            var viewName = modelJob.Nwc ? options.NwcViewName : null;
+            var (model, facts) = ExportOnce(application, modelJob, options, staging.Directory, viewName);
+            if (EmptyView.RetryNwc(model) && !progress.ShouldAbort)
+            {
+                // Первая модель в только что запущенном Revit часто открывается с пустым видом, а следующая в том же Revit —
+                // нормально (см. EmptyView). Повторяем здесь; не помогло — новый Revit, как раньше.
+                if (facts is not null) progress.Step(payload.ModelName, EmptyView.Describe(facts));
+                progress.Step(payload.ModelName, $"NWC не получился ({model.Note}) — повтор в этом же Revit");
+                staging.Dispose();
+                staging = TempWorkspace.Create();
+                (model, facts) = ExportOnce(application, modelJob, options, staging.Directory, viewName);
+                if (EmptyView.RetryNwc(model) && facts is not null) progress.Step(payload.ModelName, EmptyView.Describe(facts));
+            }
 
+            Publish(job, payload, model, staging.Directory);
+        }
+        finally
+        {
+            staging.Dispose();
+        }
+    }
+
+    /// <summary>
+    ///     Одна выгрузка модели. Модель открывает и закрывает <see cref="ModelExporter" />, поэтому подробности о виде NWC
+    ///     (<see cref="ViewFacts" />) снимаются при её открытии — пригодятся, если NWC не получится.
+    /// </summary>
+    /// <param name="viewName">Вид NWC; null — NWC не нужен, подробности не собираются.</param>
+    private (ModelResult Model, ViewFacts? Facts) ExportOnce(UIApplication application, ModelJob modelJob, ExportOptions options, string folder,
+        string? viewName)
+    {
+        ViewFacts? facts = null;
+        var captured = false;
+
+        void OnOpened(object? sender, DocumentOpenedEventArgs args)
+        {
+            // Первый открытый проект — выгружаемая модель; дальше Revit может открыть её ещё раз при сохранении.
+            if (captured || viewName is null || args.Document is not { IsFamilyDocument: false, IsLinked: false } document) return;
+            captured = true;
+            try
+            {
+                facts = ViewFactsReader.Read(document, viewName);
+            }
+            catch (Autodesk.Revit.Exceptions.ApplicationException)
+            {
+                // подробности не обязательны
+            }
+        }
+
+        application.Application.DocumentOpened += OnOpened;
+        try
+        {
+            var model = new ModelExporter(application.Application).Export(modelJob, options, folder, progress, progress);
+            return (model, facts);
+        }
+        finally
+        {
+            application.Application.DocumentOpened -= OnOpened;
+        }
+    }
+
+    private void Publish(JobMessage job, ExportJobPayload payload, ModelResult model, string folder)
+    {
         if (model.Rvt == StepResult.Done || model.Nwc == StepResult.Done) progress.Status("Публикация результатов");
-        ResultPublisher.PublishOutputs(model, payload, staging.Directory, text => progress.Step(payload.ModelName, text));
+        ResultPublisher.PublishOutputs(model, payload, folder, text => progress.Step(payload.ModelName, text));
 
         var (outcome, result) = PayloadMapping.ToResult(model, payload, job.CanRetry);
         var note = outcome == JobOutcome.InfrastructureFailure && model is { NwcMissing: true, RevitFailure: false }

@@ -25,7 +25,24 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
 
         try
         {
-            var result = Extract(application, payload);
+            var (result, facts) = Extract(application, payload);
+            if (EmptyView.IsEmpty(result.Geometry.Elements.Count, result.Geometry.Inventory.Count))
+            {
+                // Первая модель в только что запущенном Revit часто открывается с пустым видом, а следующая в том же Revit —
+                // нормально (см. EmptyView). Повторяем здесь, не перезапуская Revit.
+                if (facts is not null) progress.Step(payload.ModelName, EmptyView.Describe(facts));
+                progress.Step(payload.ModelName, "на виде нет видимых элементов — повтор в этом же Revit");
+                if (progress.ShouldAbort) throw new OperationCanceledException();
+                (result, facts) = Extract(application, payload);
+                if (EmptyView.IsEmpty(result.Geometry.Elements.Count, result.Geometry.Inventory.Count))
+                {
+                    if (facts is not null) progress.Step(payload.ModelName, EmptyView.Describe(facts));
+                    var (emptyOutcome, emptyNote) = EmptyView.ClashOutcome(job.CanRetry, payload.ViewName, result.Geometry.Inventory.Count);
+                    progress.Step(payload.ModelName, emptyNote);
+                    return (emptyOutcome, emptyNote, null);
+                }
+            }
+
             var (geometry, parameters) = (result.Geometry, result.Parameters);
             foreach (var line in ClashMapping.DescribeReport(result)) progress.Step(payload.ModelName, line);
 
@@ -50,7 +67,8 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
         }
     }
 
-    private ExtractResult Extract(UIApplication application, ClashExtractPayload payload)
+    /// <returns>Итог выгрузки и, если вид оказался пустым, подробности о нём, собранные до закрытия модели.</returns>
+    private (ExtractResult Result, ViewFacts? Facts) Extract(UIApplication application, ClashExtractPayload payload)
     {
         using var temp = TempWorkspace.Create();
         var opened = new ModelOpener(application.Application).Open(ClashMapping.ToModelJob(payload), ClashMapping.ToOpenOptions(payload), temp, progress,
@@ -61,7 +79,11 @@ internal sealed class ClashExtractRunner(int revitYear, PipeProgress progress)
             using var abort = new CancellationTokenSource();
             var reporter = new StepReporter(progress, payload.ModelName, abort);
             if (progress.ShouldAbort) abort.Cancel();
-            return GeometryExtractor.Extract(opened.Document, new ExtractOptions(payload.ModelKey, payload.ViewName), reporter, abort.Token);
+            var result = GeometryExtractor.Extract(opened.Document, new ExtractOptions(payload.ModelKey, payload.ViewName), reporter, abort.Token);
+            var facts = EmptyView.IsEmpty(result.Geometry.Elements.Count, result.Geometry.Inventory.Count)
+                ? ViewFactsReader.Read(opened.Document, payload.ViewName)
+                : null;
+            return (result, facts);
         }
         finally
         {
