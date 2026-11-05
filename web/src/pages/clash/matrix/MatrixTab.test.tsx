@@ -104,6 +104,18 @@ describe('Matrix tab', () => {
     const config = await savedConfig();
     expect(config.exclusions).toEqual([{ setA: 's-walls', setB: 's-ducts' }]);
   });
+
+  it('Exclusions_SetAgainstWholeGroup', async () => {
+    renderApp('/clash/setup/parts/p1?tab=exclusions', partResponses);
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Исключение' }));
+    const input = (label: string) => screen.getAllByLabelText(label).filter((e) => e.tagName === 'INPUT')[0];
+    await pickOption(input('Набор A'), 'Воздуховоды');
+    await pickOption(input('Набор B'), 'Вся группа «АР»');
+    const config = await savedConfig();
+    expect(config.exclusions).toEqual([]);
+    expect(config.groupExclusions).toEqual([{ setId: 's-ducts', groupId: 'g-ar' }]);
+  });
 });
 
 vi.setConfig({ testTimeout: 15_000 });

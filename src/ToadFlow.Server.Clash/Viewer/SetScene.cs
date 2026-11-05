@@ -18,6 +18,12 @@ public static class SetScene
     /// <summary>Радиус окружения вокруг выбранного образца, мм.</summary>
     public const double ContextRadiusMm = 5000;
 
+    /// <summary>
+    ///     Сколько треугольников набора и окружения рисуется сеткой. Больше, чем у 3D коллизии: набор — до 3000 элементов, и при
+    ///     400 тыс. треугольников трубы с изоляцией и фитинги уже через несколько сотен элементов оставались каркасом.
+    /// </summary>
+    public const long TriangleBudget = 1_500_000;
+
     private sealed record Body(ClashConfiguration Configuration, Guid SetId, ViewerKey? Focus, ViewerKey? Element);
 
     private sealed record Loaded(
@@ -129,28 +135,35 @@ public static class SetScene
             : Nearest(viewerModels, others, x, y, z).TakeWhile(p => p.Distance <= ContextRadiusMm)
                 .Take(ViewerScene.DefaultMaxElements - MaxSetElements).Select(p => (p.Model, p.Element, p.Distance, Role: ViewerRole.Context));
 
-        var picks = new List<ViewerPick>();
-        long budget = 0;
-        var meshing = true;
-        foreach (var (m, e, distance, role) in ordered.Concat(context))
+        var chosen = ordered.Concat(context).ToList();
+        var triangles = chosen.Select(p =>
         {
-            var count = viewerModels[m].Index.Elements[e].TriangleCount;
-            long triangles = count < 0 ? ViewerScene.UnknownTriangles : count;
-            var mesh = false;
-            if (meshing && triangles > 0)
-            {
-                if (budget + triangles <= ViewerScene.DefaultTriangleBudget)
-                {
-                    budget += triangles;
-                    mesh = true;
-                }
-                else meshing = false;
-            }
-
-            picks.Add(new ViewerPick(m, e, role, distance, mesh));
-        }
+            long count = viewerModels[p.Model].Index.Elements[p.Element].TriangleCount;
+            return count < 0 ? ViewerScene.UnknownTriangles : count;
+        }).ToList();
+        var meshed = FitMeshes(triangles, TriangleBudget);
+        var picks = chosen.Select((p, i) => new ViewerPick(p.Model, p.Element, p.Role, p.Distance, meshed[i])).ToList();
+        var budget = triangles.Where((_, i) => meshed[i]).Sum();
 
         return new Loaded(null, viewerModels, snapshots.Select(s => s.Folder).ToList(), picks, x, y, z, budget, members.Count, focus is not null);
+    }
+
+    /// <summary>
+    ///     Какие элементы рисуются сеткой: по порядку, пока влезают в бюджет. Не влезший в остаток элемент остаётся габаритом, а
+    ///     следующие, поменьше, ещё берутся — иначе один крупный элемент оставлял каркасом все дальние.
+    /// </summary>
+    public static bool[] FitMeshes(IReadOnlyList<long> triangles, long budget)
+    {
+        var result = new bool[triangles.Count];
+        long used = 0;
+        for (var i = 0; i < triangles.Count; i++)
+        {
+            if (triangles[i] <= 0 || used + triangles[i] > budget) continue;
+            used += triangles[i];
+            result[i] = true;
+        }
+
+        return result;
     }
 
     /// <summary>Элементы по расстоянию от точки до габарита, при равенстве — по модели и UniqueId: выбор не зависит от порядка в слепке.</summary>

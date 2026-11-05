@@ -1,4 +1,4 @@
-import type { ClashConfig, MatrixCell, SelectionSet, SetGroup, SetPairExclusion } from './clashConfig';
+import { groupExclusionsOf, type ClashConfig, type MatrixCell, type SelectionSet, type SetGroup, type SetGroupExclusion, type SetPairExclusion } from './clashConfig';
 
 // Ключи элементов черновика — те же, что у ConfigurationMerge на сервере: Id в форме N (без дефисов), пары — меньший первым.
 const n = (id: string) => id.replaceAll('-', '').toLowerCase();
@@ -12,6 +12,8 @@ export const groupKey = (g: SetGroup) => `group:${n(g.id)}`;
 export const setKey = (s: SelectionSet) => `set:${n(s.id)}`;
 export const cellKey = (c: MatrixCell) => pair('cell', c.groupA, c.groupB);
 export const exclusionKey = (e: SetPairExclusion) => pair('exclusion', e.setA, e.setB);
+// Не пара: набор и группа — разные сущности, порядок фиксирован.
+export const groupExclusionKey = (e: SetGroupExclusion) => `groupExclusion:${n(e.setId)}|${n(e.groupId)}`;
 
 const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y);
 
@@ -33,11 +35,15 @@ export function mergeDraft(base: ClashConfig, server: ClashConfig, local: ClashC
   const pick = <T,>(b?: T, s?: T, l?: T) => (same(b, l) ? s : l);
   const sets = items(base.sets, server.sets, local.sets, setKey, pick);
   const ids = new Set(sets.map((s) => s.id));
+  const groups = items(base.groups, server.groups, local.groups, groupKey, pick);
+  const groupIds = new Set(groups.map((g) => g.id));
   return {
-    groups: items(base.groups, server.groups, local.groups, groupKey, pick),
+    groups,
     sets,
     matrix: items(ordered(base.matrix), ordered(server.matrix), ordered(local.matrix), cellKey, pick),
     exclusions: items(base.exclusions, server.exclusions, local.exclusions, exclusionKey, pick).filter((e) => ids.has(e.setA) && ids.has(e.setB)),
+    groupExclusions: items(groupExclusionsOf(base), groupExclusionsOf(server), groupExclusionsOf(local), groupExclusionKey, pick)
+      .filter((e) => ids.has(e.setId) && groupIds.has(e.groupId)),
     ignoreConnectedMep: base.ignoreConnectedMep === local.ignoreConnectedMep ? server.ignoreConnectedMep : local.ignoreConnectedMep,
   };
 }
@@ -56,6 +62,7 @@ export function takeTheirs(local: ClashConfig, server: ClashConfig, keys: string
     sets: replace(local.sets, server.sets, setKey),
     matrix: replace(ordered(local.matrix), ordered(server.matrix), cellKey),
     exclusions: replace(local.exclusions, server.exclusions, exclusionKey),
+    groupExclusions: replace(groupExclusionsOf(local), groupExclusionsOf(server), groupExclusionKey),
     ignoreConnectedMep: wanted.has(flagKey) ? server.ignoreConnectedMep : local.ignoreConnectedMep,
   };
 }

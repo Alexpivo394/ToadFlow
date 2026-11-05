@@ -53,13 +53,24 @@ export interface SetPairExclusion {
   setB: string;
 }
 
+/** Набор, который не проверяется со всей группой — и с наборами, добавленными в неё позже. */
+export interface SetGroupExclusion {
+  setId: string;
+  groupId: string;
+}
+
 export interface ClashConfig {
   groups: SetGroup[];
   sets: SelectionSet[];
   matrix: MatrixCell[];
   exclusions: SetPairExclusion[];
+  /** Нет у утверждённых версий, сохранённых до появления исключений с группой. */
+  groupExclusions?: SetGroupExclusion[];
   ignoreConnectedMep: boolean;
 }
+
+/** Исключения с группой; у старой конфигурации без поля — пустой список. */
+export const groupExclusionsOf = (config: ClashConfig): SetGroupExclusion[] => config.groupExclusions ?? [];
 
 export const propertyKinds: { value: PropertyKind; label: string }[] = [
   { value: 'category', label: 'Категория' },
@@ -89,7 +100,7 @@ export const modelOperators: ConditionOperator[] = ['equals', 'oneOf', 'notEqual
 /** У «пусто» и «не пусто» значения нет. */
 export const needsValue = (operator: ConditionOperator) => operator !== 'isEmpty' && operator !== 'isNotEmpty';
 
-export const emptyConfig = (): ClashConfig => ({ groups: [], sets: [], matrix: [], exclusions: [], ignoreConnectedMep: true });
+export const emptyConfig = (): ClashConfig => ({ groups: [], sets: [], matrix: [], exclusions: [], groupExclusions: [], ignoreConnectedMep: true });
 
 export const emptyCondition = (): Condition => ({ property: { kind: 'category' }, operator: 'isNotEmpty', value: null });
 
@@ -143,9 +154,10 @@ export const removeSet = (config: ClashConfig, id: string): ClashConfig => ({
   ...config,
   sets: config.sets.filter((s) => s.id !== id),
   exclusions: config.exclusions.filter((e) => e.setA !== id && e.setB !== id),
+  groupExclusions: groupExclusionsOf(config).filter((e) => e.setId !== id),
 });
 
-/** Удаляет группу с её наборами, клетками матрицы и исключениями этих наборов. */
+/** Удаляет группу с её наборами, клетками матрицы и исключениями этих наборов и самой группы. */
 export function removeGroup(config: ClashConfig, id: string): ClashConfig {
   const gone = new Set(config.sets.filter((s) => s.groupId === id).map((s) => s.id));
   return {
@@ -154,6 +166,7 @@ export function removeGroup(config: ClashConfig, id: string): ClashConfig {
     sets: config.sets.filter((s) => s.groupId !== id),
     matrix: config.matrix.filter((c) => c.groupA !== id && c.groupB !== id),
     exclusions: config.exclusions.filter((e) => !gone.has(e.setA) && !gone.has(e.setB)),
+    groupExclusions: groupExclusionsOf(config).filter((e) => e.groupId !== id && !gone.has(e.setId)),
   };
 }
 
@@ -178,6 +191,21 @@ export function setCell(config: ClashConfig, a: string, b: string, patch: Partia
 export function addExclusion(config: ClashConfig, setA: string, setB: string): ClashConfig {
   if (config.exclusions.some((e) => (e.setA === setA && e.setB === setB) || (e.setA === setB && e.setB === setA))) return config;
   return { ...config, exclusions: [...config.exclusions, { setA, setB }] };
+}
+
+/** Исключение набора со всей группой; уже исключённая — без изменений, та же конфигурация. */
+export function addGroupExclusion(config: ClashConfig, setId: string, groupId: string): ClashConfig {
+  const current = groupExclusionsOf(config);
+  if (current.some((e) => e.setId === setId && e.groupId === groupId)) return config;
+  return { ...config, groupExclusions: [...current, { setId, groupId }] };
+}
+
+/** Исключена ли пара наборов — явно или исключением одного из них со всей группой другого; порядок не важен. */
+export function isExcludedPair(config: ClashConfig, setA: string, setB: string): boolean {
+  if (config.exclusions.some((e) => (e.setA === setA && e.setB === setB) || (e.setA === setB && e.setB === setA))) return true;
+  const groupOf = (id: string) => config.sets.find((s) => s.id === id)?.groupId;
+  const [groupA, groupB] = [groupOf(setA), groupOf(setB)];
+  return groupExclusionsOf(config).some((e) => (e.setId === setA && e.groupId === groupB) || (e.setId === setB && e.groupId === groupA));
 }
 
 /** Включённые клетки матрицы, в которые попадает пара наборов: по группам наборов, без учёта порядка. */

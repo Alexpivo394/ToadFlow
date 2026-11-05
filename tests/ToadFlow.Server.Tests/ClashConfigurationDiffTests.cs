@@ -52,6 +52,46 @@ public class ClashConfigurationDiffTests
     }
 
     [Test]
+    public void Diff_GroupExclusionAddedAndRemoved()
+    {
+        var with = Config() with { GroupExclusions = [new SetGroupExclusion(Ducts, Ar)] };
+
+        ConfigurationDiff.Compare(Config(), with).ShouldHaveSingleItem()
+            .ShouldBe(new ConfigChange(ConfigChangeKind.ExclusionAdded, "Исключение «Воздуховоды» × вся группа «АР» добавлено"));
+        ConfigurationDiff.Compare(with, Config()).ShouldHaveSingleItem()
+            .ShouldBe(new ConfigChange(ConfigChangeKind.ExclusionRemoved, "Исключение «Воздуховоды» × вся группа «АР» удалено"));
+    }
+
+    [Test]
+    public void CopyFor_GroupExclusionFollowsNewSetIds()
+    {
+        var source = Config() with { GroupExclusions = [new SetGroupExclusion(Ducts, Ar), new SetGroupExclusion(Walls, Guid.NewGuid())] };
+
+        var copy = DraftEndpoints.CopyFor(source, ["АР", "КР", "ОВ"], []);
+
+        var ducts = copy.Sets.Single(s => s.Name == "Воздуховоды").Id;
+        copy.GroupExclusions.ShouldBe([new SetGroupExclusion(ducts, Ar)]); // исключение с группой, которой нет, отброшено
+    }
+
+    [Test]
+    public void WithoutRemovedModels_DropsGroupExclusionsOfGoneSetsAndGroups()
+    {
+        // Группу раздела сервер узнаёт по Id из имени раздела.
+        var ar = ConfigurationDefaults.DisciplineGroup("АР");
+        var ov = ConfigurationDefaults.DisciplineGroup("ОВ");
+        var config = new ClashConfiguration([ar, ov],
+            [new SelectionSet(Walls, ar.Id, "Стены", [Category("Стены")]), new SelectionSet(Ducts, ov.Id, "Воздуховоды", [Category("Воздуховоды")]),
+                new SelectionSet(Parking, ar.Id, "Паркинг", [Category("Парковка")])], [], [])
+        {
+            GroupExclusions = [new SetGroupExclusion(Ducts, ar.Id), new SetGroupExclusion(Parking, ov.Id), new SetGroupExclusion(Walls, ar.Id)]
+        };
+
+        var result = PartEndpoints.WithoutRemovedModels(config, ["АР"], [])!;
+
+        result.GroupExclusions.ShouldBe([new SetGroupExclusion(Walls, ar.Id)]);
+    }
+
+    [Test]
     public void Diff_Same_Empty() => ConfigurationDiff.Compare(Config(), Config()).ShouldBeEmpty();
 
     private static ClashConfiguration WithGroup(string name, IReadOnlyList<string> disciplines, IReadOnlyList<string> models) =>

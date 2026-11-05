@@ -205,7 +205,8 @@ public static class PartEndpoints
                 .ToList(),
             Sets = config.Sets.Where(s => !sets.Contains(s.Id)).ToList(),
             Matrix = config.Matrix.Where(c => !gone.Contains(c.GroupA) && !gone.Contains(c.GroupB)).ToList(),
-            Exclusions = config.Exclusions.Where(e => !sets.Contains(e.SetA) && !sets.Contains(e.SetB)).ToList()
+            Exclusions = config.Exclusions.Where(e => !sets.Contains(e.SetA) && !sets.Contains(e.SetB)).ToList(),
+            GroupExclusions = config.GroupExclusions.Where(e => !sets.Contains(e.SetId) && !gone.Contains(e.GroupId)).ToList()
         };
     }
 

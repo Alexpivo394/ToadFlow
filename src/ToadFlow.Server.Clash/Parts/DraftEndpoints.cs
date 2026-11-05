@@ -49,7 +49,8 @@ public static class DraftEndpoints
     /// <summary>Конфигурация без null-списков и null-элементов; иначе null — её не разобрать дальше.</summary>
     public static ClashConfiguration? Valid(ClashConfiguration? config)
     {
-        if (config?.Groups is null || config.Sets is null || config.Matrix is null || config.Exclusions is null) return null;
+        if (config?.Groups is null || config.Sets is null || config.Matrix is null || config.Exclusions is null || config.GroupExclusions is null) return null;
+        if (config.GroupExclusions.Any(e => e is null)) return null;
         if (config.Groups.Any(g => g?.Name is null || g.Source?.Disciplines is null || g.Source.ModelKeys is null
                                    || g.Source.Disciplines.Any(d => d is null) || g.Source.ModelKeys.Any(k => k is null)))
             return null;
@@ -217,7 +218,9 @@ public static class DraftEndpoints
             Sets = source.Sets.Select(s => s with { Id = ids[s.Id] }).ToList(),
             Matrix = source.Matrix.Where(c => kept.Contains(c.GroupA) && kept.Contains(c.GroupB)).ToList(),
             Exclusions = source.Exclusions.Where(e => ids.ContainsKey(e.SetA) && ids.ContainsKey(e.SetB))
-                .Select(e => new SetPairExclusion(ids[e.SetA], ids[e.SetB])).ToList()
+                .Select(e => new SetPairExclusion(ids[e.SetA], ids[e.SetB])).ToList(),
+            GroupExclusions = source.GroupExclusions.Where(e => ids.ContainsKey(e.SetId) && kept.Contains(e.GroupId))
+                .Select(e => new SetGroupExclusion(ids[e.SetId], e.GroupId)).ToList()
         };
     }
 

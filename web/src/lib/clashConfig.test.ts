@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addCondition, addExclusion, addGroup, cellsForSetPair, copySet, emptyConfig, matrixCell, newGroup, newSet, removeGroup, removeSet, setCell,
+  addCondition, addExclusion, addGroup, addGroupExclusion, isExcludedPair, cellsForSetPair, copySet, emptyConfig, matrixCell, newGroup, newSet, removeGroup, removeSet, setCell,
   setCellTolerance, hashConfig, type ClashConfig,
 } from './clashConfig';
 
@@ -94,6 +94,23 @@ describe('clashConfig noise to rules', () => {
   const walls = newSet(ar.id, 'Стены');
   const ducts = newSet(ov.id, 'Воздуховоды');
   const base: ClashConfig = { ...emptyConfig(), groups: [ar, ov], sets: [walls, ducts] };
+
+  it('groupExclusion_AddRemoveAndPairCheck', () => {
+    const later = newSet(ov.id, 'Трубы');
+    const once = addGroupExclusion({ ...base, sets: [walls, ducts, later] }, walls.id, ov.id);
+
+    expect(addGroupExclusion(once, walls.id, ov.id)).toBe(once);
+    expect(once.groupExclusions).toEqual([{ setId: walls.id, groupId: ov.id }]);
+    // Вся группа — и набор, добавленный в неё позже, в любом порядке пары.
+    expect(isExcludedPair(once, later.id, walls.id)).toBe(true);
+    expect(isExcludedPair(once, walls.id, ducts.id)).toBe(true);
+    expect(isExcludedPair(base, walls.id, ducts.id)).toBe(false);
+    expect(isExcludedPair(addExclusion(base, ducts.id, walls.id), walls.id, ducts.id)).toBe(true);
+
+    expect(removeSet(once, walls.id).groupExclusions).toEqual([]);
+    expect(removeGroup(once, ov.id).groupExclusions).toEqual([]);
+    expect(removeGroup(once, ar.id).groupExclusions).toEqual([]);
+  });
 
   it('addExclusion_NoDuplicate_EitherOrder', () => {
     const once = addExclusion(base, walls.id, ducts.id);

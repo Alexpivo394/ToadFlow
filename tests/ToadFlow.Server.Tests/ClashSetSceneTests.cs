@@ -120,6 +120,13 @@ public class ClashSetSceneTests : ServerTest
     }
 
     [Test]
+    public void FitMeshes_SkipsTooBigAndKeepsFillingWithSmaller()
+    {
+        // Крупный элемент, не влезший в остаток, не обрывает сетки остальных: дальше берутся те, что ещё влезают.
+        SetScene.FitMeshes([400, 700, 100, 0, 500, 100], 1000).ShouldBe([true, false, true, false, true, false]);
+    }
+
+    [Test]
     public async Task SetWhy_ListsMatchedConditions()
     {
         var (admin, partId, ar) = await SetupAsync();

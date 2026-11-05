@@ -169,6 +169,15 @@ public static class ConfigurationDiff
         foreach (var exclusion in before.Exclusions.Where(e => !current.Contains(Key(e))).DistinctBy(Key))
             changes.Add(new ConfigChange(ConfigChangeKind.ExclusionRemoved,
                 $"Исключение «{SetName(before, exclusion.SetA)}» × «{SetName(before, exclusion.SetB)}» удалено"));
+
+        var oldGroup = before.GroupExclusions.ToHashSet();
+        var currentGroup = after.GroupExclusions.ToHashSet();
+        foreach (var exclusion in after.GroupExclusions.Where(e => !oldGroup.Contains(e)).Distinct())
+            changes.Add(new ConfigChange(ConfigChangeKind.ExclusionAdded,
+                $"Исключение «{SetName(after, exclusion.SetId)}» × вся группа «{GroupName(after, exclusion.GroupId)}» добавлено"));
+        foreach (var exclusion in before.GroupExclusions.Where(e => !currentGroup.Contains(e)).Distinct())
+            changes.Add(new ConfigChange(ConfigChangeKind.ExclusionRemoved,
+                $"Исключение «{SetName(before, exclusion.SetId)}» × вся группа «{GroupName(before, exclusion.GroupId)}» удалено"));
     }
 
     private static string GroupName(ClashConfiguration config, Guid id) => config.Groups.FirstOrDefault(g => g.Id == id)?.Name ?? "—";

@@ -31,6 +31,18 @@ describe('draftMerge', () => {
     expect(merged.matrix).toHaveLength(1);
   });
 
+  it('draftMerge_GroupExclusions', () => {
+    const server: ClashConfig = { ...base, groupExclusions: [{ setId: walls.id, groupId: ar.id }] };
+    const local: ClashConfig = { ...base, groupExclusions: [{ setId: doors.id, groupId: ar.id }] };
+
+    expect(mergeDraft(base, server, local).groupExclusions).toEqual([{ setId: walls.id, groupId: ar.id }, { setId: doors.id, groupId: ar.id }]);
+    // Удалённый на сервере набор уносит своё исключение; утверждённая версия без поля читается как пустой список.
+    expect(mergeDraft(server, { ...server, sets: [doors] }, server).groupExclusions).toEqual([]);
+    expect(mergeDraft(base, { ...base, groupExclusions: undefined }, base).groupExclusions).toEqual([]);
+    const key = `groupExclusion:${walls.id.replaceAll('-', '')}|${ar.id.replaceAll('-', '')}`;
+    expect(takeTheirs(base, server, [key]).groupExclusions).toEqual([{ setId: walls.id, groupId: ar.id }]);
+  });
+
   it('draftMerge_LocalWinsOnSameItem_TakeTheirsReplaces', () => {
     const server = rename(base, walls.id, 'Стены А');
     const local = rename(base, walls.id, 'Стены Б');
