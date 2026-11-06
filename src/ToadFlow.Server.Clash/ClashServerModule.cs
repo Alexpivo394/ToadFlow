@@ -54,7 +54,8 @@ public sealed class ClashServerModule : IServerModule
         services.AddScoped<ModelCollisions>();
         services.AddScoped<PartElements>();
         services.AddScoped<IDisciplineSource, PartDisciplines>();
-        services.AddSingleton<PartElementsCache>();
+        services.AddSingleton(provider => new PartElementsCache(PartElementsCache.LimitFor(
+            provider.GetRequiredService<IConfiguration>().GetValue<int?>("Clash:ElementsCacheMb"), GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)));
         services.AddOptions<CollisionImageOptions>().Configure<IConfiguration>((options, configuration) =>
             options.Threads = configuration.GetValue<int>("Clash:ImageThreads"));
         services.AddSingleton<CollisionImages>();

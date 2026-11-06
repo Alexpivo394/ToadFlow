@@ -98,6 +98,34 @@ public class ClashSetPreviewTests : ServerTest
         (cache.Loads - before).ShouldBe(1);
     }
 
+    [Test]
+    public async Task Preview_ReadsOnlyModelsOfSetGroup()
+    {
+        await using var agent = await AgentAsync();
+        await PublishAsync(agent, "POL_K1_AR.rvt");
+        await PublishAsync(agent, "POL_K1_OV.rvt");
+        await PublishAsync(agent, "POL_K1_KR.rvt");
+        var admin = await AdminAsync();
+        var partId = await PartAsync(admin, "POL_K1_AR.rvt", "POL_K1_OV.rvt", "POL_K1_KR.rvt");
+        var cache = Server.Services.GetRequiredService<PartElementsCache>();
+        var before = cache.Loads;
+
+        await PreviewAsync(admin, partId, Walls());
+
+        (cache.Loads - before).ShouldBe(1);
+    }
+
+    [Test]
+    public void ElementsCache_Limit_ConfiguredOrHalfOfAvailableMemory()
+    {
+        PartElementsCache.LimitFor(configuredMb: 300, availableBytes: 8L << 30).ShouldBe(300L << 20);
+        PartElementsCache.LimitFor(configuredMb: null, availableBytes: 3L << 30).ShouldBe(1536L << 20);
+        PartElementsCache.LimitFor(configuredMb: 0, availableBytes: 3L << 30).ShouldBe(1536L << 20);
+        // Мало памяти или она неизвестна — прежние 512 МБ.
+        PartElementsCache.LimitFor(configuredMb: null, availableBytes: 600L << 20).ShouldBe(PartElementsCache.DefaultByteLimit);
+        PartElementsCache.LimitFor(configuredMb: null, availableBytes: 0).ShouldBe(PartElementsCache.DefaultByteLimit);
+    }
+
     /// <summary>Слепок model.tcg и model.tcp в новом временном каталоге.</summary>
     private static string SnapshotFolder(int padding)
     {

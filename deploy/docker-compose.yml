@@ -42,8 +42,10 @@ services:
       Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env — общий ключ сервера и движка коллизий}
       # Картинки коллизий рисует сервер: столько потоков одновременно
       Clash__ImageThreads: ${CLASH_IMAGE_THREADS:-2}
+      # Память под разобранные слепки (наборы, 3D, картинки), МБ; 0 — половина памяти сервера
+      Clash__ElementsCacheMb: ${CLASH_ELEMENTS_CACHE_MB:-0}
     # Сервер держит оглавления слепков в памяти и рисует картинки: лимит, чтобы не вытеснить PostgreSQL
-    mem_limit: ${SERVER_MEMORY:-2g}
+    mem_limit: ${SERVER_MEMORY:-3g}
     volumes:
       # Выгрузки геометрии для коллизий: последние N на модель (Настройки → Коллизии)
       - clash:/data/clash

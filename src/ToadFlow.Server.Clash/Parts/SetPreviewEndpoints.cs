@@ -46,8 +46,8 @@ public static class SetPreviewEndpoints
         else if (DraftEndpoints.TryParse(text) is { Sets.Count: 1 } single) (config, setId) = (single, single.Sets[0].Id);
         else return Results.BadRequest(new { error = "Передайте черновик и набор" });
 
-        if (config.Sets.All(s => s.Id != setId)) return Results.BadRequest(new { error = "Набора нет в черновике" });
-        return Results.Ok(SetPreview.Count(config, setId, await elements.LoadAsync(id, ct)));
+        if (config.Sets.FirstOrDefault(s => s.Id == setId) is not { } set) return Results.BadRequest(new { error = "Набора нет в черновике" });
+        return Results.Ok(SetPreview.Count(config, setId, await elements.LoadAsync(id, config, [set.GroupId], ct)));
     }
 
     /// <summary>Тело — <c>{ configuration, setIds, groupId? }</c>.</summary>
@@ -58,7 +58,9 @@ public static class SetPreviewEndpoints
         if (setIds.Any(setId => body.Configuration.Sets.All(s => s.Id != setId)))
             return Results.BadRequest(new { error = "Набора нет в черновике" });
 
-        var loaded = await elements.LoadAsync(id, ct);
+        var groupIds = body.Configuration.Sets.Where(s => setIds.Contains(s.Id)).Select(s => s.GroupId);
+        if (body.GroupId is { } wantedGroup) groupIds = groupIds.Append(wantedGroup);
+        var loaded = await elements.LoadAsync(id, body.Configuration, groupIds, ct);
         var counts = setIds.Distinct().ToDictionary(setId => setId, setId => SetPreview.Count(body.Configuration, setId, loaded).Matched);
         var unassigned = body.GroupId is { } groupId ? SetPreview.Unassigned(body.Configuration, groupId, loaded) : null;
         return Results.Ok(new BatchPreview(counts, unassigned));
@@ -68,14 +70,14 @@ public static class SetPreviewEndpoints
     {
         if (Parse(await ReadAsync(request, ct)) is not { GroupId: { } groupId, Property: { } property } body)
             return Results.BadRequest(new { error = "Передайте черновик, группу и свойство" });
-        return Results.Ok(PropertyValues.Count(body.Configuration, groupId, property, await elements.LoadAsync(id, ct)));
+        return Results.Ok(PropertyValues.Count(body.Configuration, groupId, property, await elements.LoadAsync(id, body.Configuration, [groupId], ct)));
     }
 
     private static async Task<IResult> UnassignedAsync(Guid id, HttpRequest request, PartElements elements, CancellationToken ct)
     {
         if (Parse(await ReadAsync(request, ct)) is not { GroupId: { } groupId } body)
             return Results.BadRequest(new { error = "Передайте черновик и группу" });
-        return Results.Ok(SetPreview.Unassigned(body.Configuration, groupId, await elements.LoadAsync(id, ct)));
+        return Results.Ok(SetPreview.Unassigned(body.Configuration, groupId, await elements.LoadAsync(id, body.Configuration, [groupId], ct)));
     }
 
     private static async Task<string> ReadAsync(HttpRequest request, CancellationToken ct)

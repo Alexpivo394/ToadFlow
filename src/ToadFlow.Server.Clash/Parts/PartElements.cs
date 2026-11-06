@@ -19,8 +19,17 @@ public sealed record CachedSnapshot(ModelIndex Index, ModelParameters Parameters
 /// <param name="byteLimit">Сколько памяти держать под слепки, байт; слепок больше предела отдаётся, но не запоминается.</param>
 public sealed class PartElementsCache(long byteLimit = PartElementsCache.DefaultByteLimit) : IDisposable
 {
-    /// <summary>Предел по умолчанию — 512 МБ: сервер работает в контейнере на 2 ГБ, остальное — загрузкам, картинкам и запросам.</summary>
+    /// <summary>Предел, если память процесса неизвестна, — 512 МБ.</summary>
     public const long DefaultByteLimit = 512L << 20;
+
+    /// <summary>
+    ///     Предел кеша при запуске: <c>Clash:ElementsCacheMb</c>, если задан, иначе половина памяти, доступной сборщику мусора
+    ///     (в контейнере — от его лимита). Остальное — загрузкам, картинкам и запросам.
+    /// </summary>
+    public static long LimitFor(int? configuredMb, long availableBytes) =>
+        configuredMb is > 0 ? (long)configuredMb.Value << 20
+        : availableBytes > 0 ? Math.Max(DefaultByteLimit, availableBytes / 2)
+        : DefaultByteLimit;
 
     // Замер на 10 реальных моделях: оглавление — 0,9–1,9 КБ на элемент без описи, запись описи — около 130 Б,
     // разобранные параметры — в 3,7–6,5 раза больше файла. Множители взяты с запасом.
@@ -86,13 +95,26 @@ public sealed class PartElementsCache(long byteLimit = PartElementsCache.Default
 /// <summary>Элементы последних слепков моделей части с их разделами — вход предпросмотра наборов.</summary>
 public sealed class PartElements(PartModels models, ClashStorage storage, PartElementsCache cache)
 {
-    /// <summary>Модели без слепка или без раздела пропускаются.</summary>
-    public async Task<IReadOnlyList<ElementsInput>> LoadAsync(Guid partId, CancellationToken ct)
+    /// <summary>
+    ///     Модели источников заданных групп: набор ОВ не читает слепки АР и КР. Модели без слепка или без раздела пропускаются;
+    ///     группы, которой нет в черновике, моделей не даёт.
+    /// </summary>
+    public Task<IReadOnlyList<ElementsInput>> LoadAsync(Guid partId, ClashConfiguration config, IEnumerable<Guid> groupIds, CancellationToken ct)
+    {
+        var wanted = groupIds.ToHashSet();
+        var groups = config.Groups.Where(g => wanted.Contains(g.Id)).ToList();
+        return LoadAsync(partId, groups, ct);
+    }
+
+    // Ключ модели в слепке — Id модели в форме N (SnapshotPublisher это проверяет), поэтому отбор идёт до чтения слепка.
+    private async Task<IReadOnlyList<ElementsInput>> LoadAsync(Guid partId, IReadOnlyList<SetGroup> groups, CancellationToken ct)
     {
         var result = new List<ElementsInput>();
+        if (groups.Count == 0) return result;
         foreach (var model in await models.OfPartAsync(partId, ct))
         {
             if (model is not { Discipline: { } discipline, Latest: { } latest }) continue;
+            if (!groups.Any(g => g.Source.Includes(discipline, model.ModelId.ToString("N")))) continue;
             var snapshot = cache.Get(latest.Id, storage.SnapshotFolder(model.ModelId, latest.Id));
             result.Add(new ElementsInput(discipline, snapshot.Index.Header.ModelKey, snapshot.Elements, snapshot.Parameters));
         }
