@@ -445,6 +445,8 @@ public class ClashReportExportTests : ServerTest
     }
 
     // Рост памяти меряется по куче всего процесса: параллельные тесты добавляли в замер свои десятки мегабайт (CI 2.2.0 — 79 МБ).
+    // Замер - живые объекты после полной сборки: без неё пик - ещё не собранный мусор, он зависит от того, когда сработал
+    // сборщик (CI 2.3.0 — 82 МБ на коде, который выгрузку не менял), а не от того, держит ли выгрузка файл целиком.
     [Test]
     [NotInParallel]
     public async Task ExportXlsx_10kRows_StreamedAllRows()
@@ -459,8 +461,8 @@ public class ClashReportExportTests : ServerTest
         {
             while (!stop.IsCancellationRequested)
             {
-                peak = Math.Max(peak, GC.GetTotalMemory(false));
-                await Task.Delay(20);
+                peak = Math.Max(peak, GC.GetTotalMemory(true));
+                await Task.Delay(50);
             }
         });
 
