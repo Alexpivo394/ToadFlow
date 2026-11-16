@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Anchor, Avatar, Badge, Breadcrumbs, Button, Center, Group, List, Loader, Menu, Modal, SegmentedControl, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
 import { modals } from '@mantine/modals';
@@ -18,6 +18,7 @@ import { ExclusionsTab } from '../matrix/ExclusionsTab';
 import { MatrixTab } from '../matrix/MatrixTab';
 import { SetsTab } from '../sets/SetsTab';
 import { ModelsTab } from './ModelsTab';
+import { PartActions } from './PartActions';
 import { ScheduleLine } from './ScheduleLine';
 import { type Conflicts, useDraft } from './useDraft';
 
@@ -111,7 +112,10 @@ export function PartShell() {
 
   // Уход на другую страницу — меню, ссылка, «Назад» браузера — с несохранёнными правками спрашивает. Вкладки части меняют только
   // параметры адреса и не останавливаются.
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => draft.dirty && currentLocation.pathname !== nextLocation.pathname);
+  // Удалённую часть сохранять некуда — уход после удаления не спрашивает.
+  const deleted = useRef(false);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    !deleted.current && draft.dirty && currentLocation.pathname !== nextLocation.pathname);
   useEffect(() => {
     if (blocker.state !== 'blocked') return;
     // Закрытие окна крестиком или Esc — «Остаться»; после «Уйти» окно тоже закрывается, и сбрасывать переход тогда нельзя.
@@ -178,6 +182,10 @@ export function PartShell() {
         </Group>
         {!readOnly && (
           <Group gap="xs">
+            <PartActions part={part.data} approved={!!approved} onDeleted={() => {
+              deleted.current = true;
+              navigate('/clash/setup/parts');
+            }} />
             <Menu>
               <Menu.Target><Button size="xs" variant="default">Шаблон ▾</Button></Menu.Target>
               <Menu.Dropdown>

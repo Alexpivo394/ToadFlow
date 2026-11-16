@@ -73,6 +73,36 @@ describe('Part shell', () => {
     expect(resent.configuration.sets[0].name).toBe('Стены Б');
   });
 
+  it('PartShell_RenameSendsNameProjectAndBuildingPart', async () => {
+    await openSets({ ...partResponses, 'PUT /api/clash/parts/p1': partResponses['/api/clash/parts/p1'] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Часть ▾' }));
+    fireEvent.click(await screen.findByText('Переименовать…'));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Название/), { target: { value: 'Корпус 2' } });
+    fireEvent.change(within(dialog).getByLabelText('Часть здания'), { target: { value: 'К2' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1' && init?.method === 'PUT')).toBe(true));
+    const [, init] = calls().find(([url, i]) => url === '/api/clash/parts/p1' && i?.method === 'PUT')!;
+    expect(JSON.parse(String(init!.body))).toMatchObject({ name: 'Корпус 2', part: 'К2' });
+  });
+
+  it('PartShell_DeleteAsksThenDeletesAndLeaves_EvenWithUnsavedEdits', async () => {
+    const name = await openSets({ ...partResponses, 'DELETE /api/clash/parts/p1': null, '/api/clash/parts': [] });
+    fireEvent.change(name, { target: { value: 'Стены наружные' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Часть ▾' }));
+    fireEvent.click(await screen.findByText('Удалить часть…'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/Отменить удаление нельзя/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Удалить' }));
+
+    await waitFor(() => expect(calls().some(([url, init]) => url === '/api/clash/parts/p1' && init?.method === 'DELETE')).toBe(true));
+    await waitFor(() => expect(screen.queryByLabelText('Имя набора')).toBeNull());
+    expect(screen.queryByText('Есть несохранённые правки. Уйти без сохранения?')).toBeNull();
+  });
+
   it('PartShell_PresenceBadges', async () => {
     await openSets({ ...partResponses, '/api/clash/parts/p1/presence': [{ userId: 'u9', displayName: 'Иван', tab: 'sets', setId: 's-walls' }] });
 

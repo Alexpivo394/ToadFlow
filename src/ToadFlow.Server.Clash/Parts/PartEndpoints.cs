@@ -141,11 +141,24 @@ public static class PartEndpoints
         return Results.Ok(await ViewAsync(part, models, ct));
     }
 
-    private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, ClashStorage storage, CancellationToken ct)
+    /// <summary>Часть со всеми прогонами, коллизиями и историей; из расписаний выгрузки она убирается в той же транзакции.</summary>
+    private static async Task<IResult> DeleteAsync(Guid id, ToadFlowDb db, HttpContext http, TimeProvider time, ClashStorage storage, CancellationToken ct)
     {
-        var deleted = await db.Set<ClashPart>().Where(p => p.Id == id).ExecuteDeleteAsync(ct);
-        if (deleted > 0) storage.DeleteImageFolder(id);
-        return deleted == 0 ? Results.NotFound() : Results.NoContent();
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var part = await db.Set<ClashPart>().FromSqlInterpolated($"SELECT * FROM clash_parts WHERE id = {id} FOR UPDATE").SingleOrDefaultAsync(ct);
+        if (part is null) return Results.NotFound();
+
+        // Только утверждённая часть бывает в расписаниях.
+        if (part.ApprovedVersion is not null)
+        {
+            await PartSchedules.ApplyAsync(db, part, [], http.User.UserId(), time.GetUtcNow(), ct);
+            await db.SaveChangesAsync(ct);
+        }
+
+        await db.Set<ClashPart>().Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+        await transaction.CommitAsync(ct);
+        storage.DeleteImageFolder(id);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> SetModelsAsync(Guid id, PartModelRequest[] request, ToadFlowDb db, HttpContext http, TimeProvider time, IDomainEvents events,

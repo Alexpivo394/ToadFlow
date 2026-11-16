@@ -109,6 +109,21 @@ public class ClashPartSchedulesTests : ServerTest
     }
 
     [Test]
+    public async Task DeletePart_RemovesItFromSchedules()
+    {
+        var (admin, agent, partId) = await PartAsync();
+        await using var _ = agent;
+        var keepOther = Guid.NewGuid();
+        var night = await ScheduleAsync("Ночная", [partId, keepOther], view: "Мой вид");
+
+        (await admin.DeleteAsync($"/api/clash/parts/{partId}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var settings = await SettingsAsync(night);
+        settings.Parts.ShouldBe([keepOther]);
+        settings.ViewName.ShouldBe("Мой вид");
+    }
+
+    [Test]
     public async Task Schedules_Put_WritesChangeLog()
     {
         var (admin, agent, partId) = await PartAsync();
