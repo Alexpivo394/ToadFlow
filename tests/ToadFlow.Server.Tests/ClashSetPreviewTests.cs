@@ -152,8 +152,10 @@ public class ClashSetPreviewTests : ServerTest
         }, TaskCreationOptions.LongRunning)));
 
         cache.Loads.ShouldBe(1);
-        snapshots.Distinct().Count().ShouldBe(1);
-        cache.Get(snapshotId, folder).ShouldBeSameAs(snapshots[0]);
+        cache.ParameterLoads.ShouldBe(1);
+        snapshots.Select(s => s.Index).Distinct().Count().ShouldBe(1);
+        snapshots.Select(s => s.Parameters).Distinct().Count().ShouldBe(1);
+        cache.Get(snapshotId, folder).Index.ShouldBeSameAs(snapshots[0].Index);
         cache.Loads.ShouldBe(1);
         Directory.Delete(folder, recursive: true);
     }
@@ -186,6 +188,96 @@ public class ClashSetPreviewTests : ServerTest
         // Разобранные параметры занимают в 4–6,5 раза больше файла (замер на реальных моделях): оценка не меньше этого.
         (large - small).ShouldBeGreaterThanOrEqualTo(6 * (10_000_000L - 1_000));
         Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_Full_EvictsLeastRecentlyUsedInsteadOfRejectingNew()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        ModelIndex index;
+        using (var geometry = File.OpenRead(Path.Combine(folder, "model.tcg"))) index = ModelGeometryFile.ReadIndex(geometry);
+        // Помещается одно оглавление, а не два.
+        using var cache = new PartElementsCache(byteLimit: PartElementsCache.EstimatedIndexBytes(index) * 3 / 2);
+        Guid first = Guid.NewGuid(), second = Guid.NewGuid();
+
+        cache.GetIndex(first, folder);
+        cache.GetIndex(second, folder);
+        cache.GetIndex(second, folder);
+
+        // Новый слепок вытесняет давний, а не отбрасывается: повторный запрос берёт его из памяти.
+        cache.Loads.ShouldBe(2);
+        cache.GetIndex(first, folder);
+        cache.Loads.ShouldBe(3);
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_Index_DoesNotReadParameters()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        using var cache = new PartElementsCache();
+        var snapshotId = Guid.NewGuid();
+
+        cache.GetIndex(snapshotId, folder).Elements.Count.ShouldBe(2);
+        cache.ParameterLoads.ShouldBe(0);
+
+        cache.Get(snapshotId, folder).Elements.Count.ShouldBe(2);
+        cache.Get(snapshotId, folder);
+        (cache.Loads, cache.ParameterLoads).ShouldBe((1, 1));
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_Unused_ExpiresAfterSlidingWindow()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        var time = new ManualTime();
+        using var cache = new PartElementsCache(time: time);
+        var snapshotId = Guid.NewGuid();
+
+        cache.GetIndex(snapshotId, folder);
+        time.Advance(TimeSpan.FromMinutes(9));
+        cache.GetIndex(snapshotId, folder);
+        time.Advance(TimeSpan.FromMinutes(9));
+        cache.GetIndex(snapshotId, folder);
+        cache.Loads.ShouldBe(1);
+
+        time.Advance(TimeSpan.FromMinutes(11));
+        cache.GetIndex(snapshotId, folder);
+        cache.Loads.ShouldBe(2);
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_Indexes_InRequestedOrder()
+    {
+        var folders = new[] { SnapshotFolder(padding: 0), SnapshotFolder(padding: 10), SnapshotFolder(padding: 0) };
+        using var cache = new PartElementsCache();
+        var ids = folders.Select(_ => Guid.NewGuid()).ToArray();
+
+        var indexes = cache.GetIndexes(ids.Zip(folders).ToList());
+
+        indexes.Count.ShouldBe(3);
+        for (var i = 0; i < 3; i++) indexes[i].ShouldBeSameAs(cache.GetIndex(ids[i], folders[i]));
+        cache.Loads.ShouldBe(3);
+        foreach (var folder in folders) Directory.Delete(folder, recursive: true);
+    }
+
+    [Test]
+    public void ElementsCache_Indexes_MissingFileThrowsItsOwnException()
+    {
+        var folder = SnapshotFolder(padding: 0);
+        using var cache = new PartElementsCache();
+
+        Should.Throw<DirectoryNotFoundException>(() => cache.GetIndexes([(Guid.NewGuid(), folder), (Guid.NewGuid(), folder + "-missing")]));
+        Directory.Delete(folder, recursive: true);
+    }
+
+    private sealed class ManualTime : TimeProvider
+    {
+        private DateTimeOffset _now = new(2026, 11, 16, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan by) => _now += by;
     }
 
     [Test]

@@ -165,14 +165,10 @@ public sealed class CollisionImages
             if (File.Exists(path)) return Ok(path);
             ct.ThrowIfCancellationRequested();
 
-            var models = new List<SceneModel>(target.Models.Count);
-            foreach (var model in target.Models)
-            {
-                var folder = Path.Combine(_root, model.ModelId.ToString("N"), model.SnapshotId.ToString("N"));
-                var geometry = Path.Combine(folder, "model.tcg");
-                if (!File.Exists(geometry)) return Gone;
-                models.Add(new SceneModel(_cache.Get(model.SnapshotId, folder).Index, () => File.OpenRead(geometry)));
-            }
+            var folders = target.Models.Select(m => Path.Combine(_root, m.ModelId.ToString("N"), m.SnapshotId.ToString("N"))).ToList();
+            if (folders.Any(f => !File.Exists(Path.Combine(f, "model.tcg")))) return Gone;
+            var indexes = _cache.GetIndexes(target.Models.Select((m, i) => (m.SnapshotId, folders[i])).ToList());
+            var models = folders.Select((f, i) => new SceneModel(indexes[i], () => File.OpenRead(Path.Combine(f, "model.tcg")))).ToList();
 
             var sceneTarget = new SceneTarget(target.ModelA, target.UniqueIdA, target.ModelB, target.UniqueIdB, target.X, target.Y, target.Z);
             byte[]? png;

@@ -227,15 +227,10 @@ public static class ViewerEndpoints
         if (r is < ViewerScene.MinRadiusMm or > ViewerScene.MaxRadiusMm)
             return new Loaded(Results.BadRequest(new { error = $"Радиус — от {ViewerScene.MinRadiusMm} до {ViewerScene.MaxRadiusMm} мм" }));
 
-        var models = new List<ViewerModel>(run.Models.Count);
-        var folders = new List<string>(run.Models.Count);
-        foreach (var model in run.Models)
-        {
-            var folder = storage.SnapshotFolder(model.ModelId, model.SnapshotId);
-            if (!File.Exists(Path.Combine(folder, "model.tcg"))) return new Loaded(Gone());
-            models.Add(new ViewerModel(model.ModelId, model.ModelName, model.Discipline, cache.Get(model.SnapshotId, folder).Index));
-            folders.Add(folder);
-        }
+        var folders = run.Models.Select(m => storage.SnapshotFolder(m.ModelId, m.SnapshotId)).ToList();
+        if (folders.Any(f => !File.Exists(Path.Combine(f, "model.tcg")))) return new Loaded(Gone());
+        var indexes = cache.GetIndexes(run.Models.Select((m, i) => (m.SnapshotId, folders[i])).ToList());
+        var models = run.Models.Select((m, i) => new ViewerModel(m.ModelId, m.ModelName, m.Discipline, indexes[i])).ToList();
 
         try
         {
