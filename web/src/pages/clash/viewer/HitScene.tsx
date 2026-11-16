@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Badge, Box as Area, Button, Center, Checkbox, Group, Loader, Paper, RangeSlider, ScrollArea, SegmentedControl, Select, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiFetch, apiFetchBinary } from '../../../api/client';
@@ -29,20 +29,24 @@ const sceneAt = (path: string, radius: string, version = '') => ({
   ...viewerCache,
 });
 
-const meshesAt = (path: string, radius: string, version = '') => ({
-  queryKey: ['clash-viewer', path, version, radius, 'meshes'],
-  queryFn: async () => parseMeshes(await apiFetchBinary(`${path}/meshes?radius=${radius}`)),
+/**
+ * Сетки сцены частью: <c>pair</c> — A и B (килобайты, рисуются сразу), <c>context</c> — окружение (мегабайты, дорисовывается
+ * следом). Номера элементов — по манифесту всей сцены, поэтому сетки грузятся одновременно с ним, а не после него.
+ */
+const meshesAt = (path: string, radius: string, part: 'pair' | 'context', version = '') => ({
+  queryKey: ['clash-viewer', path, version, radius, 'meshes', part],
+  queryFn: async () => parseMeshes(await apiFetchBinary(`${path}/meshes?radius=${radius}&part=${part}`)),
   ...viewerCache,
 });
 
 export const sceneQuery = (runId: string, number: number, radius: string) => sceneAt(base(runId, number), radius);
 
-export const meshesQuery = (runId: string, number: number, radius: string) => meshesAt(base(runId, number), radius);
-
 /** Заранее грузит сцену и сетки коллизии — листание стрелками не ждёт сервер. */
 export function prefetchHit(client: QueryClient, runId: string, number: number, radius = '5000') {
+  const path = base(runId, number);
   void client.prefetchQuery(sceneQuery(runId, number, radius));
-  void client.prefetchQuery(meshesQuery(runId, number, radius));
+  void client.prefetchQuery(meshesAt(path, radius, 'pair'));
+  void client.prefetchQuery(meshesAt(path, radius, 'context'));
 }
 
 function plural(n: number, one: string, few: string, many: string) {
@@ -82,7 +86,14 @@ export function HitScene({ runId, number, collisionId, version, title, focus, mi
 
   const path = collisionId ? `/api/clash/collisions/${collisionId}` : base(runId, number);
   const scene = useQuery(sceneAt(path, radius, version));
-  const meshes = useQuery({ ...meshesAt(path, radius, version), enabled: !!scene.data });
+  const pairMeshes = useQuery(meshesAt(path, radius, 'pair', version));
+  const contextMeshes = useQuery(meshesAt(path, radius, 'context', version));
+  // Пара видна, как только пришли её сетки; окружение добавляется, когда придёт, — камера при этом не двигается.
+  const meshes = useMemo(() => {
+    if (!pairMeshes.data || !contextMeshes.data) return pairMeshes.data ?? contextMeshes.data;
+    return new Map([...pairMeshes.data, ...contextMeshes.data]);
+  }, [pairMeshes.data, contextMeshes.data]);
+  const meshesError = pairMeshes.error ?? contextMeshes.error;
 
   // Другая коллизия — новый секущий куб вокруг её пары и сброс выбора.
   useEffect(() => {
@@ -126,6 +137,9 @@ export function HitScene({ runId, number, collisionId, version, title, focus, mi
             Окружение: {context.length} {plural(context.length, 'элемент', 'элемента', 'элементов')}, {withMesh} с сеткой
           </Text>
         )}
+        {scene.data && withMesh > 0 && contextMeshes.isPending && (
+          <Group gap={4}><Loader size={12} /><Text size="xs" c="dimmed">загружается окружение…</Text></Group>
+        )}
         {scene.data?.truncated && <Badge color="orange" variant="light">окружение урезано</Badge>}
       </Group>
 
@@ -158,7 +172,7 @@ export function HitScene({ runId, number, collisionId, version, title, focus, mi
           </Center>
         ) : scene.data ? (
           <Suspense fallback={<Center h="100%"><Loader /></Center>}>
-            <ClashViewer scene={scene.data} meshes={meshes.data} isolation={isolation} sectionBox={sectionOn ? section : null}
+            <ClashViewer scene={scene.data} meshes={meshes} isolation={isolation} sectionBox={sectionOn ? section : null}
               selected={selected} onPick={setSelected} onSectionChange={(box) => { setSection(box); setSectionOn(true); }} />
           </Suspense>
         ) : (
@@ -167,7 +181,7 @@ export function HitScene({ runId, number, collisionId, version, title, focus, mi
         {showProps && scene.data && (
           <Paper withBorder shadow="sm" p="xs" radius="md" w={320} style={{ position: 'absolute', top: 8, right: 8, maxHeight: 'calc(100% - 16px)', display: 'flex' }}>
             <ScrollArea.Autosize mah="100%" style={{ flex: 1 }}>
-              {meshes.error && <Text size="xs" c="red">{meshes.error.message}</Text>}
+              {meshesError && <Text size="xs" c="red">{meshesError.message}</Text>}
               <ElementPanel runId={scene.data.runId} collisionId={collisionId} scene={scene.data} selected={selected}
                 mine={mine ? scene.data.elements.find((e) => e.role === mine)?.index ?? null : null} />
             </ScrollArea.Autosize>

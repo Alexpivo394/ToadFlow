@@ -12,6 +12,9 @@ public static class ViewerMeshWriter
 {
     public const uint Magic = 0x31564354; // "TCV1"
 
+    /// <summary>Тип ответа: свой, чтобы nginx сжимал сетки, но не прочие бинарные ответы (MSI агента, слепки).</summary>
+    public const string ContentType = "application/vnd.toadflow.tcv";
+
     public static byte[] Header(int count)
     {
         var bytes = new byte[8];

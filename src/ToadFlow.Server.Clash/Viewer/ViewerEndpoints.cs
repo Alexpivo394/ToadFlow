@@ -77,9 +77,25 @@ public static class ViewerEndpoints
         CancellationToken ct) =>
         Scene(await LoadAsync(runId, number, radius, db, storage, cache, ct), runId, number);
 
-    private static async Task<IResult> MeshesAsync(Guid runId, int number, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
-        HttpResponse response, CancellationToken ct) =>
-        await MeshesOf(await LoadAsync(runId, number, radius, db, storage, cache, ct), response, ct);
+    private static async Task<IResult> MeshesAsync(Guid runId, int number, double? radius, string? part, ToadFlowDb db, ClashStorage storage,
+        PartElementsCache cache, HttpResponse response, CancellationToken ct) =>
+        PartOf(part) is not { } include
+            ? BadPart()
+            : await MeshesOf(await LoadAsync(runId, number, radius, db, storage, cache, ct), include, response, ct);
+
+    /// <summary>
+    ///     Какие сетки отдать: <c>pair</c> — A и B (килобайты, их веб рисует сразу), <c>context</c> — окружение, без значения — всё.
+    ///     Номера элементов — всегда по манифесту всей сцены.
+    /// </summary>
+    private static Func<ViewerPick, bool>? PartOf(string? part) => part switch
+    {
+        null or "" => _ => true,
+        "pair" => p => p.Role != ViewerRole.Context,
+        "context" => p => p.Role == ViewerRole.Context,
+        _ => null
+    };
+
+    private static IResult BadPart() => Results.BadRequest(new { error = "part — pair, context или без значения" });
 
     /// <summary>Сцена коллизии утверждённой проверки — по прогону, который нашёл её последним.</summary>
     public static async Task<IResult> CollisionSceneAsync(Guid id, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
@@ -89,9 +105,11 @@ public static class ViewerEndpoints
         return collision is null ? loaded.Error! : Scene(loaded, collision.LastFoundRunId, collision.Number);
     }
 
-    public static async Task<IResult> CollisionMeshesAsync(Guid id, double? radius, ToadFlowDb db, ClashStorage storage, PartElementsCache cache,
-        HttpResponse response, CancellationToken ct) =>
-        await MeshesOf((await LoadCollisionAsync(id, radius, db, storage, cache, ct)).Loaded, response, ct);
+    public static async Task<IResult> CollisionMeshesAsync(Guid id, double? radius, string? part, ToadFlowDb db, ClashStorage storage,
+        PartElementsCache cache, HttpResponse response, CancellationToken ct) =>
+        PartOf(part) is not { } include
+            ? BadPart()
+            : await MeshesOf((await LoadCollisionAsync(id, radius, db, storage, cache, ct)).Loaded, include, response, ct);
 
     private static IResult Scene(Loaded loaded, Guid runId, int number)
     {
@@ -117,10 +135,11 @@ public static class ViewerEndpoints
                 info.Family, info.Type, info.Level, Relative(entry.Bounds.Min), Relative(entry.Bounds.Max), entry.TriangleCount, pick.Mesh);
         }).ToList();
 
-    private static async Task<IResult> MeshesOf(Loaded loaded, HttpResponse response, CancellationToken ct)
+    private static async Task<IResult> MeshesOf(Loaded loaded, Func<ViewerPick, bool> include, HttpResponse response, CancellationToken ct)
     {
         if (loaded.Error is { } error) return error;
-        await WriteMeshesAsync(loaded.Models!, loaded.Folders!, loaded.Selection!.Picks, loaded.Hit!.X, loaded.Hit.Y, loaded.Hit.Z, response, ct);
+        await WriteMeshesAsync(loaded.Models!, loaded.Folders!, loaded.Selection!.Picks, loaded.Hit!.X, loaded.Hit.Y, loaded.Hit.Z, response, ct,
+            include);
         return Results.Empty;
     }
 
@@ -130,11 +149,12 @@ public static class ViewerEndpoints
     /// </summary>
     /// <param name="folders">Папки слепков, по одной на модель из <paramref name="models" />.</param>
     /// <param name="x">Начало сцены в общей системе, мм.</param>
+    /// <param name="include">Какие из выбранных отдать; номер элемента остаётся номером в <paramref name="selected" />.</param>
     internal static async Task WriteMeshesAsync(IReadOnlyList<ViewerModel> models, IReadOnlyList<string> folders, IReadOnlyList<ViewerPick> selected,
-        double x, double y, double z, HttpResponse response, CancellationToken ct)
+        double x, double y, double z, HttpResponse response, CancellationToken ct, Func<ViewerPick, bool>? include = null)
     {
-        var picks = selected.Select((pick, i) => (Pick: pick, Index: i)).Where(p => p.Pick.Mesh).ToList();
-        response.ContentType = "application/octet-stream";
+        var picks = selected.Select((pick, i) => (Pick: pick, Index: i)).Where(p => p.Pick.Mesh && (include?.Invoke(p.Pick) ?? true)).ToList();
+        response.ContentType = ViewerMeshWriter.ContentType;
         await response.Body.WriteAsync(ViewerMeshWriter.Header(picks.Count), ct);
         var files = new Dictionary<int, FileStream>();
         try

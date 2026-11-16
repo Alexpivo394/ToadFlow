@@ -106,12 +106,29 @@ public class ClashViewerTests : ServerTest
         var response = await setup.Admin.GetAsync($"/api/clash/runs/{setup.RunId}/hits/1/meshes");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/octet-stream");
+        // Свой тип: nginx сжимает его, а не любые бинарные ответы.
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/vnd.toadflow.tcv");
         var meshes = ParseMeshes(await response.Content.ReadAsByteArrayAsync());
         meshes.Keys.Order().ShouldBe(scene.Elements.Where(e => e.Mesh).Select(e => e.Index));
         meshes.Values.ShouldAllBe(m => m.Positions.Length == 24 && m.Indices.Length == 36);
         // near: куб 3000..3100 по X в системе АР, точка коллизии — 75.25.
         meshes[2].Positions.Where((_, i) => i % 3 == 0).Min().ShouldBe(3000 - 75.25f, 0.01f);
+    }
+
+    [Test]
+    public async Task Meshes_PairAndContextSeparately_SameIndexesAsWhole()
+    {
+        var setup = await SceneAsync();
+        var path = $"/api/clash/runs/{setup.RunId}/hits/1/meshes?radius=10000";
+
+        var whole = ParseMeshes(await setup.Admin.GetByteArrayAsync(path));
+        var pair = ParseMeshes(await setup.Admin.GetByteArrayAsync(path + "&part=pair"));
+        var context = ParseMeshes(await setup.Admin.GetByteArrayAsync(path + "&part=context"));
+
+        pair.Keys.Order().ShouldBe([0, 1]);
+        context.Keys.Order().ShouldBe([2, 3]);
+        foreach (var (index, mesh) in pair.Concat(context)) mesh.Positions.ShouldBe(whole[index].Positions);
+        (await setup.Admin.GetAsync(path + "&part=other")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Test]
