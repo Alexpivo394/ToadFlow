@@ -218,6 +218,14 @@ public sealed class AgentWorker(ServerConnection connection, InstanceManager ins
             {
                 completion = await runner.RunAsync(instance, assignment, current, connection, ct, options.SilenceTimeoutOverride);
             }
+            catch (Exception exception) when (instance.KillReason is { } killed && (exception is not OperationCanceledException || !ct.IsCancellationRequested))
+            {
+                // Revit убили (вручную, по таймауту), пока раннер с ним говорил, — например, между «выполняется» и отправкой задания
+                // в пайп. Обрыв пайпа — следствие, в задание пишется причина, как у раннера.
+                logger.LogWarning("Задание {Job}: Revit в слоте {Slot} {Reason}, раннер прервался: {Error}", assignment.JobId, instance.Slot, killed,
+                    exception.Message);
+                completion = new JobCompletionDto(assignment.JobId, JobOutcome.InfrastructureFailure, $"Revit {killed}", null);
+            }
             catch (Exception exception) when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 // Иначе задание осталось бы «выполняется»: heartbeat продлевал бы его аренду, пока жив этот Revit.

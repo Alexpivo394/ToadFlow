@@ -256,7 +256,8 @@ public sealed class InstanceManager(IProcessLauncher launcher, IReadOnlyList<Rev
         while (true)
         {
             if (instance.Ready.IsCompletedSuccessfully) return null;
-            if (instance.Process.HasExited) return $"Revit {year} закрылся при запуске";
+            // Убит при запуске (вручную, при остановке агента) — причина убийства, а не «закрылся сам».
+            if (instance.Process.HasExited) return instance.KillReason is { } killed ? $"Revit {year} {killed}" : $"Revit {year} закрылся при запуске";
             if (instance.Ready.IsFaulted) return $"аддин ToadFlow в Revit {year} отключился от агента при запуске";
             if (abandoned?.Invoke() == true) return "";
             if (ct.IsCancellationRequested) return NotStarted(instance);

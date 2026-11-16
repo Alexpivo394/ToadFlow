@@ -211,6 +211,8 @@ public class AgentEndToEndTests : ServerTest
         var agent = await AgentAsync();
         var runId = await RunNowAsync(maxRetries: 0);
         await UntilAsync(runId, d => d.Jobs.Any(j => j.Status == JobStatus.Running));
+        // Кнопка «убить» есть у слота, который видно в «Агентах»: задание уже «выполняется», когда Revit ещё не занял слот.
+        await EventuallyAsync(async () => (await _admin.GetJsonAsync<AgentRow[]>("/api/agents")).Single().Instances.Any(i => i.Slot == 1));
 
         (await _admin.PostAsync($"/api/agents/{agent.Config.AgentId}/instances/1/kill", null)).EnsureSuccessStatusCode();
 
