@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime;
 using Alexpivo394.Revit.Clash.Engine;
 using Alexpivo394.Revit.Clash.Geometry;
 using Alexpivo394.Revit.Clash.Rules;
@@ -40,7 +41,29 @@ public sealed class EngineWorker(EngineClient client, SnapshotCache cache, Worke
     public async Task<RunOutcome?> RunOnceAsync(CancellationToken ct)
     {
         var assignment = await client.ClaimAsync(ct);
-        return assignment is null ? null : await ProcessAsync(assignment, ct);
+        if (assignment is null) return null;
+        try
+        {
+            return await ProcessAsync(assignment, ct);
+        }
+        finally
+        {
+            var before = Environment.WorkingSet;
+            ReleaseMemory();
+            logger.LogInformation("Прогон {Run}: память отдана системе, занято {After} МБ вместо {Before} МБ", assignment.RunId,
+                Environment.WorkingSet >> 20, before >> 20);
+        }
+    }
+
+    /// <summary>
+    ///     Полная сборка с уплотнением и возвратом памяти системе. Между прогонами работник ничего не держит в памяти (слепки — на
+    ///     диске), а серверный сборщик в простое не собирает: без этого после большого прогона контейнер держал гигабайты, нужные
+    ///     серверу и PostgreSQL на той же машине.
+    /// </summary>
+    internal static void ReleaseMemory()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     public async Task<RunOutcome> ProcessAsync(EngineRunAssignment assignment, CancellationToken ct)
