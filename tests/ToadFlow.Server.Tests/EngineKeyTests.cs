@@ -33,6 +33,28 @@ public class EngineKeyTests : ServerTest
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
+    /// <summary>Compose больше не требует ключ: на рабочей установке с включёнными коллизиями его требует сервер.</summary>
+    [Test]
+    public async Task EngineKey_EmptyInProduction_ClashEnabled_HostFailsToStart()
+    {
+        await using var noKey = Server.WithWebHostBuilder(builder => builder.UseEnvironment("Production").UseSetting("Clash:EngineKey", ""));
+
+        var error = Should.Throw<OptionsValidationException>(() => noKey.CreateClient());
+
+        error.Message.ShouldContain("CLASH_ENGINE_KEY");
+        error.Message.ShouldContain("MODULES");
+    }
+
+    [Test]
+    public async Task EngineKey_EmptyInProduction_ClashDisabled_HostStarts()
+    {
+        await using var noClash = Server.WithWebHostBuilder(builder =>
+            builder.UseEnvironment("Production").UseSetting("Clash:EngineKey", "").UseSetting("Modules", "export,loi"));
+        using var client = noClash.CreateClient();
+
+        (await client.GetAsync("/api/health")).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
     [Test]
     public async Task EngineKey_Length31_HostFailsToStart()
     {

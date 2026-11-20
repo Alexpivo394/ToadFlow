@@ -39,7 +39,10 @@ services:
       Admin__Login: ${ADMIN_LOGIN:-admin}
       Admin__Password: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD в .env}
       Clash__StorageRoot: /data/clash
-      Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env — общий ключ сервера и движка коллизий}
+      # Какие модули включены: export, loi, clash. Пусто — все
+      Modules: ${MODULES:-}
+      # Общий ключ сервера и движка коллизий; при включённых коллизиях без него сервер не стартует
+      Clash__EngineKey: ${CLASH_ENGINE_KEY:-}
       # Картинки коллизий рисует сервер: столько потоков одновременно
       Clash__ImageThreads: ${CLASH_IMAGE_THREADS:-2}
       # Память под разобранные слепки (наборы, 3D, картинки), МБ; 0 — половина памяти сервера
@@ -59,11 +62,12 @@ services:
 
   # Движок коллизий: прогоны по одному. Лимиты — чтобы не душить сервер и PostgreSQL на той же машине; по умолчанию
   # подходят хосту с 4 ядрами и 8 ГБ. Больше ядер и памяти — быстрее большие части (см. вики, «Сервер»).
+  # Коллизии выключены в MODULES — движок спрашивает сервер, завершается с кодом 0 и больше не поднимается (on-failure).
   clash-engine:
     build:
       context: ..
       dockerfile: deploy/clash-engine.Dockerfile
-    restart: unless-stopped
+    restart: on-failure
     logging: *logging
     depends_on:
       server:
@@ -72,7 +76,7 @@ services:
     cpus: ${CLASH_ENGINE_CPUS:-2}
     environment:
       Clash__ServerUrl: http://server:8080
-      Clash__EngineKey: ${CLASH_ENGINE_KEY:?задайте CLASH_ENGINE_KEY в .env}
+      Clash__EngineKey: ${CLASH_ENGINE_KEY:-}
     volumes:
       - clash-engine-cache:/data/cache
 
