@@ -1482,3 +1482,10 @@ export interface TriggeredRunView {
   new: number | null;
   error: string | null;
 }
+
+/** Модуль сервера: включён ли он настройкой MODULES (GET /api/modules). */
+export interface ModuleView {
+  name: string;
+  title: string;
+  enabled: boolean;
+}

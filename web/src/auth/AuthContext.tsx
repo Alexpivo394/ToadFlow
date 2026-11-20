@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiFetch, endSession, getToken, setSession, setUnauthorizedHandler } from '../api/client';
 import type { LoginResponse, UserRole, UserView } from '../api/types';
 
-interface AuthState {
+export interface AuthState {
   user: UserView | null;
   loading: boolean;
   /** <c>remember</c> — «Оставаться в системе»: вход переживает закрытие браузера. */

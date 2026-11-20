@@ -1,0 +1,86 @@
+import { screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { AuthProvider, useAuth } from '../auth/AuthContext';
+import { renderUi } from '../test/renderApp';
+import { useSpaces, visiblePages } from './useSpaces';
+
+const user = (role: string, disciplines: string[] = []) => ({
+  id: 'u1', login: role.toLowerCase(), displayName: role, role, isDisabled: false, lastLoginAt: null, disciplines,
+});
+
+const modules = (disabled: string[] = []) =>
+  ['export', 'loi', 'clash'].map((name) => ({ name, title: name, enabled: !disabled.includes(name) }));
+
+/** Пространства и их страницы строкой «id: адрес,адрес». */
+function Probe() {
+  const { spaces, loading } = useSpaces();
+  const auth = useAuth();
+  if (loading || !auth.user) return <div>загрузка</div>;
+  return (
+    <ul>
+      {spaces.map((space) => (
+        <li key={space.id}>{`${space.id}: ${visiblePages(space, auth).map((p) => p.to).join(',')}`}</li>
+      ))}
+    </ul>
+  );
+}
+
+async function spacesOf(role: string, options: { disciplines?: string[]; disabled?: string[] } = {}) {
+  renderUi(<AuthProvider><Probe /></AuthProvider>, {
+    '/api/auth/me': user(role, options.disciplines),
+    '/api/modules': modules(options.disabled),
+  });
+  const items = await screen.findAllByRole('listitem');
+  return Object.fromEntries(items.map((item) => item.textContent!.split(': ')).map(([id, pages]) => [id, pages.split(',')]));
+}
+
+describe('useSpaces', () => {
+  it('administrator with all modules sees five spaces in order', async () => {
+    const spaces = await spacesOf('Admin', { disciplines: ['ОВ'] });
+
+    expect(Object.keys(spaces)).toEqual(['export', 'loi', 'clash', 'farm', 'admin']);
+    expect(spaces.export).toEqual(['/export/schedules', '/export/history', '/export/presets']);
+    expect(spaces.clash).toContain('/clash/setup/settings');
+    expect(spaces.admin).toEqual(['/admin/users', '/admin/modules', '/admin/server', '/admin/events']);
+  });
+
+  it('a disabled module has no space', async () => {
+    const spaces = await spacesOf('Admin', { disabled: ['clash'] });
+
+    expect(Object.keys(spaces)).toEqual(['export', 'loi', 'farm', 'admin']);
+  });
+
+  it('designer sees only spaces with designer pages', async () => {
+    const spaces = await spacesOf('Designer', { disciplines: ['ОВ'] });
+
+    expect(spaces).toEqual({ clash: ['/clash/my', '/clash/checks', '/clash/summary'] });
+  });
+
+  it('designer without disciplines does not see "Мои"', async () => {
+    const spaces = await spacesOf('Designer');
+
+    expect(spaces).toEqual({ clash: ['/clash/checks', '/clash/summary'] });
+  });
+
+  it('viewer sees admin without "Пользователи"', async () => {
+    const spaces = await spacesOf('Viewer');
+
+    expect(spaces.admin).toEqual(['/admin/modules', '/admin/server', '/admin/events']);
+    expect(spaces.clash).toEqual(['/clash/checks', '/clash/summary']); // настройка коллизий — с координатора
+  });
+
+  it('operator does not see setup pages of admin role', async () => {
+    const spaces = await spacesOf('Operator');
+
+    expect(spaces.clash).toEqual(['/clash/checks', '/clash/summary', '/clash/setup', '/clash/setup/parts', '/clash/setup/templates',
+      '/clash/setup/snapshots', '/clash/setup/schedules', '/clash/setup/history', '/clash/setup/settings']);
+    expect(spaces.admin).toContain('/admin/users');
+  });
+
+  it('no space at all while modules are unknown to a designer with clash disabled', async () => {
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Designer', ['ОВ']), '/api/modules': modules(['clash']) });
+
+    expect(await screen.findByRole('list')).toBeTruthy();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+});
