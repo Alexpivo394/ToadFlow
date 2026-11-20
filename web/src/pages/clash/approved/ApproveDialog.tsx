@@ -22,7 +22,7 @@ function ScheduleChoice({ schedules, value, onChange }: { schedules: PartSchedul
       <Text fw={700} size="sm">Регулярный прогон</Text>
       {none && <Text size="sm">У части нет расписания — после утверждения её никто не прогонит</Text>}
       {schedules.length === 0 ? (
-        <Anchor component={RouterLink} to="/schedules/new" size="sm">Создать расписание</Anchor>
+        <Anchor component={RouterLink} to="/clash/setup/schedules/new" size="sm">Создать расписание</Anchor>
       ) : (
         schedules.map((s) => (
           <Checkbox key={s.id} size="sm" checked={value.includes(s.id)}

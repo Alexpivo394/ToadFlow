@@ -31,7 +31,7 @@ export const farmSpace: Space = {
   routes: () => (
     <>
       <Route path="agents" element={<RoleOnly role="Viewer"><Titled title={t.nav.agents}><AgentsSettings /></Titled></RoleOnly>} />
-      <Route path="queue/*" element={<RoleOnly role="Viewer"><HistoryPage /></RoleOnly>} />
+      <Route path="queue/*" element={<RoleOnly role="Viewer"><HistoryPage base="/farm/queue" /></RoleOnly>} />
       <Route path="sources" element={<RoleOnly role="Viewer"><Titled title={t.nav.farmSources}><SourcesSettings /></Titled></RoleOnly>} />
       <Route path="naming" element={<RoleOnly role="Viewer"><Titled title={t.nav.farmNaming}><Naming /></Titled></RoleOnly>} />
     </>

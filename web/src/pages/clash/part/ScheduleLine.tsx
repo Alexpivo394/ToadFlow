@@ -25,7 +25,7 @@ export function ScheduleLine({ partId, approved, canEdit }: { partId: string; ap
         {selected.map((s, i) => (
           <Fragment key={s.id}>
             {i > 0 && ', '}
-            «<Anchor component={RouterLink} to={`/schedules/${s.id}`} size="sm">{s.name}</Anchor>» — {describeRecurrence(s)}
+            «<Anchor component={RouterLink} to={`/clash/setup/schedules/${s.id}`} size="sm">{s.name}</Anchor>» — {describeRecurrence(s)}
             {s.isEnabled ? '' : ' (выключено)'}
           </Fragment>
         ))}
@@ -50,7 +50,7 @@ export function ScheduleLine({ partId, approved, canEdit }: { partId: string; ap
         </Menu>
       )}
       {canEdit && schedules.data.length === 0 && (
-        <Anchor component={RouterLink} to="/schedules/new" size="sm">Создать расписание</Anchor>
+        <Anchor component={RouterLink} to="/clash/setup/schedules/new" size="sm">Создать расписание</Anchor>
       )}
     </Group>
   );

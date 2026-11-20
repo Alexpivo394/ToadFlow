@@ -12,6 +12,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { ExportSettingsForm } from '../../components/ExportSettingsForm';
 import { ConfirmButton, Empty, Panel } from '../../components/ui';
 import { formatDateTime } from '../../lib/format';
+import { moduleInfo, type ModuleName } from '../../spaces/modules';
 import { ClashScheduleForm } from './ClashScheduleForm';
 import { LoiScheduleForm } from './LoiScheduleForm';
 import { RecurrenceFields } from './RecurrenceFields';
@@ -54,14 +55,14 @@ function forModule(selection: Selection, moduleKind: string): Selection {
   };
 }
 
-function blank(presetId: string): ScheduleRequest {
+function blank(presetId: string, moduleKind = 'export'): ScheduleRequest {
   return {
     name: '',
-    moduleKind: 'export',
+    moduleKind,
     sourceId: '',
-    outputFolderTemplate: defaultFolders.export,
+    outputFolderTemplate: defaultFolders[moduleKind] ?? defaultFolders.export,
     selection: { models: [], folders: [] },
-    moduleSettings: { presetId, overrides: {} },
+    moduleSettings: defaultsFor(moduleKind, presetId),
     recurrenceKind: 'Weekly',
     daysOfWeekMask: 0b0011111,
     timeOfDay: '20:00:00',
@@ -86,7 +87,11 @@ function fromView(view: ScheduleView): ScheduleRequest {
     recurrenceKind, daysOfWeekMask, timeOfDay, intervalHours, onceAt, priority, modelTimeoutMinutes, maxRetries, isEnabled };
 }
 
-export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) {
+/**
+ * Редактор расписания. Внутри модуля (<c>module</c>) вид задачи задан пространством и не меняется; <c>base</c> — адрес страницы
+ * расписаний, от него — переход к созданному расписанию.
+ */
+export function ScheduleEditor({ schedule, module, base = '/schedules' }: { schedule: ScheduleView | null; module?: ModuleName; base?: string }) {
   const { can } = useAuth();
   const readOnly = !can('Operator');
   const navigate = useNavigate();
@@ -97,7 +102,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
   const changes = useApi<ScheduleChange[]>(['schedules', schedule?.id, 'changes'], schedule ? `/api/schedules/${schedule.id}/changes` : null);
   const defaultPreset = presets.data?.find((p) => p.isDefault)?.id ?? '';
 
-  const [form, setForm] = useState<ScheduleRequest>(() => (schedule ? fromView(schedule) : blank(defaultPreset)));
+  const [form, setForm] = useState<ScheduleRequest>(() => (schedule ? fromView(schedule) : blank(defaultPreset, module ? moduleInfo[module].kind : undefined)));
   const [selection, setSelection] = useState<SelectionState>(() => fromSelectionDto(form.selection));
   const [includeNew, setIncludeNew] = useState(() => form.selection.folders.length > 0 || form.selection.models.length === 0);
   const [errors, setErrors] = useState<string | null>(null);
@@ -138,7 +143,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
         color: 'green',
         title: 'Запуск создан',
         message: (
-          <Anchor component="button" size="sm" onClick={() => { notifications.hide(id); navigate(`/history/runs/${runId}`); }}>
+          <Anchor component="button" size="sm" onClick={() => { notifications.hide(id); navigate(`${module ? moduleInfo[module].history : '/history'}/runs/${runId}`); }}>
             Открыть запуск
           </Anchor>
         ),
@@ -163,7 +168,7 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
       for (const warning of saved.warnings) notifications.show({ color: 'yellow', title: 'Обратите внимание', message: warning, autoClose: 10_000 });
       notifications.show({ color: 'green', message: 'Расписание сохранено' });
       await queryClient.invalidateQueries({ queryKey: ['schedules'] });
-      if (!schedule) navigate(`/schedules/${saved.id}`);
+      if (!schedule) navigate(`${base}/${saved.id}`);
     } catch (error) {
       setErrors((error as Error).message);
     } finally {
@@ -190,8 +195,10 @@ export function ScheduleEditor({ schedule }: { schedule: ScheduleView | null }) 
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
             <Stack gap="sm">
               <TextInput label="Название" value={form.name} disabled={readOnly} onChange={(e) => set({ name: e.currentTarget.value })} required />
-              <Select label="Задача" data={moduleOptions} value={form.moduleKind} allowDeselect={false} disabled={readOnly}
-                onChange={(v) => v && setModule(v)} />
+              {!module && (
+                <Select label="Задача" data={moduleOptions} value={form.moduleKind} allowDeselect={false} disabled={readOnly}
+                  onChange={(v) => v && setModule(v)} />
+              )}
               <Select
                 label="Источник"
                 description="Версия Revit определяется по нему"

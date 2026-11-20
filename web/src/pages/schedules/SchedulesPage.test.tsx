@@ -156,3 +156,30 @@ describe('SchedulesPage for clash extraction', () => {
     expect(JSON.parse(String(put![1]!.body)).moduleSettings.parts).toEqual(['p1']);
   });
 });
+
+describe('Schedules inside a module', () => {
+  it('export schedules request module=export and link inside /export', async () => {
+    const urls: string[] = [];
+    renderApp('/export/schedules', {
+      ...responses,
+      '/api/schedules': (url: string) => {
+        urls.push(url);
+        return [schedule];
+      },
+    });
+
+    fireEvent.click(await screen.findByText('ЖК «Север» — все'));
+
+    expect(await screen.findByText('Расписание «ЖК «Север» — все»')).toBeTruthy();
+    expect(urls.every((url) => url.includes('module=export'))).toBe(true);
+    expect(screen.getByRole('link', { name: '+ Новое расписание' }).getAttribute('href')).toBe('/export/schedules/new');
+  });
+
+  it('new schedule in LOI has the LOI form and no task selector', async () => {
+    renderApp('/loi/schedules/new', { ...responses, '/api/schedules': [], '/api/loi/profiles': [] });
+
+    expect(await screen.findByText('Новое расписание')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Задача' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Проверка LOI' })).toBeTruthy();
+  });
+});

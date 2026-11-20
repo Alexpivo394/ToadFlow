@@ -1,6 +1,6 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { renderApp } from '../../test/renderApp';
+import { pickOption, renderApp } from '../../test/renderApp';
 
 const run = {
   id: 'r1', scheduleId: 's1', name: 'ЖК «Север» — все', createdAt: '2026-10-23T08:12:00Z', startedAt: '2026-10-23T08:12:05Z', finishedAt: '2026-10-23T10:04:00Z',
@@ -82,5 +82,42 @@ describe('HistoryPage: clash extraction', () => {
     const line = await screen.findByTestId('clash-runs');
     expect(line.textContent).toBe('Прогоны:Корпус 1— готово (новых 12)·Корпус 2— в очереди');
     expect(screen.getByRole('link', { name: 'Корпус 1' }).getAttribute('href')).toBe('/clash/checks/p1');
+  });
+});
+
+describe('History inside a module and the farm queue', () => {
+  it('module history requests only its module and links runs inside the module', async () => {
+    const urls: string[] = [];
+    renderApp('/loi/history', {
+      '/api/runs': (url: string) => {
+        urls.push(url);
+        return { items: [run], total: 1 };
+      },
+      '/api/runs/r1': { run, jobs: [job] },
+      '/api/schedules': [],
+      '/api/agents': [],
+    });
+
+    fireEvent.click(await screen.findByText('ЖК «Север» — все'));
+
+    expect((await screen.findByRole('link', { name: '← К запускам' })).getAttribute('href')).toBe('/loi/history');
+    expect(urls[0]).toContain('module=loi');
+  });
+
+  it('farm queue shows all modules and filters by module', async () => {
+    const urls: string[] = [];
+    renderApp('/farm/queue', {
+      '/api/runs': (url: string) => {
+        urls.push(url);
+        return { items: [run], total: 1 };
+      },
+      '/api/schedules': [],
+      '/api/agents': [],
+    });
+
+    expect(await screen.findByText('ЖК «Север» — все')).toBeTruthy();
+    expect(urls[0]).not.toContain('module=');
+    await pickOption(screen.getByPlaceholderText('Все модули'), 'Проверка LOI');
+    await waitFor(() => expect(urls[urls.length - 1]).toContain('module=loi'));
   });
 });

@@ -22,8 +22,8 @@ export const exportSpace: Space = {
   ],
   routes: () => (
     <>
-      <Route path="schedules/:id?" element={<RoleOnly role="Viewer"><SchedulesPage /></RoleOnly>} />
-      <Route path="history/*" element={<RoleOnly role="Viewer"><HistoryPage /></RoleOnly>} />
+      <Route path="schedules/:id?" element={<RoleOnly role="Viewer"><SchedulesPage module="export" base="/export/schedules" /></RoleOnly>} />
+      <Route path="history/*" element={<RoleOnly role="Viewer"><HistoryPage module="export" base="/export/history" /></RoleOnly>} />
       <Route path="presets" element={<RoleOnly role="Viewer"><Titled title={t.nav.presetsPage}><PresetsSettings /></Titled></RoleOnly>} />
     </>
   ),

@@ -6,6 +6,8 @@ export type Period = '1d' | '7d' | '30d' | 'all';
 export interface HistoryFilters {
   period: Period;
   scheduleId?: string;
+  /** Модуль — только в общей истории «Фермы»; внутри модуля он задан страницей. */
+  module?: string;
   status?: JobStatus;
   agentId?: string;
   search?: string;
@@ -17,6 +19,7 @@ const periodDays: Record<Period, number | null> = { '1d': 1, '7d': 7, '30d': 30,
 export function toSearchParams(filters: HistoryFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.period !== '7d') params.set('period', filters.period);
+  if (filters.module) params.set('module', filters.module);
   if (filters.scheduleId) params.set('schedule', filters.scheduleId);
   if (filters.status) params.set('status', filters.status);
   if (filters.agentId) params.set('agent', filters.agentId);
@@ -31,6 +34,7 @@ export function fromSearchParams(params: URLSearchParams): HistoryFilters {
   const set = <K extends keyof HistoryFilters>(key: K, value: string | null) => {
     if (value) filters[key] = value as HistoryFilters[K];
   };
+  set('module', params.get('module'));
   set('scheduleId', params.get('schedule'));
   set('status', params.get('status'));
   set('agentId', params.get('agent'));

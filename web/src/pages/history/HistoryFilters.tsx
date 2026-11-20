@@ -6,6 +6,8 @@ import { useApi } from '../../api/queries';
 import type { AgentView, JobStatus, ScheduleView } from '../../api/types';
 import { t } from '../../i18n/ru';
 import { fromSearchParams, toSearchParams, type HistoryFilters, type Period } from './filters';
+import { moduleInfo, type ModuleName } from '../../spaces/modules';
+import { useModules } from '../../spaces/useSpaces';
 
 export function useHistoryFilters(): [HistoryFilters, (patch: Partial<HistoryFilters>) => void] {
   const [params, setParams] = useSearchParams();
@@ -15,9 +17,14 @@ export function useHistoryFilters(): [HistoryFilters, (patch: Partial<HistoryFil
   return [filters, update];
 }
 
-export function Filters() {
+/**
+ * Фильтры истории. <c>module</c> — модуль, чьи расписания предлагать; <c>fixed</c> — модуль задан страницей, выбора модуля нет
+ * (в общей истории «Фермы» он есть).
+ */
+export function Filters({ module, fixed }: { module?: string; fixed: boolean }) {
   const [filters, update] = useHistoryFilters();
-  const schedules = useApi<ScheduleView[]>(['schedules'], '/api/schedules');
+  const schedules = useApi<ScheduleView[]>(['schedules', module ?? 'all'], module ? `/api/schedules?module=${module}` : '/api/schedules');
+  const modules = useModules().filter((m) => m.enabled && m.name in moduleInfo);
   const agents = useApi<AgentView[]>(['agents'], '/api/agents');
   const search = useDebouncedCallback((value: string) => update({ search: value }), 400);
 
@@ -35,6 +42,16 @@ export function Filters() {
           { value: 'all', label: 'За всё время' },
         ]}
       />
+      {!fixed && (
+        <Select
+          w={170}
+          placeholder="Все модули"
+          clearable
+          value={filters.module ?? null}
+          onChange={(v) => update({ module: v ?? undefined, scheduleId: undefined })}
+          data={modules.map((m) => ({ value: m.name, label: moduleInfo[m.name as ModuleName].title }))}
+        />
+      )}
       <Select
         w={220}
         placeholder="Все расписания"

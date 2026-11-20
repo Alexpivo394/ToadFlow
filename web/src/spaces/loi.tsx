@@ -27,8 +27,8 @@ export const loiSpace: Space = {
   routes: () => (
     <>
       <Route path="analytics/*" element={<RoleOnly role="Viewer"><AnalyticsPage /></RoleOnly>} />
-      <Route path="schedules/:id?" element={<RoleOnly role="Viewer"><SchedulesPage /></RoleOnly>} />
-      <Route path="history/*" element={<RoleOnly role="Viewer"><HistoryPage /></RoleOnly>} />
+      <Route path="schedules/:id?" element={<RoleOnly role="Viewer"><SchedulesPage module="loi" base="/loi/schedules" /></RoleOnly>} />
+      <Route path="history/*" element={<RoleOnly role="Viewer"><HistoryPage module="loi" base="/loi/history" /></RoleOnly>} />
       <Route path="profiles" element={<RoleOnly role="Viewer"><Titled title={t.nav.profilesPage}><LoiSettings /></Titled></RoleOnly>} />
       <Route path="analytics-settings" element={<RoleOnly role="Viewer"><Titled title={t.nav.analyticsSettings}><AnalyticsSettings /></Titled></RoleOnly>} />
     </>

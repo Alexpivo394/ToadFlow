@@ -114,7 +114,7 @@ describe('Approve dialog preview and schedules', () => {
   it('ApproveDialog_NoClashSchedules_CreateLink', async () => {
     await openDialog({ '/api/clash/parts/p1/schedules': [] });
 
-    expect((await screen.findByRole('link', { name: 'Создать расписание' })).getAttribute('href')).toBe('/schedules/new');
+    expect((await screen.findByRole('link', { name: 'Создать расписание' })).getAttribute('href')).toBe('/clash/setup/schedules/new');
   });
 });
 

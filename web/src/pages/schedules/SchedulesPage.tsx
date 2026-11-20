@@ -8,6 +8,7 @@ import { t } from '../../i18n/ru';
 import { formatDateTime, pluralRu } from '../../lib/format';
 import { describeRecurrence } from './recurrenceText';
 import { ScheduleEditor } from './ScheduleEditor';
+import type { ModuleName } from '../../spaces/modules';
 
 function LastRun({ schedule }: { schedule: ScheduleView }) {
   const last = schedule.lastRun;
@@ -20,10 +21,14 @@ function LastRun({ schedule }: { schedule: ScheduleView }) {
   );
 }
 
-export function SchedulesPage() {
+/**
+ * Расписания модуля: только его записи, ссылки — внутри пространства модуля (<c>base</c>). Без модуля — все включённые (прежний
+ * адрес /schedules, до перенаправлений).
+ */
+export function SchedulesPage({ module, base = '/schedules' }: { module?: ModuleName; base?: string }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const schedules = useApi<ScheduleView[]>(['schedules'], '/api/schedules');
+  const schedules = useApi<ScheduleView[]>(['schedules', module ?? 'all'], module ? `/api/schedules?module=${module}` : '/api/schedules');
   const selected = id && id !== 'new' ? schedules.data?.find((s) => s.id === id) : undefined;
 
   return (
@@ -31,7 +36,7 @@ export function SchedulesPage() {
       <PageTitle
         actions={
           <RequireRole role="Operator">
-            <Button component={Link} to="/schedules/new">
+            <Button component={Link} to={`${base}/new`}>
               + Новое расписание
             </Button>
           </RequireRole>
@@ -59,7 +64,7 @@ export function SchedulesPage() {
                 </Table.Thead>
                 <Table.Tbody>
                   {schedules.data?.map((s) => (
-                    <Table.Tr key={s.id} onClick={() => navigate(`/schedules/${s.id}`)} style={{ cursor: 'pointer', opacity: s.isEnabled ? 1 : 0.55 }}
+                    <Table.Tr key={s.id} onClick={() => navigate(`${base}/${s.id}`)} style={{ cursor: 'pointer', opacity: s.isEnabled ? 1 : 0.55 }}
                       bg={s.id === id ? 'var(--mantine-color-default-hover)' : undefined}>
                       <Table.Td fw={600}>{s.name}</Table.Td>
                       <Table.Td>
@@ -102,8 +107,8 @@ export function SchedulesPage() {
             </Table.ScrollContainer>
           )}
         </Panel>
-        {id === 'new' && <ScheduleEditor key="new" schedule={null} />}
-        {selected && <ScheduleEditor key={selected.id + selected.updatedAt} schedule={selected} />}
+        {id === 'new' && <ScheduleEditor key="new" schedule={null} module={module} base={base} />}
+        {selected && <ScheduleEditor key={selected.id + selected.updatedAt} schedule={selected} module={module} base={base} />}
       </Stack>
     </>
   );

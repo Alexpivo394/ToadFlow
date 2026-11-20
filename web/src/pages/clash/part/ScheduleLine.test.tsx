@@ -19,7 +19,7 @@ describe('Schedule line', () => {
     });
 
     const link = await screen.findByRole('link', { name: 'Ночная выгрузка DON' });
-    expect(link.getAttribute('href')).toBe('/schedules/s1');
+    expect(link.getAttribute('href')).toBe('/clash/setup/schedules/s1');
     const line = link.closest('[data-testid="schedule-line"]')!;
     expect(line.textContent).toContain('Прогоняется расписанием');
     expect(line.textContent).toContain('ежедневно 02:00');
@@ -46,5 +46,13 @@ describe('Schedule line', () => {
 
     expect(await screen.findByText('Регулярный прогон — после утверждения')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Добавить в расписание/ })).toBeNull();
+  });
+});
+
+describe('ScheduleLine links', () => {
+  it('clash part links to /clash/setup/schedules/new', async () => {
+    renderUi(<ScheduleLine partId="p1" approved canEdit />, { '/api/clash/parts/p1/schedules': [] });
+
+    expect((await screen.findByRole('link', { name: 'Создать расписание' })).getAttribute('href')).toBe('/clash/setup/schedules/new');
   });
 });

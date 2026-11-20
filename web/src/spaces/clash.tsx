@@ -51,8 +51,8 @@ export const clashSpace: Space = {
       <Route path="setup/snapshots" element={<SetupOnly><ClashHome tab="uploads" /></SetupOnly>} />
       <Route path="setup/templates" element={<SetupOnly><ClashHome tab="templates" /></SetupOnly>} />
       <Route path="setup/parts/:id" element={<SetupOnly><PartShell /></SetupOnly>} />
-      <Route path="setup/schedules/:id?" element={<SetupOnly><SchedulesPage /></SetupOnly>} />
-      <Route path="setup/history/*" element={<SetupOnly><HistoryPage /></SetupOnly>} />
+      <Route path="setup/schedules/:id?" element={<SetupOnly><SchedulesPage module="clash" base="/clash/setup/schedules" /></SetupOnly>} />
+      <Route path="setup/history/*" element={<SetupOnly><HistoryPage module="clash" base="/clash/setup/history" /></SetupOnly>} />
       <Route path="setup/settings" element={<SetupOnly><Titled title={t.nav.setupSettings}><ClashSettings /></Titled></SetupOnly>} />
       {/* Старые адреса из чата и закладок. */}
       <Route path="parts/:id" element={<OldPartRedirect />} />

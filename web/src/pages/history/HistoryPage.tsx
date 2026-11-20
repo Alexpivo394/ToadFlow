@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Anchor, Button, Group, Loader, Pagination, Stack, Table, Tabs, Text } from '@mantine/core';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -12,6 +13,18 @@ import { ClashRunsLine } from './ClashRunsLine';
 import { toApiQuery } from './filters';
 import { Filters, useHistoryFilters } from './HistoryFilters';
 import { JobsTable } from './JobsTable';
+import type { ModuleName } from '../../spaces/modules';
+
+/** Где открыта история: модуль (нет — все модули, «Ферма») и адрес страницы, от него — ссылки на запуски. */
+const Place = createContext<{ module?: ModuleName; base: string }>({ base: '/history' });
+
+/** Запросы истории этой страницы: свой модуль или выбранный в фильтре «Фермы». */
+function useScope() {
+  const place = useContext(Place);
+  const [filters] = useHistoryFilters();
+  const module = place.module ?? filters.module;
+  return { base: place.base, module, fixed: place.module !== undefined, query: module ? `&module=${module}` : '' };
+}
 
 const pageSize = 50;
 
@@ -29,6 +42,7 @@ function Counts({ run }: { run: RunRow }) {
 }
 
 function RunActions({ run }: { run: RunRow }) {
+  const { base } = useContext(Place);
   const navigate = useNavigate();
   const retry = useApiMutation<void, { runId: string }>('POST', () => `/api/runs/${run.id}/retry-failed`, { invalidate: ['runs'], success: 'Создан запуск с упавшими моделями' });
   const cancel = useApiMutation<void>('POST', () => `/api/runs/${run.id}/cancel`, { invalidate: ['runs', 'jobs'], success: 'Запуск отменяется' });
@@ -38,7 +52,7 @@ function RunActions({ run }: { run: RunRow }) {
     <RequireRole role="Operator">
       <Group gap={6} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
         {run.counts.failed > 0 && (
-          <Button size="compact-xs" variant="default" onClick={() => retry.mutate(undefined, { onSuccess: (r) => navigate(`/history/runs/${r.runId}`) })}>
+          <Button size="compact-xs" variant="default" onClick={() => retry.mutate(undefined, { onSuccess: (r) => navigate(`${base}/runs/${r.runId}`) })}>
             Перезапустить упавшие
           </Button>
         )}
@@ -55,11 +69,12 @@ function RunActions({ run }: { run: RunRow }) {
 function RunsTab() {
   const [filters, update] = useHistoryFilters();
   const navigate = useNavigate();
-  const runs = useQuery({ queryKey: ['runs', filters], queryFn: () => apiFetch<Page<RunRow>>(`/api/runs?${toApiQuery(filters)}`) });
+  const scope = useScope();
+  const runs = useQuery({ queryKey: ['runs', scope.module, filters], queryFn: () => apiFetch<Page<RunRow>>(`/api/runs?${toApiQuery(filters)}${scope.query}`) });
 
   return (
     <>
-      <Filters />
+      <Filters module={scope.module} fixed={scope.fixed} />
       <Panel>
         {runs.data && runs.data.items.length === 0 ? (
           <Empty>Запусков нет</Empty>
@@ -79,7 +94,7 @@ function RunsTab() {
               </Table.Thead>
               <Table.Tbody>
                 {runs.data?.items.map((run) => (
-                  <Table.Tr key={run.id} onClick={() => navigate(`/history/runs/${run.id}`)} style={{ cursor: 'pointer' }}>
+                  <Table.Tr key={run.id} onClick={() => navigate(`${scope.base}/runs/${run.id}`)} style={{ cursor: 'pointer' }}>
                     <Table.Td>{formatDateTime(run.createdAt)}</Table.Td>
                     <Table.Td>
                       {run.name}
@@ -106,13 +121,14 @@ function RunsTab() {
 
 function ModelsTab() {
   const [filters, update] = useHistoryFilters();
-  const jobs = useQuery({ queryKey: ['jobs', filters], queryFn: () => apiFetch<Page<JobRow>>(`/api/jobs?${toApiQuery(filters)}`) });
+  const scope = useScope();
+  const jobs = useQuery({ queryKey: ['jobs', scope.module, filters], queryFn: () => apiFetch<Page<JobRow>>(`/api/jobs?${toApiQuery(filters)}${scope.query}`) });
 
   return (
     <>
-      <Filters />
+      <Filters module={scope.module} fixed={scope.fixed} />
       <Panel>
-        {jobs.data && jobs.data.items.length === 0 ? <Empty>Моделей нет</Empty> : <JobsTable jobs={jobs.data?.items ?? []} showRun />}
+        {jobs.data && jobs.data.items.length === 0 ? <Empty>Моделей нет</Empty> : <JobsTable jobs={jobs.data?.items ?? []} showRun runBase={`${scope.base}/runs`} />}
         {jobs.data && jobs.data.total > pageSize && (
           <Pagination mt="md" total={Math.ceil(jobs.data.total / pageSize)} value={filters.page} onChange={(page) => update({ page })} />
         )}
@@ -157,6 +173,7 @@ function EventsTab() {
 function RunDetails() {
   const { id } = useParams();
   const [params] = useSearchParams();
+  const { base } = useContext(Place);
   const details = useApi<RunDetailsView>(['runs', id], `/api/runs/${id}`);
   const run = details.data?.run;
 
@@ -165,7 +182,7 @@ function RunDetails() {
 
   return (
     <Stack>
-      <Anchor component={Link} to="/history" size="sm">
+      <Anchor component={Link} to={base} size="sm">
         ← К запускам
       </Anchor>
       <Panel
@@ -181,36 +198,43 @@ function RunDetails() {
         {run.warning && <Alert color="yellow" mb="sm">{run.warning}</Alert>}
         {details.data!.jobs.some((j) => j.moduleKind === 'clash-extract') && <ClashRunsLine runId={run.id} />}
         {details.data!.jobs.length === 0 ? <Empty>{run.state === 'Expanding' ? 'Строится список моделей…' : 'Моделей нет'}</Empty> : (
-          <JobsTable jobs={details.data!.jobs} initiallyOpen={params.get('job')} />
+          <JobsTable jobs={details.data!.jobs} initiallyOpen={params.get('job')} runBase={`${base}/runs`} />
         )}
       </Panel>
     </Stack>
   );
 }
 
-export function HistoryPage() {
+/**
+ * История запусков: внутри модуля (<c>module</c>) — только его записи; без модуля — «Ферма → Очередь и журнал», все модули с
+ * фильтром по модулю. <c>base</c> — адрес страницы: от него строятся вкладки и ссылки на запуски.
+ */
+export function HistoryPage({ module, base = '/history' }: { module?: ModuleName; base?: string }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const tab = location.pathname.startsWith('/history/models') ? 'models' : location.pathname.startsWith('/history/events') ? 'events' : 'runs';
+  const rest = location.pathname.slice(base.length);
+  const tab = rest.startsWith('/models') ? 'models' : rest.startsWith('/events') ? 'events' : 'runs';
+  // События системы — общие, а не модуля: вкладка только у общей истории (до страницы «Журнал действий»).
+  const withEvents = module === undefined;
 
   return (
-    <>
-      <PageTitle>{t.nav.history}</PageTitle>
-      {!location.pathname.startsWith('/history/runs/') && (
-        <Tabs value={tab} onChange={(v) => navigate(v === 'runs' ? '/history' : `/history/${v}`)} mb="md">
+    <Place.Provider value={{ module, base }}>
+      <PageTitle>{module ? t.nav.historyPage : base === '/history' ? t.nav.history : t.nav.farmQueue}</PageTitle>
+      {!rest.startsWith('/runs/') && (
+        <Tabs value={tab} onChange={(v) => navigate(v === 'runs' ? base : `${base}/${v}`)} mb="md">
           <Tabs.List>
             <Tabs.Tab value="runs">Запуски</Tabs.Tab>
             <Tabs.Tab value="models">Все модели</Tabs.Tab>
-            <Tabs.Tab value="events">События системы</Tabs.Tab>
+            {withEvents && <Tabs.Tab value="events">События системы</Tabs.Tab>}
           </Tabs.List>
         </Tabs>
       )}
       <Routes>
         <Route index element={<RunsTab />} />
         <Route path="models" element={<ModelsTab />} />
-        <Route path="events" element={<EventsTab />} />
+        {withEvents && <Route path="events" element={<EventsTab />} />}
         <Route path="runs/:id" element={<RunDetails />} />
       </Routes>
-    </>
+    </Place.Provider>
   );
 }
