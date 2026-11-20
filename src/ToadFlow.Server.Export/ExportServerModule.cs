@@ -19,7 +19,11 @@ public sealed class ExportServerModule : IServerModule
     /// <summary>Пустой вид — задания выгрузки, созданные до появления видов.</summary>
     public IReadOnlyCollection<string> Kinds => [ModuleKinds.Export, ""];
 
-    public void AddServices(IServiceCollection services) => services.AddHostedService<DefaultPresetSeeder>();
+    public void AddServices(IServiceCollection services)
+    {
+        services.AddHostedService<DefaultPresetSeeder>();
+        services.AddSingleton<ToadFlow.Server.Overview.IOverviewSource, ExportOverview>();
+    }
 
     public void ConfigureModel(ModelBuilder model) => model.Entity<ExportPreset>(preset =>
     {

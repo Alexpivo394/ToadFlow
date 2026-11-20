@@ -289,6 +289,16 @@ internal static class AnalyticsQueryEndpoints
 
     private static double? Ratio(int part, int total) => total == 0 ? null : (double)part / total;
 
+    /// <summary>
+    ///     Заполненность по последней проверке каждой модели (как «Заполнено» на странице аналитики без фильтров) и число
+    ///     распознанных объектов — на момент <paramref name="to" />; null — сейчас.
+    /// </summary>
+    internal static async Task<(double? FillRate, int Objects)> SummaryAsync(ToadFlowDb db, DateTimeOffset? to, CancellationToken ct)
+    {
+        var latest = (await StateAsync(db, new AnalyticsFilter(null, to, null, null, null, null, null, null, null), ct)).Latest;
+        return (Ratio(latest.Sum(c => c.Filled), latest.Sum(c => c.Values)), latest.Select(c => c.Object).Where(o => o != null).Distinct().Count());
+    }
+
     /// <summary>Проценты с запятой — CSV через точку с запятой открывают в русском Excel.</summary>
     private static string Percent(double? share) =>
         share is { } value ? (value * 100).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') : "";

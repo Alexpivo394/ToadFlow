@@ -204,9 +204,9 @@ public class OverviewVolumesTests : ServerTest
     }
 }
 
-public class OverviewTilesTests : ServerTest
+public class OverviewThrowingTileTests : ServerTest
 {
-    public OverviewTilesTests() => Services = s =>
+    public OverviewThrowingTileTests() => Services = s =>
     {
         OverviewFakes.Quiet(s);
         s.RemoveAll<IOverviewSource>();

@@ -62,7 +62,7 @@ public static class AnalyticsEndpoints
     /// <param name="from">Первый день периода; по умолчанию — 30 дней до <paramref name="to" />.</param>
     /// <param name="to">Последний день периода; по умолчанию — сегодня.</param>
     /// <param name="groupBy"><c>discipline</c> (по умолчанию), <c>object</c>, <c>part</c>, <c>pair</c> — разбивка «кто отстаёт».</param>
-    private static async Task<ClashAnalyticsView> AnalyticsAsync(string? @object, Guid? partId, string? discipline, DateOnly? from, DateOnly? to,
+    internal static async Task<ClashAnalyticsView> AnalyticsAsync(string? @object, Guid? partId, string? discipline, DateOnly? from, DateOnly? to,
         string? groupBy, ToadFlowDb db, ISettingsStore general, ClashSettingsStore settings, TimeProvider time, CancellationToken ct)
     {
         var zone = (await general.GetAsync(ct)).TimeZone;
