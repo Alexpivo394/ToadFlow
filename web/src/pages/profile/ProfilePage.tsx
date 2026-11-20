@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Badge, Button, Group, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
+import { useLocation } from 'react-router';
+import { Alert, Badge, Button, Group, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { apiFetch, getRefreshToken, setSession } from '../../api/client';
 import { useApi } from '../../api/queries';
@@ -13,6 +14,8 @@ const orNull = (value: string) => value.trim() || null;
 /** Личный кабинет: имя и контакты (их видят коллеги в ленте коллизии), роль и разделы — только чтение, смена пароля. */
 export function ProfilePage() {
   const { refresh } = useAuth();
+  // Проектировщику без доступных модулей главная ведёт сюда — сказать, почему здесь.
+  const noSpaces = (useLocation().state as { noSpaces?: boolean } | null)?.noSpaces === true;
   const profile = useApi<UserView>(['profile'], '/api/profile');
   const [form, setForm] = useState({ displayName: '', position: '', email: '', phone: '' });
   const [password, setPassword] = useState({ current: '', new: '' });
@@ -44,6 +47,7 @@ export function ProfilePage() {
   return (
     <>
       <PageTitle>{t.nav.profile}</PageTitle>
+      {noSpaces && <Alert color="blue" mb="md" maw={560}>{t.nav.noSpaces}</Alert>}
       <Stack gap="md" maw={560}>
         <Panel title="О себе">
           <Stack gap="sm">

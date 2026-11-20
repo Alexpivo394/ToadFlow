@@ -45,7 +45,7 @@ describe('Tokens', () => {
   it('Settings_NoTokensPage', async () => {
     renderApp('/settings/tokens', {});
 
-    expect(await screen.findByRole('link', { name: 'Агенты' })).toBeTruthy();
+    expect(await screen.findByRole('group', { name: 'Пространства' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Токены доступа' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Создать токен' })).toBeNull();
   });

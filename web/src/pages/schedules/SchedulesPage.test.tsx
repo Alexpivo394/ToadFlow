@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { defaultExportSettings } from '../../components/ExportSettingsForm';
 import { renderApp } from '../../test/renderApp';
@@ -77,7 +77,7 @@ describe('SchedulesPage for LOI', () => {
     renderApp('/schedules/s2', loiResponses);
 
     expect(await screen.findByText('Расписание «LOI ЖК «Север»»')).toBeTruthy();
-    expect(screen.getByText('LOI')).toBeTruthy();
+    expect(within(screen.getByRole('main')).getByText('LOI')).toBeTruthy(); // в полосе слева тоже «LOI»
     fireEvent.click(screen.getByRole('tab', { name: 'Проверка LOI' }));
     expect(await screen.findByText('как в профиле: «Navisworks»')).toBeTruthy();
     expect(screen.getByLabelText('База для дашбордов')).toBeTruthy();

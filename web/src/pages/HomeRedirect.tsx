@@ -1,12 +1,19 @@
 import type { ReactNode } from 'react';
 import { Navigate, useParams, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { useSpaces, visiblePages } from '../spaces/useSpaces';
 import { DashboardPage } from './dashboard/DashboardPage';
 
-/** Главный экран: проектировщик — в «Мои коллизии» (без разделов — в «Проверки»), остальные — «Обзор» ToadFlow. */
+/**
+ * Главный экран: не проектировщику — «Обзор»; проектировщику — первая видимая страница первого доступного пространства, а если
+ * таких нет (коллизии выключены) — профиль с пояснением.
+ */
 export function HomeRedirect() {
-  const { isStaff } = useAuth();
-  return isStaff ? <DashboardPage /> : <ClashRedirect />;
+  const auth = useAuth();
+  const { spaces } = useSpaces();
+  if (auth.isStaff) return <DashboardPage />;
+  const first = spaces[0];
+  return first ? <Navigate to={visiblePages(first, auth)[0].to} replace /> : <Navigate to="/profile" state={{ noSpaces: true }} replace />;
 }
 
 /** «Коллизии»: есть разделы — «Мои», иначе — «Проверки». */

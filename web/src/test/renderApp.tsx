@@ -140,6 +140,8 @@ export function renderUi(ui: ReactNode, responses: Record<string, unknown>, path
 function stubFetch(responses: Record<string, unknown>) {
   const all: Record<string, unknown> = {
     '/api/auth/me': { id: 'u1', login: 'admin', displayName: 'Администратор', role: 'Admin', isDisabled: false, lastLoginAt: null },
+    // Все модули включены — как у установки без строки MODULES.
+    '/api/modules': ['export', 'loi', 'clash'].map((name) => ({ name, title: name, enabled: true })),
     ...responses,
   };
   vi.stubGlobal(

@@ -1,109 +1,48 @@
 import { Suspense } from 'react';
-import { NavLink as RouterLink, Outlet, useLocation } from 'react-router';
-import { ActionIcon, Anchor, AppShell as Shell, Box, Burger, Center, Group, Loader, NavLink, Stack, Text, Tooltip, useMantineColorScheme } from '@mantine/core';
+import { Outlet, useLocation } from 'react-router';
+import { AppShell as Shell, Burger, Center, Group, Loader, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAdjustments, IconBox, IconCalendarTime, IconChartBar, IconHistory, IconLayoutDashboard, IconLogout, IconMoon, IconSettings, IconSun } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
 import { Brand } from '../components/ui';
 import { t } from '../i18n/ru';
 import { useLiveUpdates } from '../live/useLiveUpdates';
+import type { Space } from '../spaces/types';
+import { Rail, railWidth } from './Rail';
+import { menuWidth, SpaceMenu } from './SpaceMenu';
 
-const settingsLinks = [
-  { to: '/settings/agents', label: t.nav.agents },
-  { to: '/settings/sources', label: t.nav.sources },
-  { to: '/settings/presets', label: t.nav.presets },
-  { to: '/settings/loi', label: t.nav.loi },
-  { to: '/settings/analytics', label: t.nav.analytics },
-  { to: '/settings/clash', label: t.nav.clashSettings },
-  { to: '/settings/users', label: t.nav.users, operator: true },
-  { to: '/settings/general', label: t.nav.general },
-];
+/** Пространство, в котором находится адрес: /{id} или /{id}/…; «Обзор» и профиль — вне пространств. */
+export function spaceOf(spaces: Space[], pathname: string): Space | null {
+  return spaces.find((space) => pathname === `/${space.id}` || pathname.startsWith(`/${space.id}/`)) ?? null;
+}
 
-export function AppShell() {
-  const { user, logout, can, isStaff, disciplines } = useAuth();
+/**
+ * Оболочка: полоса пространств и меню выбранного пространства слева, страница справа. У «Обзора» меню нет — страница во всю ширину.
+ * На узком экране полоса и меню прячутся под одну кнопку.
+ */
+export function AppShell({ spaces }: { spaces: Space[] }) {
+  const { user, isStaff } = useAuth();
   const [opened, { toggle, close }] = useDisclosure();
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
-  const location = useLocation();
+  const { pathname } = useLocation();
   // Хаб рассылает события всех модулей — проектировщику он закрыт; его экраны обновляются при открытии и после действий.
   useLiveUpdates(user !== null && isStaff);
 
-  const inSettings = location.pathname.startsWith('/settings');
-  const inSetup = location.pathname.startsWith('/clash/setup');
-  const inClash = location.pathname.startsWith('/clash') && !inSetup;
+  const current = spaceOf(spaces, pathname);
 
   return (
-    <Shell navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }} header={{ height: { base: 52, sm: 0 } }} padding="md">
+    <Shell navbar={{ width: railWidth + (current ? menuWidth : 0), breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      header={{ height: { base: 52, sm: 0 } }} padding="md">
       <Shell.Header hiddenFrom="sm">
         <Group h="100%" px="md">
-          <Burger opened={opened} onClick={toggle} size="sm" />
+          <Burger opened={opened} onClick={toggle} size="sm" aria-label={t.nav.menu} />
           <Brand><Text fw={700}>{t.appName}</Text></Brand>
         </Group>
       </Shell.Header>
 
-      <Shell.Navbar p="sm">
-        <Stack gap={4} h="100%">
-          <Box px="sm" py="xs" visibleFrom="sm">
-            <Brand>
-              <Text fw={700} size="lg">{t.appName}</Text>
-            </Brand>
-          </Box>
-          {isStaff && (
-            <>
-              <NavLink component={RouterLink} to="/" end label={t.nav.dashboard} leftSection={<IconLayoutDashboard size={18} />} onClick={close} />
-              <NavLink component={RouterLink} to="/schedules" label={t.nav.schedules} leftSection={<IconCalendarTime size={18} />} onClick={close} />
-              <NavLink component={RouterLink} to="/history" label={t.nav.history} leftSection={<IconHistory size={18} />} onClick={close} />
-              <NavLink component={RouterLink} to="/analytics" label={t.nav.analytics} leftSection={<IconChartBar size={18} />} onClick={close} />
-            </>
-          )}
-          <NavLink label={t.nav.clash} leftSection={<IconBox size={18} />} defaultOpened active={inClash} childrenOffset={28}>
-            {disciplines.length > 0 && <NavLink component={RouterLink} to="/clash/my" label={t.nav.clashMy} onClick={close} />}
-            <NavLink component={RouterLink} to="/clash/checks" label={t.nav.clashChecks} onClick={close} />
-            <NavLink component={RouterLink} to="/clash/summary" label={t.nav.clashSummary} onClick={close} />
-          </NavLink>
-          {can('Operator') && (
-            <NavLink label={t.nav.clashSetup} leftSection={<IconAdjustments size={18} />} defaultOpened active={inSetup} childrenOffset={28}>
-              <NavLink component={RouterLink} to="/clash/setup" end label={t.nav.setupOverview} onClick={close} />
-              <NavLink component={RouterLink} to="/clash/setup/parts" label={t.nav.setupParts} onClick={close} />
-              <NavLink component={RouterLink} to="/clash/setup/templates" label={t.nav.setupTemplates} onClick={close} />
-              <NavLink component={RouterLink} to="/clash/setup/snapshots" label={t.nav.setupSnapshots} onClick={close} />
-            </NavLink>
-          )}
-          {isStaff && (
-            <NavLink label={t.nav.settings} leftSection={<IconSettings size={18} />} defaultOpened={inSettings} active={inSettings} childrenOffset={28}>
-              {settingsLinks
-                .filter((link) => !link.operator || can('Operator'))
-                .map((link) => (
-                  <NavLink key={link.to} component={RouterLink} to={link.to} label={link.label} onClick={close} />
-                ))}
-            </NavLink>
-          )}
-
-          <Box mt="auto" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-            <Group justify="space-between" wrap="nowrap" px="sm">
-              <Box style={{ minWidth: 0 }}>
-                <Anchor component={RouterLink} to="/profile" fw={600} size="sm" c="inherit" display="block" title={user?.displayName}
-                  style={{ overflowWrap: 'anywhere' }} onClick={close}>
-                  {user?.displayName}
-                </Anchor>
-                <Text size="xs" c="dimmed">
-                  {user ? t.role[user.role] : ''}
-                </Text>
-              </Box>
-              <Group gap={4} wrap="nowrap">
-                <Tooltip label={t.common.themeToggle}>
-                  <ActionIcon variant="subtle" onClick={toggleColorScheme} aria-label={t.common.themeToggle}>
-                    {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label={t.auth.logout}>
-                  <ActionIcon variant="subtle" color="red" onClick={logout} aria-label={t.auth.logout}>
-                    <IconLogout size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-            </Group>
-          </Box>
-        </Stack>
+      <Shell.Navbar>
+        <Group gap={0} h="100%" wrap="nowrap" align="stretch">
+          <Rail spaces={spaces} current={current} onNavigate={close} />
+          {current && <SpaceMenu space={current} onNavigate={close} />}
+        </Group>
       </Shell.Navbar>
 
       <Shell.Main>

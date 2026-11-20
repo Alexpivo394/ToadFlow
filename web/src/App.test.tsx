@@ -75,7 +75,7 @@ describe('Role workspaces', () => {
     const menu = within(nav());
     expect(menu.getByText('Мои')).toBeTruthy();
     expect(menu.getByText('Сводка')).toBeTruthy();
-    for (const hidden of ['Обзор', 'Расписания', 'История и логи', 'Аналитика LOI', 'Настройки', 'Настройка проверок'])
+    for (const hidden of ['Обзор', 'Выгрузка', 'Ферма', 'Администрирование', 'Настройки', 'Части', 'Обзор проверок'])
       expect(menu.queryByText(hidden)).toBeNull();
   });
 
@@ -84,10 +84,7 @@ describe('Role workspaces', () => {
     await screen.findByRole('heading', { name: 'Проверки' });
 
     const menu = within(nav());
-    expect(menu.getByText('Настройка проверок')).toBeTruthy();
-    expect(menu.getByText('Части')).toBeTruthy();
-    expect(menu.getByText('Шаблоны')).toBeTruthy();
-    expect(menu.getByText('Выгрузки')).toBeTruthy();
+    for (const page of ['Обзор проверок', 'Части', 'Шаблоны', 'Выгрузки', 'Расписания выгрузки', 'Параметры']) expect(menu.getByText(page)).toBeTruthy();
     expect(menu.queryByText('Мои')).toBeNull(); // разделов нет
   });
 
@@ -134,23 +131,21 @@ vi.setConfig({ testTimeout: 15_000 });
 
 describe('Menu names', () => {
   it('Menu_OverviewOfChecks', async () => {
-    as('Admin', '/settings/clash');
-    await waitFor(() => expect(within(nav()).getByText('Хранение и пороги коллизий')).toBeTruthy());
+    as('Admin', '/clash/setup/settings');
+    await waitFor(() => expect(within(nav()).getByText('Параметры')).toBeTruthy());
 
     const menu = within(nav());
     expect(menu.getByText('Обзор проверок')).toBeTruthy();
-    expect(menu.getByText('Хранение и пороги коллизий')).toBeTruthy();
+    expect(menu.queryByText('Хранение и пороги коллизий')).toBeNull();
   });
 });
 
 describe('Setup menu', () => {
-  it('Setup_NoDuplicateTabs_UserNameNotTruncated', async () => {
+  it('Setup_NoDuplicateTabs_ProfileInRail', async () => {
     renderApp('/clash/setup/parts', { ...responses, '/api/auth/me': { ...user('Admin'), displayName: 'Александра Константиновна Преображенская-Длинная' } });
 
     expect(await screen.findByRole('heading', { name: 'Части' })).toBeTruthy();
+    expect(within(nav()).getByRole('link', { name: 'Профиль' }).getAttribute('href')).toBe('/profile');
     expect(screen.queryByRole('tab', { name: 'Выгрузки' })).toBeNull();
-    const name = within(nav()).getByText('Александра Константиновна Преображенская-Длинная');
-    expect(name.getAttribute('title')).toBe('Александра Константиновна Преображенская-Длинная');
-    expect(name.className).not.toMatch(/truncate/);
   });
 });

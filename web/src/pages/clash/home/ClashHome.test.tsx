@@ -129,7 +129,7 @@ describe('Clash home', () => {
     expect(screen.getByText('Полковая')).toBeTruthy();
     expect(screen.getByText('нет выгрузки')).toBeTruthy();
     expect(screen.getByText(/старая/)).toBeTruthy();
-    expect(screen.queryByText('Параметры')).toBeNull(); // каталога на этой странице больше нет
+    expect(within(screen.getByRole('main')).queryByText('Параметры')).toBeNull(); // каталога на этой странице больше нет
   });
 
   /** Настройка проверок — координатору и администратору: наблюдателя уводит в «Проверки». */

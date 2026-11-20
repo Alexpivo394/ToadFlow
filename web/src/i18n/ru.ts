@@ -51,6 +51,8 @@ export const t = {
     shortFarm: 'Ферма',
     shortAdmin: 'Админ',
     shortOverview: 'Обзор',
+    menu: 'Меню',
+    noSpaces: 'Для вашей роли пока нет доступных разделов',
   },
   auth: {
     title: 'Вход в ToadFlow',
