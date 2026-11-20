@@ -15,6 +15,9 @@ public class MigrationTests
     /// <summary>Последняя миграция выпуска 1.7.1.</summary>
     private const string Main171 = "20261026083805_LoiProfileGroups";
 
+    /// <summary>Миграция выпуска 2.0 — последняя до платформы модулей.</summary>
+    private const string Clash20 = "20261104102438_Clash2_0";
+
     [ClassDataSource<PostgresFixture>(Shared = SharedType.PerTestSession)]
     public required PostgresFixture Postgres { get; init; }
 
@@ -42,12 +45,61 @@ public class MigrationTests
         await migrator.MigrateAsync();
 
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-        applied[^1].ShouldEndWith("_Clash2_0");
-        applied.Count(m => string.CompareOrdinal(m, Main171) > 0).ShouldBe(1);
+        // С 1.7.1 до 2.0 — одна миграция; после неё — миграции следующих выпусков.
+        applied.Where(m => string.CompareOrdinal(m, Main171) > 0 && string.CompareOrdinal(m, Clash20) <= 0).ShouldBe([Clash20]);
         (await db.Database.GetPendingMigrationsAsync()).ShouldBeEmpty();
         var user = await db.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
         (user.Login, user.Role.ToString(), user.IsPending, user.Disciplines.Length).ShouldBe(("ivanov", "Operator", false, 0));
         user.SecurityStamp.ShouldNotBe(Guid.Empty);
+        Postgres.DropDatabaseLater(connection);
+    }
+
+    [Test]
+    public async Task Migration_BackfillsModuleName()
+    {
+        var connection = await Postgres.CreateEmptyDatabaseAsync();
+        await using var server = new ServerFactory(connection + ";Pooling=false", services: NoHostedServices);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync(Clash20);
+
+        var (user, source, schedule) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        const string Selection = """{"models":[],"folders":[]}""", Empty = "{}";
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO users (id, login, display_name, password_hash, role, is_disabled, created_at)
+            VALUES ({user}, 'ivanov', 'Иванов', 'hash', 'Operator', false, now());
+            INSERT INTO sources (id, name, kind, host, root_path) VALUES ({source}, 'RS', 'RevitServer', 'rs22', '');
+            INSERT INTO schedules (id, name, module_kind, source_id, output_folder_template, selection, module_settings_json, recurrence_kind,
+                days_of_week_mask, time_of_day, priority, model_timeout_minutes, max_retries, is_enabled, created_by_user_id, created_at,
+                updated_by_user_id, updated_at)
+            VALUES ({schedule}, 'LOI', 'loi', {source}, '', {Selection}::jsonb, {Empty}::jsonb, 'Weekly', 0, '20:00', 0, 30, 1, true, {user}, now(),
+                {user}, now());
+            """);
+        string[] kinds = ["export", "", "loi-catalog", "clash-extract"];
+        var runs = new List<Guid>();
+        foreach (var kind in kinds)
+        {
+            var run = Guid.NewGuid();
+            runs.Add(run);
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO runs (id, name, state, created_at, cancel_requested) VALUES ({run}, 'Запуск', 'Completed', now(), false);
+                INSERT INTO jobs (id, run_id, module_kind, model_name, model_path, payload_json, status, attempt, max_attempts, priority,
+                    timeout_minutes, created_at, cancel_requested, requires_nwc)
+                VALUES ({Guid.NewGuid()}, {run}, {kind}, 'АР.rvt', 'RSN://rs22/АР.rvt', {Empty}::jsonb, 'Succeeded', 1, 1, 0, 30, now(), false, false);
+                """);
+        }
+
+        var scheduled = Guid.NewGuid();
+        runs.Add(scheduled);
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO runs (id, schedule_id, name, state, created_at, cancel_requested) VALUES ({scheduled}, {schedule}, 'LOI', 'Completed', now(), false);
+            """);
+
+        await migrator.MigrateAsync();
+
+        var names = await db.Runs.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.ModuleName);
+        runs.Select(id => names[id]).ShouldBe(["export", "export", "loi", "clash", "loi"]);
         Postgres.DropDatabaseLater(connection);
     }
 

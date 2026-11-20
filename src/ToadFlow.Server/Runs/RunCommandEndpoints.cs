@@ -5,6 +5,7 @@ using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Modules;
 using ToadFlow.Server.Queue;
 
 namespace ToadFlow.Server.Runs;
@@ -70,7 +71,7 @@ public static class RunCommandEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<IResult> RetryFailedAsync(Guid id, ToadFlowDb db, TimeProvider time, HttpContext http, IDomainEvents events)
+    private static async Task<IResult> RetryFailedAsync(Guid id, ToadFlowDb db, TimeProvider time, HttpContext http, IDomainEvents events, ModuleSet modules)
     {
         var run = await db.Runs.AsNoTracking().SingleOrDefaultAsync(r => r.Id == id);
         if (run is null) return Results.NotFound();
@@ -78,12 +79,12 @@ public static class RunCommandEndpoints
         var failed = await db.Jobs.AsNoTracking().Where(j => j.RunId == id && j.Status == JobStatus.Failed && j.RevitYear != null).ToListAsync();
         if (failed.Count == 0) return Results.Conflict(new { error = "В запуске нет упавших моделей, которые можно повторить" });
 
-        var retry = await CreateRetryRunAsync(db, time, http, run, $"{run.Name} — повтор упавших", failed);
+        var retry = await CreateRetryRunAsync(db, time, http, modules, run, $"{run.Name} — повтор упавших", failed);
         events.Publish(new RunChanged(http.User.Actor(), retry.Id));
         return Results.Ok(new { runId = retry.Id });
     }
 
-    private static async Task<IResult> RetryJobAsync(Guid id, ToadFlowDb db, TimeProvider time, HttpContext http, IDomainEvents events)
+    private static async Task<IResult> RetryJobAsync(Guid id, ToadFlowDb db, TimeProvider time, HttpContext http, IDomainEvents events, ModuleSet modules)
     {
         var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == id);
         if (job is null) return Results.NotFound();
@@ -91,18 +92,20 @@ public static class RunCommandEndpoints
         if (job.RevitYear is null) return Results.Conflict(new { error = "Версия Revit модели неизвестна — повторять нечего" });
 
         var run = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == job.RunId);
-        var retry = await CreateRetryRunAsync(db, time, http, run, $"{run.Name} — повтор {job.ModelName}", [job]);
+        var retry = await CreateRetryRunAsync(db, time, http, modules, run, $"{run.Name} — повтор {job.ModelName}", [job]);
         events.Publish(new RunChanged(http.User.Actor(), retry.Id));
         return Results.Ok(new { runId = retry.Id });
     }
 
-    private static async Task<Run> CreateRetryRunAsync(ToadFlowDb db, TimeProvider time, HttpContext http, Run source, string name, IReadOnlyList<Job> jobs)
+    private static async Task<Run> CreateRetryRunAsync(ToadFlowDb db, TimeProvider time, HttpContext http, ModuleSet modules, Run source, string name,
+        IReadOnlyList<Job> jobs)
     {
         var now = time.GetUtcNow();
         var run = new Run
         {
             Id = Guid.CreateVersion7(),
             ScheduleId = source.ScheduleId,
+            ModuleName = modules.NameOfKind(jobs[0].ModuleKind) ?? source.ModuleName,
             Name = name,
             TriggeredByUserId = http.User.UserId(),
             State = RunState.Queued,

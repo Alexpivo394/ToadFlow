@@ -5,6 +5,7 @@ using ToadFlow.Contracts;
 using ToadFlow.Server.Agents;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
+using ToadFlow.Server.Modules;
 using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Runs;
@@ -14,6 +15,7 @@ public sealed record RunCounts(int Succeeded, int Warning, int Failed, int Queue
 public sealed record RunRow(
     Guid Id,
     Guid? ScheduleId,
+    string? Module,
     string Name,
     DateTimeOffset CreatedAt,
     DateTimeOffset? StartedAt,
@@ -59,6 +61,7 @@ public sealed record HistoryFilter(
     DateTimeOffset? From,
     DateTimeOffset? To,
     Guid? ScheduleId,
+    string? Module,
     JobStatus? Status,
     Guid? AgentId,
     string? Search,
@@ -73,9 +76,9 @@ public static class HistoryEndpoints
 {
     public static void MapHistory(this RouteGroupBuilder api)
     {
-        api.MapGet("/runs", async ([AsParameters] HistoryFilter filter, ToadFlowDb db, TimeProvider time) =>
+        api.MapGet("/runs", async ([AsParameters] HistoryFilter filter, ToadFlowDb db, ModuleSet modules, TimeProvider time) =>
         {
-            var query = FilterRuns(db, filter);
+            var query = FilterRuns(db, modules, filter);
             var total = await query.CountAsync();
             var runs = await query.OrderByDescending(r => r.CreatedAt).Skip(filter.Skip).Take(filter.Take).ToListAsync();
             return new Page<RunRow>(await RowsAsync(db, runs, time.GetUtcNow()), total);
@@ -91,9 +94,9 @@ public static class HistoryEndpoints
             return Results.Ok(new RunDetails(row, await JobRowsAsync(db, registry, jobs, new Dictionary<Guid, string> { [run.Id] = run.Name })));
         });
 
-        api.MapGet("/jobs", async ([AsParameters] HistoryFilter filter, ToadFlowDb db, AgentRegistry registry) =>
+        api.MapGet("/jobs", async ([AsParameters] HistoryFilter filter, ToadFlowDb db, ModuleSet modules, AgentRegistry registry) =>
         {
-            var query = FilterJobs(db, filter);
+            var query = FilterJobs(db, modules, filter);
             var total = await query.CountAsync();
             var jobs = await query.OrderByDescending(j => j.CreatedAt).ThenBy(j => j.ModelName).Skip(filter.Skip).Take(filter.Take).ToListAsync();
             var runIds = jobs.Select(j => j.RunId).Distinct().ToList();
@@ -122,9 +125,21 @@ public static class HistoryEndpoints
         });
     }
 
-    private static IQueryable<Run> FilterRuns(ToadFlowDb db, HistoryFilter filter)
+    private static IQueryable<Run> FilterRuns(ToadFlowDb db, ModuleSet modules, HistoryFilter filter)
     {
         var query = db.Runs.AsNoTracking();
+        // Модуль задан — только его запуски; не задан — запуски включённых модулей и те, что отнести не к чему («Ферма»).
+        if (filter.Module is { } module)
+        {
+            var only = modules.IsEnabled(module) ? module : null;
+            query = query.Where(r => r.ModuleName != null && r.ModuleName == only);
+        }
+        else
+        {
+            var enabled = modules.Enabled.Select(m => m.Name).ToList();
+            query = query.Where(r => r.ModuleName == null || enabled.Contains(r.ModuleName));
+        }
+
         if (filter.From is { } from) query = query.Where(r => r.CreatedAt >= from.ToUniversalTime());
         if (filter.To is { } to) query = query.Where(r => r.CreatedAt <= to.ToUniversalTime());
         if (filter.ScheduleId is { } scheduleId) query = query.Where(r => r.ScheduleId == scheduleId);
@@ -139,9 +154,11 @@ public static class HistoryEndpoints
         return query;
     }
 
-    private static IQueryable<Job> FilterJobs(ToadFlowDb db, HistoryFilter filter)
+    private static IQueryable<Job> FilterJobs(ToadFlowDb db, ModuleSet modules, HistoryFilter filter)
     {
         var query = db.Jobs.AsNoTracking();
+        var kinds = filter.Module is { } module ? modules.IsEnabled(module) ? modules.KindsOf(module) : [] : modules.EnabledKinds;
+        query = query.Where(j => kinds.Contains(j.ModuleKind));
         if (filter.From is { } from) query = query.Where(j => j.CreatedAt >= from.ToUniversalTime());
         if (filter.To is { } to) query = query.Where(j => j.CreatedAt <= to.ToUniversalTime());
         if (filter.ScheduleId is { } scheduleId) query = query.Where(j => db.Runs.Any(r => r.Id == j.RunId && r.ScheduleId == scheduleId));
@@ -165,7 +182,7 @@ public static class HistoryEndpoints
                 Count(mine, JobStatus.Queued), Count(mine, JobStatus.Running), Count(mine, JobStatus.Cancelled), mine.Count);
             var duration = run.StartedAt is { } started ? ((run.FinishedAt ?? now) - started).TotalSeconds : (double?)null;
             var triggeredBy = run.TriggeredByUserId is { } userId ? users.GetValueOrDefault(userId, "удалённый пользователь") : null;
-            return new RunRow(run.Id, run.ScheduleId, run.Name, run.CreatedAt, run.StartedAt, run.FinishedAt, run.State, triggeredBy, counts,
+            return new RunRow(run.Id, run.ScheduleId, run.ModuleName, run.Name, run.CreatedAt, run.StartedAt, run.FinishedAt, run.State, triggeredBy, counts,
                 duration, run.Warning);
         }).ToList();
     }

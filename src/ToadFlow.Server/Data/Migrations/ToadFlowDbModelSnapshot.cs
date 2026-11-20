@@ -1579,6 +1579,11 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finished_at");
 
+                    b.Property<string>("ModuleName")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("module_name");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -1614,6 +1619,9 @@ namespace ToadFlow.Server.Data.Migrations
 
                     b.HasIndex("ScheduleId")
                         .HasDatabaseName("ix_runs_schedule_id");
+
+                    b.HasIndex("ModuleName", "CreatedAt")
+                        .HasDatabaseName("ix_runs_module_name_created_at");
 
                     b.ToTable("runs", (string)null);
                 });

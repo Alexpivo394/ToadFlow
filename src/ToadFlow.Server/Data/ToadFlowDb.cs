@@ -80,6 +80,8 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
         model.Entity<Run>(run =>
         {
             run.HasIndex(r => r.CreatedAt);
+            run.Property(r => r.ModuleName).HasMaxLength(32);
+            run.HasIndex(r => new { r.ModuleName, r.CreatedAt });
             run.HasOne<Schedule>().WithMany().HasForeignKey(r => r.ScheduleId).OnDelete(DeleteBehavior.SetNull);
         });
 

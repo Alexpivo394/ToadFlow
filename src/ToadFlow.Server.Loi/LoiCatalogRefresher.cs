@@ -6,6 +6,7 @@ using ToadFlow.Server.Agents;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Modules;
 
 namespace ToadFlow.Server.Loi;
 
@@ -16,7 +17,7 @@ public sealed class CatalogUnavailableException(string message) : Exception(mess
 ///     Обновление каталога — обычный запуск с одним заданием: его видно в истории с логом, его можно отменить и повторить,
 ///     а выполняет его свободный Revit, как любое задание. Итог сохраняет <see cref="LoiServerModule.OnJobCompletedAsync" />.
 /// </summary>
-public sealed class LoiCatalogRefresher(ToadFlowDb db, IDomainEvents events, TimeProvider time)
+public sealed class LoiCatalogRefresher(ToadFlowDb db, IDomainEvents events, TimeProvider time, ModuleSet modules)
 {
     private const int TimeoutMinutes = 15;
 
@@ -34,6 +35,7 @@ public sealed class LoiCatalogRefresher(ToadFlowDb db, IDomainEvents events, Tim
         {
             Id = Guid.CreateVersion7(),
             Name = $"Каталог категорий и параметров Revit {revitYear}",
+            ModuleName = modules.NameOfKind(ModuleKinds.LoiCatalog),
             TriggeredByUserId = userId,
             State = RunState.Queued,
             CreatedAt = now

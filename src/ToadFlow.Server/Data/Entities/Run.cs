@@ -8,6 +8,12 @@ public sealed class Run
     public Guid Id { get; set; }
     public Guid? ScheduleId { get; set; }
 
+    /// <summary>
+    ///     Модуль запуска (<c>export</c>, <c>loi</c>, <c>clash</c>) — по нему история делится по модулям; связь с расписанием
+    ///     обнуляется при его удалении, а модуль остаётся. null — отнести не к чему: такой запуск виден только в «Ферме».
+    /// </summary>
+    public string? ModuleName { get; set; }
+
     /// <summary>Имя расписания на момент запуска — остаётся в истории, даже если расписание удалят.</summary>
     public string Name { get; set; } = "";
 

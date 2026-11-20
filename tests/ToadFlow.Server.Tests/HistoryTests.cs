@@ -237,3 +237,102 @@ public class RetentionTests : ServerTest
         (await DbAsync(db => db.SystemEvents.AnyAsync(e => e.Text == "старое"))).ShouldBeFalse();
     }
 }
+
+/// <summary>История по модулям: у запуска свой модуль, фильтр <c>module</c> у запусков и заданий.</summary>
+public class HistoryModuleTests : ServerTest
+{
+    private Task<Guid> RunAsync(string? module, params string[] jobKinds) => DbAsync(async db =>
+    {
+        var run = Seed.Run(db, RunState.Completed);
+        run.ModuleName = module;
+        foreach (var kind in jobKinds) Seed.Job(db, run.Id).ModuleKind = kind;
+        await db.SaveChangesAsync();
+        return run.Id;
+    });
+
+    private static Guid[] Ids(JsonElement page) => page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToArray();
+
+    [Test]
+    public async Task Run_FromSchedule_HasModule()
+    {
+        var scheduleId = await DbAsync(async db =>
+        {
+            var schedule = Seed.Schedule(db, Seed.Source(db).Id);
+            schedule.ModuleKind = ModuleKinds.Loi;
+            await db.SaveChangesAsync();
+            return schedule.Id;
+        });
+        var admin = await AdminAsync();
+
+        (await admin.PostAsync($"/api/schedules/{scheduleId}/run", null)).EnsureSuccessStatusCode();
+
+        (await DbAsync(db => db.Runs.SingleAsync(r => r.ScheduleId == scheduleId))).ModuleName.ShouldBe("loi");
+        var page = await admin.GetJsonAsync<JsonElement>("/api/runs");
+        page.GetProperty("items")[0].GetProperty("module").GetString().ShouldBe("loi");
+    }
+
+    [Test]
+    public async Task Runs_FilterByModule()
+    {
+        var export = await RunAsync("export", ModuleKinds.Export);
+        await RunAsync("loi", ModuleKinds.Loi);
+
+        var page = await (await AdminAsync()).GetJsonAsync<JsonElement>("/api/runs?module=export");
+
+        Ids(page).ShouldBe([export]);
+        page.GetProperty("total").GetInt32().ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Jobs_FilterByModule()
+    {
+        await RunAsync("loi", ModuleKinds.Loi, ModuleKinds.LoiCatalog);
+        await RunAsync("export", ModuleKinds.Export, "");
+
+        var page = await (await AdminAsync()).GetJsonAsync<JsonElement>("/api/jobs?module=loi");
+
+        page.GetProperty("items").EnumerateArray().Select(j => j.GetProperty("moduleKind").GetString()).Order()
+            .ShouldBe([ModuleKinds.Loi, ModuleKinds.LoiCatalog]);
+        (await (await AdminAsync()).GetJsonAsync<JsonElement>("/api/jobs?module=export")).GetProperty("total").GetInt32().ShouldBe(2);
+    }
+
+    [Test]
+    public async Task Run_WithoutJobsAndSchedule_OnlyInUnfiltered()
+    {
+        var orphan = await RunAsync(null);
+        var admin = await AdminAsync();
+
+        Ids(await admin.GetJsonAsync<JsonElement>("/api/runs")).ShouldContain(orphan);
+        Ids(await admin.GetJsonAsync<JsonElement>("/api/runs?module=export")).ShouldNotContain(orphan);
+    }
+}
+
+public class HistoryDisabledModuleTests : ServerTest
+{
+    public HistoryDisabledModuleTests() => Modules = "export";
+
+    [Test]
+    public async Task RunsAndJobs_OfDisabledModule_NotListed()
+    {
+        var (export, loi) = await DbAsync(async db =>
+        {
+            var exportRun = Seed.Run(db, RunState.Completed);
+            exportRun.ModuleName = "export";
+            Seed.Job(db, exportRun.Id);
+            var loiRun = Seed.Run(db, RunState.Completed);
+            loiRun.ModuleName = "loi";
+            Seed.Job(db, loiRun.Id).ModuleKind = ModuleKinds.Loi;
+            await db.SaveChangesAsync();
+            return (exportRun.Id, loiRun.Id);
+        });
+        var admin = await AdminAsync();
+
+        var runs = (await admin.GetJsonAsync<JsonElement>("/api/runs")).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid());
+        var jobs = (await admin.GetJsonAsync<JsonElement>("/api/jobs")).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("runId").GetGuid());
+
+        runs.ShouldBe([export]);
+        jobs.ShouldBe([export]);
+        (await admin.GetJsonAsync<JsonElement>("/api/runs?module=loi")).GetProperty("total").GetInt32().ShouldBe(0);
+        _ = loi;
+    }
+}

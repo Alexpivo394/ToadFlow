@@ -15,7 +15,7 @@ namespace ToadFlow.Server.Schedules;
 ///     Запуск расписания в два шага: сразу создаётся запуск «разворачивается», а список моделей и задания строятся
 ///     в фоне (<see cref="RunExpander" />) — агент может отвечать до двух минут.
 /// </summary>
-public sealed class RunFactory(ToadFlowDb db, RunExpansionQueue queue, IDomainEvents events, TimeProvider time)
+public sealed class RunFactory(ToadFlowDb db, RunExpansionQueue queue, IDomainEvents events, TimeProvider time, ModuleSet modules)
 {
     public async Task<Run> StartAsync(Guid scheduleId, Guid? userId, Actor actor)
     {
@@ -24,6 +24,7 @@ public sealed class RunFactory(ToadFlowDb db, RunExpansionQueue queue, IDomainEv
         {
             Id = Guid.CreateVersion7(),
             ScheduleId = scheduleId,
+            ModuleName = modules.NameOfKind(schedule.ModuleKind),
             Name = schedule.Name,
             TriggeredByUserId = userId,
             State = RunState.Expanding,
