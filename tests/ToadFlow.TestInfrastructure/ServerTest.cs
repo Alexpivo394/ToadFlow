@@ -24,11 +24,14 @@ public abstract class ServerTest
     /// <summary>Правка служб сервера для теста (например, убрать фоновую службу); задаётся в конструкторе наследника.</summary>
     protected Action<IServiceCollection>? Services { get; init; }
 
+    /// <summary>Настройка <c>Modules</c> для теста (какие модули включены); задаётся в конструкторе наследника.</summary>
+    protected string? Modules { get; init; }
+
     [Before(Test)]
     public async Task StartServerAsync()
     {
         _connectionString = await Postgres.CreateDatabaseAsync();
-        Server = new ServerFactory(_connectionString, Time, Services);
+        Server = new ServerFactory(_connectionString, Time, Services, Modules);
         _ = Server.Server; // старт хоста и миграции — до первого запроса
     }
 
@@ -40,6 +43,9 @@ public abstract class ServerTest
     }
 
     private string _connectionString = "";
+
+    /// <summary>База теста — чтобы поднять на ней второй сервер с другими настройками.</summary>
+    protected string ConnectionString => _connectionString;
 
     /// <summary>Работа с базой в отдельной области, как в обработчике запроса.</summary>
     protected async Task<T> DbAsync<T>(Func<ToadFlowDb, Task<T>> action)

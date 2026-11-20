@@ -11,7 +11,17 @@ namespace ToadFlow.Server.Modules;
 /// </summary>
 public interface IServerModule
 {
+    /// <summary>Имя модуля в настройке <c>Modules</c>: <c>export</c>, <c>loi</c>, <c>clash</c>.</summary>
+    string Name { get; }
+
+    /// <summary>Название для людей: «Выгрузка», «Проверка LOI», «Коллизии».</summary>
+    string Title { get; }
+
+    /// <summary>Основной вид задания модуля: его выбирают расписания.</summary>
     string Kind { get; }
+
+    /// <summary>Все виды заданий модуля, включая <see cref="Kind" />; соответствие «модуль → виды» задаётся только здесь.</summary>
+    IReadOnlyCollection<string> Kinds => [Kind];
 
     /// <summary>Задания пишут результат в папку результатов расписания; false — папка не нужна, её можно не указывать.</summary>
     bool UsesOutputFolder => true;

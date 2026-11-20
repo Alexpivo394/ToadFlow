@@ -41,6 +41,7 @@ public static class ServerSetup
         builder.Services.AddScoped<NamingStore>();
         builder.Services.AddAgents();
         builder.Services.AddQueue();
+        builder.Services.AddSingleton<ModuleSet>();
         builder.Services.AddSingleton<ServerModuleRegistry>();
         builder.Services.AddSchedules();
         builder.Services.AddHostedService<RetentionCleaner>();
@@ -50,6 +51,7 @@ public static class ServerSetup
 
     public static void UseToadFlowServer(this WebApplication app)
     {
+        _ = app.Services.GetRequiredService<ModuleSet>(); // неизвестное имя в MODULES — ошибка при старте, а не при первом запросе
         app.UseForwardedHeaders(); // адрес клиента за nginx — для лимитов входа и регистрации
         app.UseRequestDecompression();
         app.UseAuthentication();
@@ -63,6 +65,7 @@ public static class ServerSetup
         members.MapApiTokens();
         members.MapRegistration();
         members.MapProfile();
+        members.MapModuleList();
         members.MapModuleMemberEndpoints(app.Services);
 
         var api = members.MapGroup("").RequireAuthorization(Policies.Viewer);

@@ -30,6 +30,10 @@ namespace ToadFlow.Server.Clash;
 /// </summary>
 public sealed class ClashServerModule : IServerModule
 {
+    public string Name => "clash";
+
+    public string Title => "Коллизии";
+
     public string Kind => ModuleKinds.ClashExtract;
 
     /// <summary>Слепок уходит в хранилище сервера, а не в папку результатов.</summary>

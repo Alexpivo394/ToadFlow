@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Modules;
 
 namespace ToadFlow.Server.Health;
 
@@ -23,7 +24,7 @@ public static class HealthEndpoint
 
     public static void MapHealth(this RouteGroupBuilder group) => group.MapGet("/health", CheckAsync).AllowAnonymous();
 
-    private static async Task<IResult> CheckAsync(ToadFlowDb db, IEnumerable<IHealthProbe> probes, CancellationToken ct)
+    private static async Task<IResult> CheckAsync(ToadFlowDb db, IEnumerable<IHealthProbe> probes, ModuleSet modules, CancellationToken ct)
     {
         bool dbUp;
         using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
@@ -39,7 +40,13 @@ public static class HealthEndpoint
             }
         }
 
-        var body = new Dictionary<string, object?> { ["status"] = dbUp ? "ok" : "unhealthy", ["db"] = dbUp ? "ok" : "unavailable" };
+        var body = new Dictionary<string, object?>
+        {
+            ["status"] = dbUp ? "ok" : "unhealthy",
+            ["db"] = dbUp ? "ok" : "unavailable",
+            // По нему рабочие процессы модулей (движок коллизий) узнают, включён ли их модуль.
+            ["modules"] = modules.Enabled.Select(m => m.Name).ToArray()
+        };
         foreach (var probe in probes)
         {
             try

@@ -10,7 +10,14 @@ namespace ToadFlow.Server.Export;
 /// <summary>Модуль «Выгрузка RVT/NWC»: пресеты, настройки расписания и задания агентам на выгрузку одной модели.</summary>
 public sealed class ExportServerModule : IServerModule
 {
+    public string Name => "export";
+
+    public string Title => "Выгрузка";
+
     public string Kind => ModuleKinds.Export;
+
+    /// <summary>Пустой вид — задания выгрузки, созданные до появления видов.</summary>
+    public IReadOnlyCollection<string> Kinds => [ModuleKinds.Export, ""];
 
     public void AddServices(IServiceCollection services) => services.AddHostedService<DefaultPresetSeeder>();
 

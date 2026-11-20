@@ -20,7 +20,13 @@ namespace ToadFlow.Server.Loi;
 /// </summary>
 public sealed class LoiServerModule : IServerModule
 {
+    public string Name => "loi";
+
+    public string Title => "Проверка LOI";
+
     public string Kind => ModuleKinds.Loi;
+
+    public IReadOnlyCollection<string> Kinds => [ModuleKinds.Loi, ModuleKinds.LoiCatalog];
 
     public void AddServices(IServiceCollection services)
     {

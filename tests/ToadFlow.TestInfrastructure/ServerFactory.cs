@@ -8,7 +8,8 @@ namespace ToadFlow.Server.Tests.Infrastructure;
 /// <summary>Сервер ToadFlow в памяти поверх отдельной базы встроенного Postgres.</summary>
 /// <param name="time">Подменное время для фоновых служб; null — настоящее.</param>
 /// <param name="services">Последняя правка служб сервера для теста; null — без правок.</param>
-public sealed class ServerFactory(string connectionString, TimeProvider? time = null, Action<IServiceCollection>? services = null)
+/// <param name="modules">Настройка <c>Modules</c> (какие модули включены); null — не задана, включены все.</param>
+public sealed class ServerFactory(string connectionString, TimeProvider? time = null, Action<IServiceCollection>? services = null, string? modules = null)
     : WebApplicationFactory<Program>
 {
     public const string AdminLogin = "admin";
@@ -36,6 +37,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         // Тесты входят часто и с одного адреса: лимиты частоты проверяет свой тест (RateLimitTests).
         builder.UseSetting("Auth:Limits:LoginPerMinute", "100000");
         builder.UseSetting("Auth:Limits:RegisterPer10Minutes", "100000");
+        if (modules is not null) builder.UseSetting("Modules", modules);
         if (time is not null) builder.ConfigureServices(collection => collection.Replace(ServiceDescriptor.Singleton(time)));
         if (services is not null) builder.ConfigureServices(services);
     }
