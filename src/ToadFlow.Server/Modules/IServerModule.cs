@@ -23,6 +23,12 @@ public interface IServerModule
     /// <summary>Все виды заданий модуля, включая <see cref="Kind" />; соответствие «модуль → виды» задаётся только здесь.</summary>
     IReadOnlyCollection<string> Kinds => [Kind];
 
+    /// <summary>Адрес пространства модуля в вебе — туда ведёт плитка «Обзора».</summary>
+    string WebPath => $"/{Name}";
+
+    /// <summary>Адрес истории модуля в вебе — туда ведёт строка «модели с ошибкой за сутки».</summary>
+    string HistoryPath => $"/{Name}/history";
+
     /// <summary>Задания пишут результат в папку результатов расписания; false — папка не нужна, её можно не указывать.</summary>
     bool UsesOutputFolder => true;
 

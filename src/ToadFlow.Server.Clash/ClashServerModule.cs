@@ -36,6 +36,9 @@ public sealed class ClashServerModule : IServerModule
 
     public string Kind => ModuleKinds.ClashExtract;
 
+    /// <summary>История выгрузок слепков — в настройке коллизий: рабочие страницы модуля для проектировщиков.</summary>
+    public string HistoryPath => "/clash/setup/history";
+
     /// <summary>Слепок уходит в хранилище сервера, а не в папку результатов.</summary>
     public bool UsesOutputFolder => false;
 

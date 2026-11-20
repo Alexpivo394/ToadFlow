@@ -120,8 +120,7 @@ public class HistoryTests : ServerTest
     }
 }
 
-public sealed record Kpi(int Exported24h, int Failed24h, double FailedPercent, int Queued, int Running, double? AvgDurationSeconds24h, int AgentsOnline,
-    int AgentsTotal);
+public sealed record Kpi(int Queued, int Running);
 
 public sealed record Daily(DateOnly Date, int Succeeded, int Failed);
 
@@ -129,12 +128,13 @@ public sealed record Upcoming(Guid ScheduleId, string Name, DateTimeOffset At, i
 
 public sealed record RecentError(DateTimeOffset At, string ModelName, string? Note, string? AgentName, int? RevitYear, Guid JobId);
 
-public sealed record Dashboard(Kpi Kpi, Daily[] Daily, Upcoming[] Upcoming, RecentError[] RecentErrors);
+public sealed record FarmSummary(Kpi Kpi, Daily[] Daily, Upcoming[] Upcoming, RecentError[] RecentErrors);
 
-public class DashboardTests : ServerTest
+/// <summary>Сводка «Фермы» — то, что было на главной до «Обзора»: очередь, модели по дням, ближайшие запуски, последние ошибки.</summary>
+public class FarmSummaryTests : ServerTest
 {
     [Test]
-    public async Task Dashboard_KpiCounts()
+    public async Task FarmSummary_KeepsDailyUpcomingErrors()
     {
         var admin = await AdminAsync();
         var now = DateTimeOffset.UtcNow;
@@ -159,20 +159,16 @@ public class DashboardTests : ServerTest
             await db.SaveChangesAsync();
         });
 
-        var dashboard = await admin.GetJsonAsync<Dashboard>("/api/dashboard");
+        var dashboard = await admin.GetJsonAsync<FarmSummary>("/api/farm/summary");
 
-        dashboard.Kpi.Exported24h.ShouldBe(2);
-        dashboard.Kpi.Failed24h.ShouldBe(1);
-        dashboard.Kpi.FailedPercent.ShouldBe(33.3, 0.1);
         dashboard.Kpi.Queued.ShouldBe(1);
         dashboard.Kpi.Running.ShouldBe(1);
-        dashboard.Kpi.AvgDurationSeconds24h.ShouldNotBeNull().ShouldBe(300, 1);
         dashboard.Daily.Length.ShouldBe(14);
         dashboard.RecentErrors.ShouldHaveSingleItem();
     }
 
     [Test]
-    public async Task Dashboard_DailyUsesLocalDays()
+    public async Task FarmSummary_DailyUsesLocalDays()
     {
         var admin = await AdminAsync();
         var moscow = TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow");
@@ -188,20 +184,20 @@ public class DashboardTests : ServerTest
             await db.SaveChangesAsync();
         });
 
-        var dashboard = await admin.GetJsonAsync<Dashboard>("/api/dashboard");
+        var dashboard = await admin.GetJsonAsync<FarmSummary>("/api/farm/summary");
 
         dashboard.Daily.Last().Date.ShouldBe(todayLocal);
         dashboard.Daily.Last().Succeeded.ShouldBe(1);
     }
 
     [Test]
-    public async Task Dashboard_UpcomingFromSchedules()
+    public async Task FarmSummary_UpcomingFromSchedules()
     {
         var admin = await AdminAsync();
         var sourceId = await ScheduleApi.SourceAsync(admin);
         await ScheduleApi.CreateAsync(admin, ScheduleApi.Body(sourceId, await ScheduleApi.DefaultPresetAsync(admin)));
 
-        var dashboard = await admin.GetJsonAsync<Dashboard>("/api/dashboard");
+        var dashboard = await admin.GetJsonAsync<FarmSummary>("/api/farm/summary");
 
         dashboard.Upcoming.ShouldHaveSingleItem().ModelCount.ShouldBe(1);
     }

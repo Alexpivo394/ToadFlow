@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Agents;
 using ToadFlow.Server.Auth;
-using ToadFlow.Server.Dashboard;
+using ToadFlow.Server.Overview;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Maintenance;
 using ToadFlow.Server.Events;
@@ -45,6 +45,10 @@ public static class ServerSetup
         builder.Services.AddSingleton<ServerModuleRegistry>();
         builder.Services.AddHostedService<DisabledModuleJobs>();
         builder.Services.AddSchedules();
+        builder.Services.AddSingleton<ServerStart>();
+        builder.Services.AddScoped<ServerStatsReader>();
+        builder.Services.AddScoped<CoreAttention>();
+        builder.Services.AddSingleton<IDataVolume>(new PathVolume("Сервер", () => AppContext.BaseDirectory));
         builder.Services.AddHostedService<RetentionCleaner>();
         builder.Services.AddRequestDecompression(); // агенты сжимают части загрузок (Content-Encoding: gzip)
         return builder;
@@ -53,6 +57,7 @@ public static class ServerSetup
     public static void UseToadFlowServer(this WebApplication app)
     {
         _ = app.Services.GetRequiredService<ModuleSet>(); // неизвестное имя в MODULES — ошибка при старте, а не при первом запросе
+        _ = app.Services.GetRequiredService<ServerStart>();
         app.UseForwardedHeaders(); // адрес клиента за nginx — для лимитов входа и регистрации
         app.UseRequestDecompression();
         app.UseAuthentication();
@@ -79,7 +84,8 @@ public static class ServerSetup
         api.MapSchedules();
         api.MapRunCommands();
         api.MapHistory();
-        api.MapDashboard();
+        api.MapOverview();
+        api.MapFarmSummary();
         api.MapInstances();
         api.MapModules(app.Services);
 
