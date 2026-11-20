@@ -19,6 +19,21 @@ public sealed record PasswordRequest(string Password);
 /// <param name="Disciplines">Разделы проектировщика — как в заявке или поправленные координатором.</param>
 public sealed record ApproveUserRequest(string[]? Disciplines);
 
+public enum UserBulkAction
+{
+    AddDiscipline,
+    RemoveDiscipline,
+    Disable,
+    Enable
+}
+
+/// <param name="Discipline">Раздел — для <see cref="UserBulkAction.AddDiscipline" /> и <see cref="UserBulkAction.RemoveDiscipline" />.</param>
+public sealed record UserBulkRequest(Guid[] Ids, UserBulkAction Action, string? Discipline);
+
+/// <param name="Changed">Скольких пользователей действие изменило.</param>
+/// <param name="Skipped">Кого не тронули и почему: «Имя: причина».</param>
+public sealed record UserBulkResult(int Changed, IReadOnlyList<string> Skipped);
+
 /// <summary>
 ///     Пользователи. Список, заявки на регистрацию, разделы, имя и контакты — координатор; создание, роль, отключение, пароль и удаление —
 ///     администратор.
@@ -46,6 +61,7 @@ public static class UserEndpoints
         users.MapPost("/{id:guid}/reject", RejectAsync);
         users.MapPut("/{id:guid}/disciplines", SetDisciplinesAsync);
         users.MapPut("/{id:guid}/contacts", SetContactsAsync);
+        users.MapPost("/bulk", BulkAsync);
 
         var admin = users.MapGroup("").RequireAuthorization(Policies.Admin);
         admin.MapPost("/", CreateAsync);
@@ -120,6 +136,97 @@ public static class UserEndpoints
         cache.ForgetUser(id);
         events.Publish(new UserChanged(http.User.Actor(), id, $"Изменены имя и контакты пользователя {user.DisplayName} ({user.Login})"));
         return Results.Ok(UserView.From(user));
+    }
+
+    /// <summary>
+    ///     Действие над выбранными пользователями: добавить или убрать раздел — координатор, отключить или включить — администратор
+    ///     (как у одиночных действий). Себя и последнего активного администратора не отключает и называет их в <c>Skipped</c>.
+    ///     Заявки на регистрацию не трогает. Одно событие в журнал на вызов.
+    /// </summary>
+    private static async Task<IResult> BulkAsync(UserBulkRequest request, ToadFlowDb db, NamingStore naming, IEnumerable<IDisciplineSource> sources,
+        IMemoryCache cache, HttpContext http, IDomainEvents events, RefreshTokens tokens, CancellationToken ct)
+    {
+        var byDiscipline = request.Action is UserBulkAction.AddDiscipline or UserBulkAction.RemoveDiscipline;
+        if (!byDiscipline && !http.User.IsInRole(nameof(UserRole.Admin)))
+            return Results.Json(new { error = "Отключает и включает пользователей администратор" }, statusCode: StatusCodes.Status403Forbidden);
+
+        string? discipline = null;
+        if (byDiscipline)
+        {
+            if (string.IsNullOrWhiteSpace(request.Discipline)) return Results.BadRequest(new { error = "Укажите раздел" });
+            var known = Disciplines.Canonical(await Disciplines.ListAsync(naming, sources, ct), [request.Discipline], out var unknown);
+            if (unknown.Count > 0) return Results.BadRequest(new { error = $"Нет такого раздела: {request.Discipline.Trim()}" });
+            discipline = known[0];
+        }
+
+        var ids = (request.Ids ?? []).Distinct().ToList();
+        var users = await db.Users.Where(u => ids.Contains(u.Id)).OrderBy(u => u.DisplayName).ToListAsync(ct);
+        var self = http.User.UserId();
+        var activeAdmins = await db.Users.CountAsync(u => u.Role == UserRole.Admin && !u.IsDisabled && !u.IsPending, ct);
+        var changed = new List<User>();
+        var skipped = new List<string>();
+        foreach (var user in users)
+        {
+            if (user.IsPending)
+            {
+                skipped.Add($"{user.DisplayName}: заявка ещё не подтверждена");
+                continue;
+            }
+
+            switch (request.Action)
+            {
+                case UserBulkAction.AddDiscipline when !user.Disciplines.Contains(discipline!):
+                    user.Disciplines = [..user.Disciplines, discipline!];
+                    changed.Add(user);
+                    break;
+                case UserBulkAction.RemoveDiscipline when user.Disciplines.Contains(discipline!):
+                    user.Disciplines = user.Disciplines.Where(d => d != discipline).ToArray();
+                    changed.Add(user);
+                    break;
+                case UserBulkAction.Disable when !user.IsDisabled:
+                    if (user.Id == self)
+                    {
+                        skipped.Add($"{user.DisplayName}: нельзя отключить себя");
+                        break;
+                    }
+
+                    if (user.Role == UserRole.Admin)
+                    {
+                        if (activeAdmins <= 1)
+                        {
+                            skipped.Add($"{user.DisplayName}: последний активный администратор");
+                            break;
+                        }
+
+                        activeAdmins--;
+                    }
+
+                    user.IsDisabled = true;
+                    await UserSessions.EndAllAsync(user, tokens, ct); // отключение действует сразу
+                    changed.Add(user);
+                    break;
+                case UserBulkAction.Enable when user.IsDisabled:
+                    user.IsDisabled = false;
+                    changed.Add(user);
+                    break;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        foreach (var user in changed) cache.ForgetUser(user.Id);
+        if (changed.Count > 0)
+        {
+            var what = request.Action switch
+            {
+                UserBulkAction.AddDiscipline => $"добавлен раздел {discipline}",
+                UserBulkAction.RemoveDiscipline => $"убран раздел {discipline}",
+                UserBulkAction.Disable => "отключены",
+                _ => "включены"
+            };
+            events.Publish(new UserChanged(http.User.Actor(), Guid.Empty, $"Пользователи ({changed.Count}): {what} — {string.Join(", ", changed.Select(u => u.DisplayName))}"));
+        }
+
+        return Results.Ok(new UserBulkResult(changed.Count, skipped));
     }
 
     private static async Task<IResult> CreateAsync(CreateUserRequest request, ToadFlowDb db, TimeProvider time, HttpContext http, IDomainEvents events)

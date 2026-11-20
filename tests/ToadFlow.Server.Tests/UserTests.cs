@@ -138,3 +138,107 @@ public class UserTests : ServerTest
 
     private sealed record UserView(Guid Id, string Login, string DisplayName, UserRole Role);
 }
+
+/// <summary>Массовые действия над пользователями: разделы — координатор, отключение и включение — администратор.</summary>
+public class UserBulkTests : ServerTest
+{
+    private sealed record BulkResult(int Changed, string[] Skipped);
+
+    private Task<Guid> UserAsync(string name, UserRole role = UserRole.Designer, string[]? disciplines = null, bool disabled = false) => DbAsync(async db =>
+    {
+        var user = Seed.User(db, role);
+        user.DisplayName = name;
+        user.Disciplines = disciplines ?? [];
+        user.IsDisabled = disabled;
+        await db.SaveChangesAsync();
+        return user.Id;
+    });
+
+    private Task<Data.Entities.User> LoadAsync(Guid id) => DbAsync(db => db.Users.AsNoTracking().SingleAsync(u => u.Id == id));
+
+    [Test]
+    public async Task Bulk_AddDiscipline_ToSeveral()
+    {
+        var a = await UserAsync("Анна", disciplines: ["ОВ"]);
+        var b = await UserAsync("Борис");
+        var c = await UserAsync("Вера", disciplines: ["АР"]);
+
+        var response = await (await ClientAsync(UserRole.Operator)).PostJsonAsync("/api/users/bulk",
+            new { ids = new[] { a, b, c }, action = "AddDiscipline", discipline = "ар" });
+
+        var result = await response.EnsureSuccessStatusCode().ReadJsonAsync<BulkResult>();
+        (result.Changed, result.Skipped.Length).ShouldBe((2, 0));
+        (await LoadAsync(a)).Disciplines.ShouldBe(["ОВ", "АР"]);
+        (await LoadAsync(b)).Disciplines.ShouldBe(["АР"]);
+        (await LoadAsync(c)).Disciplines.ShouldBe(["АР"]);
+    }
+
+    [Test]
+    public async Task Bulk_RemoveDiscipline_IgnoresUsersWithoutIt()
+    {
+        var a = await UserAsync("Анна", disciplines: ["ОВ", "АР"]);
+        var b = await UserAsync("Борис", disciplines: ["ОВ"]);
+
+        var result = await (await (await ClientAsync(UserRole.Operator)).PostJsonAsync("/api/users/bulk",
+            new { ids = new[] { a, b }, action = "RemoveDiscipline", discipline = "АР" })).EnsureSuccessStatusCode().ReadJsonAsync<BulkResult>();
+
+        result.Changed.ShouldBe(1);
+        (await LoadAsync(a)).Disciplines.ShouldBe(["ОВ"]);
+        (await LoadAsync(b)).Disciplines.ShouldBe(["ОВ"]);
+    }
+
+    [Test]
+    public async Task Bulk_Disable_ByOperator_403()
+    {
+        var a = await UserAsync("Анна");
+
+        var response = await (await ClientAsync(UserRole.Operator)).PostJsonAsync("/api/users/bulk", new { ids = new[] { a }, action = "Disable" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await LoadAsync(a)).IsDisabled.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Bulk_Disable_SkipsSelf()
+    {
+        var admin = await AdminAsync();
+        await UserAsync("Второй админ", UserRole.Admin);
+        var a = await UserAsync("Анна");
+        var self = await DbAsync(db => db.Users.Where(u => u.Login == ServerFactory.AdminLogin).Select(u => u.Id).SingleAsync());
+        var selfName = (await LoadAsync(self)).DisplayName;
+
+        var result = await (await admin.PostJsonAsync("/api/users/bulk", new { ids = new[] { a, self }, action = "Disable" }))
+            .EnsureSuccessStatusCode().ReadJsonAsync<BulkResult>();
+
+        result.Changed.ShouldBe(1);
+        result.Skipped.ShouldBe([$"{selfName}: нельзя отключить себя"]);
+        (await LoadAsync(a)).IsDisabled.ShouldBeTrue();
+        (await LoadAsync(self)).IsDisabled.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Bulk_Disable_SkipsLastAdmin()
+    {
+        // Себя отключить нельзя, поэтому вызывающий администратор всегда остаётся; правило «последний» страхует то же с другой стороны.
+        var admin = await AdminAsync();
+        var self = await DbAsync(db => db.Users.Where(u => u.Login == ServerFactory.AdminLogin).Select(u => u.Id).SingleAsync());
+        var a = await UserAsync("Анна");
+
+        var result = await (await admin.PostJsonAsync("/api/users/bulk", new { ids = new[] { self, a }, action = "Disable" }))
+            .EnsureSuccessStatusCode().ReadJsonAsync<BulkResult>();
+
+        result.Changed.ShouldBe(1);
+        result.Skipped.ShouldHaveSingleItem();
+        (await DbAsync(db => db.Users.CountAsync(u => u.Role == UserRole.Admin && !u.IsDisabled))).ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Bulk_AddDiscipline_WithoutName_400()
+    {
+        var a = await UserAsync("Анна");
+
+        var response = await (await ClientAsync(UserRole.Operator)).PostJsonAsync("/api/users/bulk", new { ids = new[] { a }, action = "AddDiscipline" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+}
