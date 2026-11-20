@@ -22,13 +22,12 @@ function LastRun({ schedule }: { schedule: ScheduleView }) {
 }
 
 /**
- * Расписания модуля: только его записи, ссылки — внутри пространства модуля (<c>base</c>). Без модуля — все включённые (прежний
- * адрес /schedules, до перенаправлений).
+ * Расписания модуля: только его записи, ссылки — внутри пространства модуля (<c>base</c>).
  */
-export function SchedulesPage({ module, base = '/schedules' }: { module?: ModuleName; base?: string }) {
+export function SchedulesPage({ module, base }: { module: ModuleName; base: string }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const schedules = useApi<ScheduleView[]>(['schedules', module ?? 'all'], module ? `/api/schedules?module=${module}` : '/api/schedules');
+  const schedules = useApi<ScheduleView[]>(['schedules', module], `/api/schedules?module=${module}`);
   const selected = id && id !== 'new' ? schedules.data?.find((s) => s.id === id) : undefined;
 
   return (

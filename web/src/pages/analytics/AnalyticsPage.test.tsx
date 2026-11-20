@@ -36,7 +36,7 @@ const responses = {
 
 describe('AnalyticsPage', () => {
   it('overview: shares, unrecognized objects and the worst', async () => {
-    renderApp('/analytics', responses);
+    renderApp('/loi/analytics', responses);
 
     await screen.findByText('Отстающие модели', {}, { timeout: 5000 }); // графики в jsdom рисуются долго
     expect(await screen.findByText('65,0 %')).toBeTruthy();
@@ -47,7 +47,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('models: change since the previous check is marked when rules changed', async () => {
-    renderApp('/analytics/models', responses);
+    renderApp('/loi/analytics/models', responses);
 
     expect(await screen.findByText('Модели (2)')).toBeTruthy();
     expect(screen.getByText('▲ 40 *')).toBeTruthy();
@@ -55,7 +55,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('model history', async () => {
-    renderApp('/analytics/model?key=rsn%3A%2F%2Frs22%2Fpol%2Fpol_ar.rvt', responses);
+    renderApp('/loi/analytics/model?key=rsn%3A%2F%2Frs22%2Fpol%2Fpol_ar.rvt', responses);
 
     expect(await screen.findByText('Правила в последней проверке')).toBeTruthy();
     expect(screen.getByText(/правила профиля менялись 1/)).toBeTruthy();
@@ -63,7 +63,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('disabled analytics is announced', async () => {
-    renderApp('/analytics', { ...responses, '/api/loi/analytics/settings': { enabled: false, retentionYears: 0 } });
+    renderApp('/loi/analytics', { ...responses, '/api/loi/analytics/settings': { enabled: false, retentionYears: 0 } });
 
     expect(await screen.findByText(/Аналитика выключена/)).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Параметры' }));

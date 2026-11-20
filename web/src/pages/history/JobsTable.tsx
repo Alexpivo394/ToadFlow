@@ -72,8 +72,8 @@ const headers: Record<Columns, [string, string] | [string]> = {
 
 /** Модели запуска: результат, где обрабатывалась, сколько заняла; клик раскрывает лог. */
 /** <c>runBase</c> — адрес запусков страницы, где открыта таблица: от него — ссылка на запуск задания. */
-export function JobsTable({ jobs, showRun, initiallyOpen, runBase = '/history/runs' }: {
-  jobs: JobRow[]; showRun?: boolean; initiallyOpen?: string | null; runBase?: string;
+export function JobsTable({ jobs, showRun, initiallyOpen, runBase }: {
+  jobs: JobRow[]; showRun?: boolean; initiallyOpen?: string | null; runBase: string;
 }) {
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null);
   const columns = columnsOf(jobs);

@@ -211,7 +211,7 @@ export function LoiScheduleForm({ value, profiles, scheduleId, models, readOnly,
             w={360}
             onChange={(id) => set({ profileId: !id || id === byDiscipline ? null : id })}
           />
-          <Anchor component={Link} to="/settings/loi" size="sm" mb={8}>
+          <Anchor component={Link} to="/loi/profiles" size="sm" mb={8}>
             Профили LOI
           </Anchor>
         </Group>

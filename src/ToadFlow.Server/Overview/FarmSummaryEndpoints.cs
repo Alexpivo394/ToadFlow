@@ -10,7 +10,8 @@ public sealed record FarmKpi(int Queued, int Running);
 
 public sealed record DailyPoint(DateOnly Date, int Succeeded, int Failed);
 
-public sealed record UpcomingRun(Guid ScheduleId, string Name, DateTimeOffset At, int ModelCount);
+/// <param name="Module">Модуль расписания — по нему веб строит ссылку на расписание в пространстве модуля.</param>
+public sealed record UpcomingRun(Guid ScheduleId, string Name, DateTimeOffset At, int ModelCount, string Module);
 
 public sealed record RecentError(DateTimeOffset At, string ModelName, string? Note, string? AgentName, int? RevitYear, Guid JobId, Guid RunId);
 
@@ -46,7 +47,8 @@ public static class FarmSummaryEndpoints
 
         var upcoming = (await db.Schedules.AsNoTracking().Where(s => s.IsEnabled && s.NextRunAt != null && kinds.Contains(s.ModuleKind))
                 .OrderBy(s => s.NextRunAt).Take(5).ToListAsync())
-            .Select(s => new UpcomingRun(s.Id, s.Name, s.NextRunAt!.Value, s.LastKnownModels?.Count ?? s.Selection.Models.Length)).ToList();
+            .Select(s => new UpcomingRun(s.Id, s.Name, s.NextRunAt!.Value, s.LastKnownModels?.Count ?? s.Selection.Models.Length,
+                modules.NameOfKind(s.ModuleKind) ?? "")).ToList();
 
         var names = await db.Agents.AsNoTracking().ToDictionaryAsync(a => a.Id, a => a.MachineName);
         var errors = (await jobs.Where(j => j.Status == JobStatus.Failed).OrderByDescending(j => j.FinishedAt).Take(10).ToListAsync())

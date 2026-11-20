@@ -19,11 +19,6 @@ import { RecurrenceFields } from './RecurrenceFields';
 import { duplicateNames, fromSelectionDto, setFormats, toSelectionDto, type SelectionState } from './selection';
 import { SourceTree } from './SourceTree';
 
-const moduleOptions = [
-  { value: 'export', label: 'Выгрузка RVT / NWC' },
-  { value: 'loi', label: 'Проверка LOI (заполнение параметров)' },
-  { value: 'clash-extract', label: 'Выгрузка геометрии для коллизий' },
-];
 
 /** Пусто — задаче папка результатов не нужна: выгрузка для коллизий хранится на сервере. */
 const defaultFolders: Record<string, string> = {
@@ -91,7 +86,7 @@ function fromView(view: ScheduleView): ScheduleRequest {
  * Редактор расписания. Внутри модуля (<c>module</c>) вид задачи задан пространством и не меняется; <c>base</c> — адрес страницы
  * расписаний, от него — переход к созданному расписанию.
  */
-export function ScheduleEditor({ schedule, module, base = '/schedules' }: { schedule: ScheduleView | null; module?: ModuleName; base?: string }) {
+export function ScheduleEditor({ schedule, module, base }: { schedule: ScheduleView | null; module: ModuleName; base: string }) {
   const { can } = useAuth();
   const readOnly = !can('Operator');
   const navigate = useNavigate();
@@ -102,7 +97,7 @@ export function ScheduleEditor({ schedule, module, base = '/schedules' }: { sche
   const changes = useApi<ScheduleChange[]>(['schedules', schedule?.id, 'changes'], schedule ? `/api/schedules/${schedule.id}/changes` : null);
   const defaultPreset = presets.data?.find((p) => p.isDefault)?.id ?? '';
 
-  const [form, setForm] = useState<ScheduleRequest>(() => (schedule ? fromView(schedule) : blank(defaultPreset, module ? moduleInfo[module].kind : undefined)));
+  const [form, setForm] = useState<ScheduleRequest>(() => (schedule ? fromView(schedule) : blank(defaultPreset, moduleInfo[module].kind)));
   const [selection, setSelection] = useState<SelectionState>(() => fromSelectionDto(form.selection));
   const [includeNew, setIncludeNew] = useState(() => form.selection.folders.length > 0 || form.selection.models.length === 0);
   const [errors, setErrors] = useState<string | null>(null);
@@ -125,15 +120,6 @@ export function ScheduleEditor({ schedule, module, base = '/schedules' }: { sche
   const selected = toSelectionDto(selection);
   const isExport = form.moduleKind === 'export';
 
-  /** Другая задача — свои настройки; папка результатов меняется, только если её не трогали. */
-  function setModule(moduleKind: string) {
-    if (moduleKind === form.moduleKind) return;
-    set({
-      moduleKind,
-      outputFolderTemplate: form.outputFolderTemplate === defaultFolders[form.moduleKind] ? defaultFolders[moduleKind] : form.outputFolderTemplate,
-      moduleSettings: defaultsFor(moduleKind, defaultPreset),
-    });
-  }
 
   const run = useApiMutation<void, { runId: string }>('POST', () => `/api/schedules/${schedule!.id}/run`, { invalidate: ['runs'] });
   // Тост ведёт прямо на созданный запуск: искать его в «Истории» не нужно. Уведомления — вне роутера, поэтому переход — через navigate.
@@ -143,7 +129,7 @@ export function ScheduleEditor({ schedule, module, base = '/schedules' }: { sche
         color: 'green',
         title: 'Запуск создан',
         message: (
-          <Anchor component="button" size="sm" onClick={() => { notifications.hide(id); navigate(`${module ? moduleInfo[module].history : '/history'}/runs/${runId}`); }}>
+          <Anchor component="button" size="sm" onClick={() => { notifications.hide(id); navigate(`${moduleInfo[module].history}/runs/${runId}`); }}>
             Открыть запуск
           </Anchor>
         ),
@@ -195,10 +181,6 @@ export function ScheduleEditor({ schedule, module, base = '/schedules' }: { sche
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
             <Stack gap="sm">
               <TextInput label="Название" value={form.name} disabled={readOnly} onChange={(e) => set({ name: e.currentTarget.value })} required />
-              {!module && (
-                <Select label="Задача" data={moduleOptions} value={form.moduleKind} allowDeselect={false} disabled={readOnly}
-                  onChange={(v) => v && setModule(v)} />
-              )}
               <Select
                 label="Источник"
                 description="Версия Revit определяется по нему"
@@ -342,7 +324,7 @@ export function ScheduleEditor({ schedule, module, base = '/schedules' }: { sche
                 {schedule.isEnabled ? 'Выключить' : 'Включить'}
               </Button>
               <ConfirmButton variant="subtle" color="red" question={`Удалить расписание «${schedule.name}»? Запуски останутся в истории.`}
-                onConfirm={() => remove.mutate(undefined, { onSuccess: () => navigate('/schedules') })}>
+                onConfirm={() => remove.mutate(undefined, { onSuccess: () => navigate(base) })}>
                 Удалить
               </ConfirmButton>
             </>

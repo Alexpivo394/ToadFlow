@@ -28,7 +28,7 @@ export function ModelPage() {
 
   return (
     <Stack>
-      <Anchor component={Link} to="/analytics/models" size="sm">← К моделям</Anchor>
+      <Anchor component={Link} to="/loi/analytics/models" size="sm">← К моделям</Anchor>
       {/* Имя модели — заголовком как есть: подпись панели набрана капслоком, а в именах моделей регистр значим. */}
       <Paper withBorder p="md" radius="md">
         <Title order={3}>{model.modelName}</Title>

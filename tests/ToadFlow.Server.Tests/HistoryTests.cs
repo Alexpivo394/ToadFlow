@@ -124,7 +124,7 @@ public sealed record Kpi(int Queued, int Running);
 
 public sealed record Daily(DateOnly Date, int Succeeded, int Failed);
 
-public sealed record Upcoming(Guid ScheduleId, string Name, DateTimeOffset At, int ModelCount);
+public sealed record Upcoming(Guid ScheduleId, string Name, DateTimeOffset At, int ModelCount, string? Module = null);
 
 public sealed record RecentError(DateTimeOffset At, string ModelName, string? Note, string? AgentName, int? RevitYear, Guid JobId);
 
@@ -199,7 +199,8 @@ public class FarmSummaryTests : ServerTest
 
         var dashboard = await admin.GetJsonAsync<FarmSummary>("/api/farm/summary");
 
-        dashboard.Upcoming.ShouldHaveSingleItem().ModelCount.ShouldBe(1);
+        var upcoming = dashboard.Upcoming.ShouldHaveSingleItem();
+        (upcoming.ModelCount, upcoming.Module).ShouldBe((1, "export")); // по модулю веб строит ссылку на расписание
     }
 }
 

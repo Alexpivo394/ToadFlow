@@ -77,7 +77,7 @@ function CatalogPanel({ catalog }: { catalog: LoiCatalog }) {
         </Table>
       )}
       {runId && (
-        <Anchor component={Link} to={`/history/runs/${runId}`} size="sm">
+        <Anchor component={Link} to={`/loi/history/runs/${runId}`} size="sm">
           Ход обновления — в истории
         </Anchor>
       )}

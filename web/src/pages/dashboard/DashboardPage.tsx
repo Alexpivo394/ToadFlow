@@ -8,6 +8,7 @@ import { PendingUsersNotice } from './PendingUsersNotice';
 import { ConfirmButton, Empty, PageTitle, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime, formatDuration, formatRelative, pluralRu } from '../../lib/format';
+import { moduleInfo, type ModuleName } from '../../spaces/modules';
 import { describeInstance, toneColor } from './agentStatus';
 
 function Kpi({ title, value, hint, color }: { title: string; value: string | number; hint: string; color?: string }) {
@@ -141,7 +142,7 @@ export function DashboardPage() {
           </Panel>
           <Panel title="Ближайшие запуски">
             {data && data.upcoming.length === 0 ? (
-              <Empty>Расписаний нет — <Anchor component={Link} to="/schedules">создайте первое</Anchor></Empty>
+              <Empty>Расписаний нет — <Anchor component={Link} to="/export/schedules/new">создайте первое</Anchor></Empty>
             ) : (
               <Table>
                 <Table.Tbody>
@@ -149,7 +150,7 @@ export function DashboardPage() {
                     <Table.Tr key={u.scheduleId}>
                       <Table.Td>{formatDateTime(u.at)}</Table.Td>
                       <Table.Td>
-                        <Anchor component={Link} to={`/schedules/${u.scheduleId}`} size="sm">
+                        <Anchor component={Link} to={`${(moduleInfo[u.module as ModuleName] ?? moduleInfo.export).schedules}/${u.scheduleId}`} size="sm">
                           {u.name}
                         </Anchor>
                       </Table.Td>
@@ -174,7 +175,7 @@ export function DashboardPage() {
                   <Table.Tr key={e.jobId}>
                     <Table.Td c="dimmed">{formatDateTime(e.at)}</Table.Td>
                     <Table.Td>
-                      <Anchor component={Link} to={`/history/runs/${e.runId}?job=${e.jobId}`} size="sm">
+                      <Anchor component={Link} to={`/farm/queue/runs/${e.runId}?job=${e.jobId}`} size="sm">
                         {e.modelName}
                       </Anchor>
                     </Table.Td>

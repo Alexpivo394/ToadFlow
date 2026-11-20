@@ -16,7 +16,7 @@ import { JobsTable } from './JobsTable';
 import type { ModuleName } from '../../spaces/modules';
 
 /** Где открыта история: модуль (нет — все модули, «Ферма») и адрес страницы, от него — ссылки на запуски. */
-const Place = createContext<{ module?: ModuleName; base: string }>({ base: '/history' });
+const Place = createContext<{ module?: ModuleName; base: string }>({ base: '/farm/queue' });
 
 /** Запросы истории этой страницы: свой модуль или выбранный в фильтре «Фермы». */
 function useScope() {
@@ -209,7 +209,7 @@ function RunDetails() {
  * История запусков: внутри модуля (<c>module</c>) — только его записи; без модуля — «Ферма → Очередь и журнал», все модули с
  * фильтром по модулю. <c>base</c> — адрес страницы: от него строятся вкладки и ссылки на запуски.
  */
-export function HistoryPage({ module, base = '/history' }: { module?: ModuleName; base?: string }) {
+export function HistoryPage({ module, base }: { module?: ModuleName; base: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   const rest = location.pathname.slice(base.length);
@@ -219,7 +219,7 @@ export function HistoryPage({ module, base = '/history' }: { module?: ModuleName
 
   return (
     <Place.Provider value={{ module, base }}>
-      <PageTitle>{module ? t.nav.historyPage : base === '/history' ? t.nav.history : t.nav.farmQueue}</PageTitle>
+      <PageTitle>{module ? t.nav.historyPage : t.nav.farmQueue}</PageTitle>
       {!rest.startsWith('/runs/') && (
         <Tabs value={tab} onChange={(v) => navigate(v === 'runs' ? base : `${base}/${v}`)} mb="md">
           <Tabs.List>

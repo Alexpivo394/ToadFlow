@@ -1,18 +1,15 @@
-import { lazy, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, type RouteObject } from 'react-router';
 import { Center, Loader } from '@mantine/core';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { LoginPage } from './auth/LoginPage';
 import { RegisterPage } from './auth/RegisterPage';
 import { AppShell } from './layout/AppShell';
-import { HomeRedirect, StaffOnly } from './pages/HomeRedirect';
+import { HomeRedirect } from './pages/HomeRedirect';
 import { ProfilePage } from './pages/profile/ProfilePage';
+import { oldRoutes } from './pages/redirects';
 import { useSpaces } from './spaces/useSpaces';
 
-// Страницы своими чанками: грузятся, когда их открыли (страницы пространств — в манифестах web/src/spaces).
-const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
-const HistoryPage = lazy(() => import('./pages/history/HistoryPage').then((m) => ({ default: m.HistoryPage })));
-const SchedulesPage = lazy(() => import('./pages/schedules/SchedulesPage').then((m) => ({ default: m.SchedulesPage })));
 
 /**
  * Маршруты data router (createBrowserRouter в приложении, createMemoryRouter в тестах): вход и страницы — внутри <c>App</c>, data
@@ -67,10 +64,8 @@ export function App() {
             {space.routes()}
           </Route>
         ))}
-        {/* Прежние адреса — до перенаправлений на новые места (задача 15). */}
-        <Route path="schedules/:id?" element={<StaffOnly><SchedulesPage /></StaffOnly>} />
-        <Route path="history/*" element={<StaffOnly><HistoryPage /></StaffOnly>} />
-        <Route path="analytics/*" element={<StaffOnly><AnalyticsPage /></StaffOnly>} />
+        {/* Прежние адреса из закладок и ссылок — на новые места. */}
+        {oldRoutes()}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

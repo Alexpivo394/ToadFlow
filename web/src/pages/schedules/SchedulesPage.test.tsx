@@ -21,7 +21,7 @@ const responses = {
 
 describe('SchedulesPage', () => {
   it('lists schedules with authors and recurrence', async () => {
-    renderApp('/schedules', responses);
+    renderApp('/export/schedules', responses);
 
     expect(await screen.findByText('ЖК «Север» — все')).toBeTruthy();
     expect(screen.getByText('Пн–Пт 20:00')).toBeTruthy();
@@ -30,7 +30,7 @@ describe('SchedulesPage', () => {
   });
 
   it('opens the editor of the selected schedule', async () => {
-    renderApp('/schedules/s1', responses);
+    renderApp('/export/schedules/s1', responses);
 
     expect(await screen.findByText('Расписание «ЖК «Север» — все»')).toBeTruthy();
     expect(screen.getByDisplayValue('ЖК «Север» — все')).toBeTruthy();
@@ -39,7 +39,7 @@ describe('SchedulesPage', () => {
   });
 
   it('new schedule form', async () => {
-    renderApp('/schedules/new', responses);
+    renderApp('/export/schedules/new', responses);
 
     expect(await screen.findByText('Новое расписание')).toBeTruthy();
   });
@@ -47,7 +47,7 @@ describe('SchedulesPage', () => {
 
 describe('SchedulesPage for a viewer', () => {
   it('hides every editing control', async () => {
-    renderApp('/schedules/s1', {
+    renderApp('/export/schedules/s1', {
       ...responses,
       '/api/auth/me': { id: 'u3', login: 'gip', displayName: 'Гость ГИП', role: 'Viewer', isDisabled: false, lastLoginAt: null },
     });
@@ -74,7 +74,7 @@ describe('SchedulesPage for LOI', () => {
   };
 
   it('marks LOI schedules and shows the LOI settings tab', async () => {
-    renderApp('/schedules/s2', loiResponses);
+    renderApp('/loi/schedules/s2', loiResponses);
 
     expect(await screen.findByText('Расписание «LOI ЖК «Север»»')).toBeTruthy();
     expect(within(screen.getByRole('main')).getByText('LOI')).toBeTruthy(); // в полосе слева тоже «LOI»
@@ -88,7 +88,7 @@ describe('SchedulesPage for LOI', () => {
       ...loi,
       moduleSettings: { ...loi.moduleSettings, profileId: null, disciplines: [{ discipline: 'ОВ', profileId: 'p1' }], fallbackProfileId: null, modelProfiles: [] },
     };
-    renderApp('/schedules/s2', { ...loiResponses, '/api/schedules': [byDiscipline], '/api/loi/disciplines': ['АР', 'ОВ'], '/api/loi/routing/preview': [] });
+    renderApp('/loi/schedules/s2', { ...loiResponses, '/api/schedules': [byDiscipline], '/api/loi/disciplines': ['АР', 'ОВ'], '/api/loi/routing/preview': [] });
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Проверка LOI' }));
 
@@ -108,7 +108,7 @@ describe('SchedulesPage for clash extraction', () => {
   const clashResponses = { ...responses, '/api/schedules': [clash], '/api/schedules/s3/changes': [], '/api/clash/parts': [] };
 
   it('ScheduleEditor_ClashExtract_HidesOutputFolderAndSavesViewName', async () => {
-    renderApp('/schedules/s3', clashResponses);
+    renderApp('/clash/setup/schedules/s3', clashResponses);
 
     expect(await screen.findByText('Расписание «Коллизии ЖК «Север»»')).toBeTruthy();
     expect(screen.getAllByText('Коллизии').some((el) => el.closest('.mantine-Badge-root'))).toBe(true); // метка вида задачи в списке
@@ -136,7 +136,7 @@ describe('SchedulesPage for clash extraction', () => {
       id, name, object: 'Север', part: null, models: 2, sets: 3, updatedAt: '2026-10-28T10:00:00Z', groups: [], warnings: [], lastRun: null,
       approvedVersion, lastApproved: null,
     });
-    renderApp('/schedules/s3', {
+    renderApp('/clash/setup/schedules/s3', {
       ...clashResponses,
       '/api/clash/parts': [part('p1', 'Корпус 1', 2), part('p2', 'Корпус 2', null)],
       '/api/schedules': [{ ...clash, moduleSettings: { viewName: 'Вид КЛ', worksetKeyword: '', parts: [] } }],

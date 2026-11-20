@@ -20,7 +20,7 @@ const calls = () => (fetch as unknown as FetchMock).mock.calls;
 describe('Run now', () => {
   it('RunNow_ToastLinksToRun', async () => {
     const show = vi.spyOn(notifications, 'show');
-    renderApp('/schedules/s1', {
+    renderApp('/export/schedules/s1', {
       '/api/schedules': [schedule],
       '/api/sources': [{ id: 'src1', name: 'RS 2022', kind: 'RevitServer', host: 'rs22', revitYear: 2022, rootPath: '' }],
       '/api/export/presets': [{ id: 'p1', name: 'Стандарт', isDefault: true, settings: defaultExportSettings }],

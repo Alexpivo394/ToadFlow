@@ -134,7 +134,7 @@ export function OverviewTab() {
               {data.worstModels.map((m) => (
                 <Table.Tr key={m.modelKey}>
                   <Table.Td>
-                    <Anchor component={Link} to={`/analytics/model?key=${encodeURIComponent(m.modelKey)}`} size="sm" fw={500}>{m.modelName}</Anchor>
+                    <Anchor component={Link} to={`/loi/analytics/model?key=${encodeURIComponent(m.modelKey)}`} size="sm" fw={500}>{m.modelName}</Anchor>
                     <Text size="xs" c="dimmed">{[m.object, m.discipline, m.part].filter(Boolean).join(' · ')}</Text>
                   </Table.Td>
                   <Table.Td ta="right" w={80} style={{ whiteSpace: 'nowrap' }}><Share value={m.fillRate} /></Table.Td>

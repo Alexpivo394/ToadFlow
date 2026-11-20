@@ -159,6 +159,8 @@ export interface ScheduleView {
   id: string;
   name: string;
   moduleKind: string;
+  /** Модуль расписания: export, loi, clash. */
+  module: string;
   sourceId: string;
   sourceName: string;
   sourceRevitYear: number | null;
@@ -316,7 +318,7 @@ export interface Dashboard {
     agentsTotal: number;
   };
   daily: { date: string; succeeded: number; failed: number }[];
-  upcoming: { scheduleId: string; name: string; at: string; modelCount: number }[];
+  upcoming: { scheduleId: string; name: string; at: string; modelCount: number; module?: string }[];
   recentErrors: { at: string; modelName: string; note: string | null; agentName: string | null; revitYear: number | null; jobId: string; runId: string }[];
 }
 

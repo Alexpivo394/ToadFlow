@@ -19,7 +19,7 @@ const waiting = { ...job, id: 'j2', modelName: 'КР_К1.rvt', status: 'Queued',
 
 describe('HistoryPage', () => {
   it('lists runs with who started them', async () => {
-    renderApp('/history', { '/api/runs': { items: [run], total: 1 }, '/api/schedules': [], '/api/agents': [] });
+    renderApp('/farm/queue', { '/api/runs': { items: [run], total: 1 }, '/api/schedules': [], '/api/agents': [] });
 
     expect(await screen.findByText('ЖК «Север» — все')).toBeTruthy();
     expect(screen.getByText('И. Петров (вручную)')).toBeTruthy();
@@ -28,7 +28,7 @@ describe('HistoryPage', () => {
   });
 
   it('run details expand a model log', async () => {
-    renderApp('/history/runs/r1', {
+    renderApp('/farm/queue/runs/r1', {
       '/api/runs/r1': { run, jobs: [job, waiting] },
       '/api/jobs/j1/log': [{ at: '2026-10-23T08:48:02Z', stage: 'Открытие', text: 'открытие модели' }],
     });
@@ -58,7 +58,7 @@ describe('HistoryPage for LOI', () => {
         reportPath: '\\nas\loi\АР_К1_LOIReport.xlsx', rules: [{ title: 'Стены', elements: 120, completeElements: 102, completeness: 0.85, fillRate: 0.95 }],
       },
     };
-    renderApp('/history/runs/r1', { '/api/runs/r1': { run, jobs: [checked] }, '/api/jobs/j3/log': [] });
+    renderApp('/farm/queue/runs/r1', { '/api/runs/r1': { run, jobs: [checked] }, '/api/jobs/j3/log': [] });
 
     expect(await screen.findByText('Полнота')).toBeTruthy();
     expect(screen.getAllByText('85,0 %').length).toBeGreaterThan(0);
@@ -71,7 +71,7 @@ describe('HistoryPage for LOI', () => {
 describe('HistoryPage: clash extraction', () => {
   it('History_ClashExtract_ShowsRunsItStarted', async () => {
     const clashJob = { ...job, id: 'j5', moduleKind: 'clash-extract', status: 'Succeeded', note: null };
-    renderApp('/history/runs/r1', {
+    renderApp('/farm/queue/runs/r1', {
       '/api/runs/r1': { run, jobs: [clashJob] },
       '/api/clash/extract-runs/r1/engine-runs': [
         { runId: 'e1', partId: 'p1', partName: 'Корпус 1', state: 'Succeeded', new: 12, error: null },
