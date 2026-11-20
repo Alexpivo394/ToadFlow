@@ -76,7 +76,7 @@ public class AnalyticsTests : ServerTest
 
     private Task<List<LoiCheck>> ChecksAsync() => DbAsync(db => db.Set<LoiCheck>().Include(c => c.Rules).ThenInclude(r => r.Parameters).AsNoTracking().ToListAsync());
 
-    private async Task SetNamingAsync() => (await (await AdminAsync()).PutJsonAsync("/api/loi/naming", Naming)).EnsureSuccessStatusCode();
+    private async Task SetNamingAsync() => (await (await AdminAsync()).PutJsonAsync("/api/naming", Naming)).EnsureSuccessStatusCode();
 
     [Test]
     public async Task Token_ActsAsItsUser_CannotManageTokens_Revocable()
@@ -207,14 +207,14 @@ public class AnalyticsTests : ServerTest
     {
         var admin = await AdminAsync();
 
-        var rows = await (await admin.PostJsonAsync("/api/loi/naming/preview", new { config = Naming, names = new[] { "POL_AR_RLP_St_R22", "XXX_AR" } }))
+        var rows = await (await admin.PostJsonAsync("/api/naming/preview", new { config = Naming, names = new[] { "POL_AR_RLP_St_R22", "XXX_AR" } }))
             .EnsureSuccessStatusCode().ReadJsonAsync<PreviewRowView[]>();
-        var broken = await admin.PutJsonAsync("/api/loi/naming", Naming with { Patterns = [new(NamingFields.Part, "K(\\d+", "корпус $1")] });
+        var broken = await admin.PutJsonAsync("/api/naming", Naming with { Patterns = [new(NamingFields.Part, "K(\\d+", "корпус $1")] });
 
         rows[0].Result.Object.ShouldBe("Полковая");
         rows[1].Result.Unrecognized.ShouldBe(["XXX"]);
         broken.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await (await ClientAsync(UserRole.Operator)).PutJsonAsync("/api/loi/naming", Naming)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await (await ClientAsync(UserRole.Operator)).PutJsonAsync("/api/naming", Naming)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
     [Test]
@@ -267,7 +267,7 @@ public class AnalyticsTests : ServerTest
     public async Task CustomFields_FilterAnalytics_AndFlattenForPowerBi()
     {
         var admin = await AdminAsync();
-        (await admin.PutJsonAsync("/api/loi/naming", Naming)).EnsureSuccessStatusCode(); // стандартная «Стадия»: RD → Р, P → П
+        (await admin.PutJsonAsync("/api/naming", Naming)).EnsureSuccessStatusCode(); // стандартная «Стадия»: RD → Р, P → П
         await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary("POL_AR_RD_St_R22") });
         await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary("POL_VK_P_St_R22") });
         await admin.PostJsonAsync("/api/loi/checks", new { id = Guid.NewGuid(), summary = Summary("POL_OV_St_R22") });

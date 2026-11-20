@@ -16,8 +16,7 @@ public sealed record ModelPlacement(string? Customer, string? Object, string? Di
 public sealed class CheckRecorder(ToadFlowDb db, LoiSettingsStore settings)
 {
     /// <summary>Путь модели для сравнения: <c>RSN:\\…</c> и <c>RSN://…</c> — одна модель, регистр не важен.</summary>
-    public static string ModelKey(string modelPath, string modelName) =>
-        ModelNames.Key(modelPath.Trim().Length > 0 ? modelPath : modelName).ToLowerInvariant();
+    public static string ModelKey(string modelPath, string modelName) => NamingEndpoints.ModelKey(modelPath, modelName);
 
     /// <summary>Ключ поправки «по имени»: она действует на все модели с этим именем, где бы они ни лежали.</summary>
     public static string NameKey(string modelNameOrPath) => ModelKey("", ModelNames.FromPath(modelNameOrPath));

@@ -14,12 +14,6 @@ public sealed record ManualCheckRequest(Guid Id, CheckSummary Summary);
 /// <param name="Reason">Почему не записана: аналитика выключена или проверка уже есть. Плагину повторять отправку не нужно.</param>
 public sealed record ManualCheckResult(bool Recorded, string? Reason);
 
-/// <param name="Config">Настройки для предпросмотра — ещё не сохранённые; null — сохранённые.</param>
-public sealed record NamingPreviewRequest(NamingConfig? Config, string[] Names);
-
-public sealed record NamingPreviewRow(string Name, ModelClassification Result);
-
-public sealed record KnownModel(string Name, string Path);
 
 public sealed record ModelOverrideRequest(string ModelPath, string ModelName, string? Customer, string? Object, string? Discipline, string? Part);
 
@@ -31,7 +25,7 @@ public sealed record ModelOverrideView(string ModelKey, string ModelName, bool B
         new(o.ModelKey, o.ModelName, !CheckRecorder.IsPath(o.ModelKey), o.Customer, o.Object, o.Discipline, o.Part, o.UpdatedAt);
 }
 
-/// <summary>Приём ручных проверок и настройки аналитики: справочник именования, поправки моделей, срок хранения.</summary>
+/// <summary>Приём ручных проверок и настройки аналитики: поправки моделей, срок хранения. Справочник именования — в ядре (<c>/api/naming</c>).</summary>
 internal static class AnalyticsAdminEndpoints
 {
     public const string Entity = "loi-analytics";
@@ -56,10 +50,6 @@ internal static class AnalyticsAdminEndpoints
     {
 
         loi.MapGet("/analytics/settings", (LoiSettingsStore store, CancellationToken ct) => store.AnalyticsAsync(ct));
-        loi.MapGet("/naming", (LoiSettingsStore store, CancellationToken ct) => store.NamingAsync(ct));
-        loi.MapGet("/naming/defaults", () => NamingDefaults.Create());
-        loi.MapPost("/naming/preview", PreviewAsync);
-        loi.MapGet("/naming/models", KnownModelsAsync);
         loi.MapGet("/models/overrides", async (ToadFlowDb db) => (await db.Set<LoiModelOverride>().AsNoTracking().OrderBy(o => o.ModelName).ToListAsync())
             .Select(ModelOverrideView.Of).ToList());
 
@@ -71,14 +61,6 @@ internal static class AnalyticsAdminEndpoints
             events.Publish(new CatalogChanged(http.User.Actor(), Entity, Guid.Empty,
                 $"Аналитика LOI: {(settings.Enabled ? "включена" : "выключена")}, хранить {(settings.RetentionYears == 0 ? "всегда" : $"{settings.RetentionYears} лет")}"));
             return Results.Ok(settings);
-        });
-
-        admin.MapPut("/naming", async (NamingConfig config, LoiSettingsStore store, HttpContext http, IDomainEvents events, CancellationToken ct) =>
-        {
-            if (ModelNameParser.Validate(config) is { Count: > 0 } errors) return Results.BadRequest(new { error = string.Join("; ", errors), errors });
-            await store.SaveNamingAsync(config, ct);
-            events.Publish(new CatalogChanged(http.User.Actor(), Entity, Guid.Empty, $"Изменён справочник именования моделей: записей {config.Entries.Count}"));
-            return Results.Ok(config);
         });
 
         admin.MapPost("/analytics/reclassify", async (CheckRecorder recorder, HttpContext http, IDomainEvents events, CancellationToken ct) =>
@@ -95,34 +77,6 @@ internal static class AnalyticsAdminEndpoints
             await recorder.ReclassifyAsync(key, ct);
             return Results.NoContent();
         });
-    }
-
-    private static async Task<IResult> PreviewAsync(NamingPreviewRequest request, LoiSettingsStore store, CancellationToken ct)
-    {
-        var config = request.Config ?? await store.NamingAsync(ct);
-        if (ModelNameParser.Validate(config) is { Count: > 0 } errors) return Results.BadRequest(new { error = string.Join("; ", errors), errors });
-
-        var parser = new ModelNameParser(config);
-        return Results.Ok((request.Names ?? []).Where(n => !string.IsNullOrWhiteSpace(n)).Take(2000)
-            .Select(name => new NamingPreviewRow(name.Trim(), parser.Parse(name.Trim()))).ToList());
-    }
-
-    /// <summary>Модели, которые сервис уже знает, — для предпросмотра справочника на настоящих именах.</summary>
-    private static async Task<List<KnownModel>> KnownModelsAsync(ToadFlowDb db, CancellationToken ct)
-    {
-        var models = new Dictionary<string, KnownModel>(StringComparer.OrdinalIgnoreCase);
-        foreach (var check in await db.Set<LoiCheck>().AsNoTracking().Select(c => new { c.ModelKey, c.ModelName, c.ModelPath }).Distinct().ToListAsync(ct))
-            models.TryAdd(check.ModelKey, new KnownModel(check.ModelName, check.ModelPath));
-
-        foreach (var schedule in await db.Schedules.AsNoTracking().ToListAsync(ct))
-        {
-            foreach (var model in schedule.LastKnownModels ?? [])
-                models.TryAdd(CheckRecorder.ModelKey(model.ModelPath, model.Name), new KnownModel(Path.GetFileNameWithoutExtension(model.Name), model.ModelPath));
-            foreach (var model in schedule.Selection.Models)
-                models.TryAdd(CheckRecorder.ModelKey(model.ModelPath, model.Name), new KnownModel(Path.GetFileNameWithoutExtension(model.Name), model.ModelPath));
-        }
-
-        return models.Values.OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     private static async Task<IResult> SaveOverrideAsync(ModelOverrideRequest request, ToadFlowDb db, CheckRecorder recorder, HttpContext http,
@@ -157,4 +111,12 @@ public sealed record LoiCheckRecorded(Actor Actor, Guid CheckId) : DomainEvent(A
 {
     public override string UiEntity => AnalyticsAdminEndpoints.Entity;
     public override string UiId => CheckId.ToString();
+}
+
+/// <summary>Модели из проверок LOI — для предпросмотра справочника именования.</summary>
+internal sealed class LoiNamingModels(ToadFlowDb db) : INamingModelSource
+{
+    public async Task<IReadOnlyList<KnownModel>> ModelsAsync(CancellationToken ct) =>
+        (await db.Set<LoiCheck>().AsNoTracking().Select(c => new { c.ModelName, c.ModelPath }).Distinct().ToListAsync(ct))
+        .Select(c => new KnownModel(c.ModelName, c.ModelPath)).ToList();
 }

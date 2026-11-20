@@ -32,6 +32,7 @@ public sealed class LoiServerModule : IServerModule
     {
         services.AddScoped<LoiCatalogRefresher>();
         services.AddScoped<LoiSettingsStore>();
+        services.AddScoped<ToadFlow.Server.Naming.INamingModelSource, LoiNamingModels>();
         services.AddScoped<CheckRecorder>();
         services.AddScoped<LoiProfileResolver>();
         services.AddHostedService<AnalyticsCleaner>();

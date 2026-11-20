@@ -20,7 +20,6 @@ public sealed class LoiSettingsStore(ToadFlowDb db, NamingStore naming)
 
     public Task<NamingConfig> NamingAsync(CancellationToken ct = default) => naming.GetAsync(ct);
 
-    public Task SaveNamingAsync(NamingConfig config, CancellationToken ct = default) => naming.SaveAsync(config, ct);
 
     public async Task<AnalyticsSettings> AnalyticsAsync(CancellationToken ct = default) => await ReadAsync<AnalyticsSettings>(AnalyticsKey, ct) ?? new AnalyticsSettings();
 

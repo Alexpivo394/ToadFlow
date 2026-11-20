@@ -73,6 +73,7 @@ public static class ServerSetup
         api.MapUsers();
         api.MapEvents();
         api.MapSettings();
+        api.MapNaming();
         api.MapSources();
         api.MapAgents();
         api.MapSchedules();

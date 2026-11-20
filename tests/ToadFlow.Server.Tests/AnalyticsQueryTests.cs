@@ -48,7 +48,7 @@ public class AnalyticsQueryTests : ServerTest
     private async Task<HttpClient> SeedAsync()
     {
         var admin = await AdminAsync();
-        (await admin.PutJsonAsync("/api/loi/naming", NamingDefaults.Create() with
+        (await admin.PutJsonAsync("/api/naming", NamingDefaults.Create() with
         {
             Entries =
             [
