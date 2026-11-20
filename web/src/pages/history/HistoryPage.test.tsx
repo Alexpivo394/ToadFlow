@@ -40,7 +40,7 @@ describe('HistoryPage', () => {
     expect(screen.getByRole('button', { name: 'Скачать лог' })).toBeTruthy();
   });
 
-  it('system events tab', async () => {
+  it('old system events address opens the action log', async () => {
     renderApp('/history/events', {
       '/api/events': [{ id: 5, at: '2026-10-23T09:15:00Z', actorKind: 'User', actorName: 'И. Петров', kind: 'InstanceKilled', text: 'Вручную убит Revit #2 на BIM-FARM-01' }],
     });

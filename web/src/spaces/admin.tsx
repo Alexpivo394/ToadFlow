@@ -1,12 +1,14 @@
 import { lazy } from 'react';
-import { Navigate, Route } from 'react-router';
+import { Route } from 'react-router';
 import { IconSettings } from '@tabler/icons-react';
 import { t } from '../i18n/ru';
 import { RoleOnly, Titled } from './guards';
 import type { Space } from './types';
 
 const UsersPage = lazy(() => import('../pages/admin/UsersPage').then((m) => ({ default: m.UsersPage })));
-const GeneralSettingsForm = lazy(() => import('../pages/admin/GeneralSettingsForm').then((m) => ({ default: m.GeneralSettingsForm })));
+const ModulesPage = lazy(() => import('../pages/admin/ModulesPage').then((m) => ({ default: m.ModulesPage })));
+const ServerPage = lazy(() => import('../pages/admin/ServerPage').then((m) => ({ default: m.ServerPage })));
+const EventsPage = lazy(() => import('../pages/admin/EventsPage').then((m) => ({ default: m.EventsPage })));
 
 /** Администрирование: пользователи, модули, сервер, журнал действий. */
 export const adminSpace: Space = {
@@ -23,10 +25,9 @@ export const adminSpace: Space = {
   routes: () => (
     <>
       <Route path="users" element={<RoleOnly role="Operator"><Titled title={t.nav.users}><UsersPage /></Titled></RoleOnly>} />
-      {/* Страницы «Модули» и «Журнал действий» — задача 19; до неё ведут на «Сервер» и прежнюю вкладку событий. */}
-      <Route path="modules" element={<Navigate to="/admin/server" replace />} />
-      <Route path="server" element={<RoleOnly role="Viewer"><Titled title={t.nav.server}><GeneralSettingsForm /></Titled></RoleOnly>} />
-      <Route path="events" element={<Navigate to="/farm/queue/events" replace />} />
+      <Route path="modules" element={<RoleOnly role="Viewer"><Titled title={t.nav.modules}><ModulesPage /></Titled></RoleOnly>} />
+      <Route path="server" element={<RoleOnly role="Viewer"><Titled title={t.nav.server}><ServerPage /></Titled></RoleOnly>} />
+      <Route path="events" element={<RoleOnly role="Viewer"><Titled title={t.nav.events}><EventsPage /></Titled></RoleOnly>} />
     </>
   ),
 };

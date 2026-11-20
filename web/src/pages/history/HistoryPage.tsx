@@ -1,10 +1,10 @@
 import { createContext, useContext } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Alert, Anchor, Button, Group, Loader, Pagination, Stack, Table, Tabs, Text } from '@mantine/core';
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Alert, Anchor, Button, Group, Loader, Pagination, Stack, Tabs, Text } from '@mantine/core';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
 import { useApi, useApiMutation } from '../../api/queries';
-import type { JobRow, Page, RunDetails as RunDetailsView, RunRow, SystemEvent } from '../../api/types';
+import type { JobRow, Page, RunDetails as RunDetailsView, RunRow } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
 import { ConfirmButton, Empty, PageTitle, Panel, RunStateBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
@@ -143,39 +143,6 @@ function ModelsTab() {
   );
 }
 
-function EventsTab() {
-  const events = useInfiniteQuery({
-    queryKey: ['events'],
-    queryFn: ({ pageParam }) => apiFetch<SystemEvent[]>(`/api/events?take=50${pageParam ? `&before=${pageParam}` : ''}`),
-    initialPageParam: 0,
-    getNextPageParam: (last) => (last.length === 50 ? last[last.length - 1].id : undefined),
-  });
-  const rows = events.data?.pages.flat() ?? [];
-
-  return (
-    <Panel>
-      {events.isLoading ? <Loader size="sm" /> : rows.length === 0 ? <Empty>Событий нет</Empty> : (
-        <Table>
-          <Table.Tbody>
-            {rows.map((e) => (
-              <Table.Tr key={e.id}>
-                <Table.Td c="dimmed" w={130}>{formatDateTime(e.at)}</Table.Td>
-                <Table.Td w={200}>{e.actorName}</Table.Td>
-                <Table.Td c={e.kind === 'AgentWentOffline' ? 'red' : e.kind === 'InstanceKilled' ? 'orange' : undefined}>{e.text}</Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      )}
-      {events.hasNextPage && (
-        <Button variant="default" mt="md" onClick={() => events.fetchNextPage()} loading={events.isFetchingNextPage}>
-          Показать ещё
-        </Button>
-      )}
-    </Panel>
-  );
-}
-
 function RunDetails() {
   const { id } = useParams();
   const [params] = useSearchParams();
@@ -219,9 +186,7 @@ export function HistoryPage({ module, base }: { module?: ModuleName; base: strin
   const location = useLocation();
   const navigate = useNavigate();
   const rest = location.pathname.slice(base.length);
-  const tab = rest.startsWith('/models') ? 'models' : rest.startsWith('/events') ? 'events' : 'runs';
-  // События системы — общие, а не модуля: вкладка только у общей истории (до страницы «Журнал действий»).
-  const withEvents = module === undefined;
+  const tab = rest.startsWith('/models') ? 'models' : 'runs';
 
   return (
     <Place.Provider value={{ module, base }}>
@@ -233,14 +198,12 @@ export function HistoryPage({ module, base }: { module?: ModuleName; base: strin
           <Tabs.List>
             <Tabs.Tab value="runs">Запуски</Tabs.Tab>
             <Tabs.Tab value="models">Все модели</Tabs.Tab>
-            {withEvents && <Tabs.Tab value="events">События системы</Tabs.Tab>}
           </Tabs.List>
         </Tabs>
       )}
       <Routes>
         <Route index element={<RunsTab />} />
         <Route path="models" element={<ModelsTab />} />
-        {withEvents && <Route path="events" element={<EventsTab />} />}
         <Route path="runs/:id" element={<RunDetails />} />
       </Routes>
     </Place.Provider>
