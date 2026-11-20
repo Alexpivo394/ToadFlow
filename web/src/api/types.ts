@@ -306,20 +306,46 @@ export interface GeneralSettings {
   agentsOfflineMinutes: number;
 }
 
-export interface Dashboard {
-  kpi: {
-    exported24h: number;
-    failed24h: number;
-    failedPercent: number;
-    queued: number;
-    running: number;
-    avgDurationSeconds24h: number | null;
-    agentsOnline: number;
-    agentsTotal: number;
-  };
+/** Сводка «Фермы → Очередь и журнал» (GET /api/farm/summary): очередь, модели по дням, ближайшие запуски, последние ошибки. */
+export interface FarmSummary {
+  kpi: { queued: number; running: number };
   daily: { date: string; succeeded: number; failed: number }[];
-  upcoming: { scheduleId: string; name: string; at: string; modelCount: number; module?: string }[];
+  upcoming: { scheduleId: string; name: string; at: string; modelCount: number; module: string }[];
   recentErrors: { at: string; modelName: string; note: string | null; agentName: string | null; revitYear: number | null; jobId: string; runId: string }[];
+}
+
+/** Строка «Требует внимания»: сбой или дело, ссылка туда, где это делается. */
+export interface AttentionItem {
+  level: 'Problem' | 'Todo';
+  text: string;
+  link: string;
+  module: string | null;
+  minRole: UserRole;
+}
+
+/** Плитка модуля на «Обзоре»: главное число с подписью, изменение, до трёх строк пояснений. */
+export interface OverviewTile {
+  module: string;
+  value: string;
+  label: string;
+  trend: string | null;
+  lines: string[];
+  link: string;
+}
+
+export interface ServerStats {
+  version: string;
+  startedAt: string;
+  databaseBytes: number;
+  volumes: { name: string; freeBytes: number; totalBytes: number }[];
+  processMemoryBytes: number;
+  workers: { module: string; title: string; lastSeenAt: string | null; online: boolean }[];
+}
+
+export interface OverviewView {
+  attention: AttentionItem[];
+  tiles: OverviewTile[];
+  server: ServerStats;
 }
 
 // ── Проверка LOI ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ const as = (role: string, path: string, options: { disciplines?: string[]; disab
     '/api/auth/me': user(role, options.disciplines),
     '/api/profile': user(role, options.disciplines),
     '/api/modules': modules(options.disabled),
-    '/api/dashboard': { kpi: { queued: 0, running: 0 }, daily: [], upcoming: [], recentErrors: [] },
+    '/api/overview': { attention: [], tiles: [], server: { version: '3.0.0', startedAt: '2026-11-01T00:00:00Z', databaseBytes: 0, volumes: [], processMemoryBytes: 0, workers: [] } },
     '/api/agents': [],
     '/api/settings': { silenceTimeoutMinutes: 10 },
     '/api/clash/checks': [],

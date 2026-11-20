@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, useParams, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { useSpaces, visiblePages } from '../spaces/useSpaces';
-import { DashboardPage } from './dashboard/DashboardPage';
+import { OverviewPage } from './overview/OverviewPage';
 
 /**
  * Главный экран: не проектировщику — «Обзор»; проектировщику — первая видимая страница первого доступного пространства, а если
@@ -11,7 +11,7 @@ import { DashboardPage } from './dashboard/DashboardPage';
 export function HomeRedirect() {
   const auth = useAuth();
   const { spaces } = useSpaces();
-  if (auth.isStaff) return <DashboardPage />;
+  if (auth.isStaff) return <OverviewPage />;
   const first = spaces[0];
   return first ? <Navigate to={visiblePages(first, auth)[0].to} replace /> : <Navigate to="/profile" state={{ noSpaces: true }} replace />;
 }

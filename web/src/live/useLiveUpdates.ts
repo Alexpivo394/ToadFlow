@@ -7,10 +7,10 @@ const clashLists = ['clash-list', 'clash-collisions', 'clash-my', 'clash-checks'
 
 /** Какие запросы устаревают при изменении сущности на сервере; <c>id</c> — id сущности из события. */
 const affected: Record<string, (id: string) => QueryKey[]> = {
-  jobs: () => [['jobs'], ['runs'], ['dashboard']],
-  runs: () => [['runs'], ['jobs'], ['dashboard'], ['schedules']],
-  agents: () => [['agents'], ['dashboard']],
-  schedules: () => [['schedules'], ['dashboard']],
+  jobs: () => [['jobs'], ['runs'], ['overview'], ['farm-summary']],
+  runs: () => [['runs'], ['jobs'], ['overview'], ['farm-summary'], ['schedules']],
+  agents: () => [['agents'], ['overview'], ['farm-summary']],
+  schedules: () => [['schedules'], ['overview'], ['farm-summary']],
   // Черновик части и итог его прогона.
   'clash-parts': () => [['clash-parts']],
   // Ход прогона части — раз в несколько секунд: только состояние прогона, без списков.

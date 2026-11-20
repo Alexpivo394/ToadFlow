@@ -13,6 +13,7 @@ import { ClashRunsLine } from './ClashRunsLine';
 import { toApiQuery } from './filters';
 import { Filters, useHistoryFilters } from './HistoryFilters';
 import { JobsTable } from './JobsTable';
+import { QueueSummary } from '../farm/QueueSummary';
 import { DataTable, type Column } from '../../components/DataTable';
 import { useTableState } from '../../components/tableState';
 import type { ModuleName } from '../../spaces/modules';
@@ -225,6 +226,8 @@ export function HistoryPage({ module, base }: { module?: ModuleName; base: strin
   return (
     <Place.Provider value={{ module, base }}>
       <PageTitle>{module ? t.nav.historyPage : t.nav.farmQueue}</PageTitle>
+      {/* Общая сводка — только в «Ферме»: у модуля своя история без чужих расписаний и ошибок. */}
+      {!module && !rest.startsWith('/runs/') && <QueueSummary />}
       {!rest.startsWith('/runs/') && (
         <Tabs value={tab} onChange={(v) => navigate(v === 'runs' ? base : `${base}/${v}`)} mb="md">
           <Tabs.List>

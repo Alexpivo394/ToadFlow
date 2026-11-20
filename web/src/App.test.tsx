@@ -27,7 +27,7 @@ const scene = { runId: 'r1', number: 1, x: 0, y: 0, z: 0, radiusMm: 5000, depthM
 
 const responses = {
   ...partResponses,
-  '/api/dashboard': { kpi: { exported: 0, failed: 0, failedPercent: 0, queued: 0, running: 0, avgSeconds: null, agentsOnline: 0, agentsTotal: 0 }, days: [], upcoming: [], recentErrors: [] },
+  '/api/overview': { attention: [], tiles: [], server: { version: '3.0.0', startedAt: '2026-11-01T00:00:00Z', databaseBytes: 0, volumes: [], processMemoryBytes: 0, workers: [] } },
   '/api/agents': [],
   '/api/settings': { silenceTimeoutMinutes: 10 },
   '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null, checks: 3 },
@@ -53,7 +53,7 @@ const as = (role: string, path: string, disciplines: string[] = []) => renderApp
 const nav = () => screen.getByRole('navigation');
 
 describe('Role workspaces', () => {
-  it('Home_StaffSeeDashboard_DesignerGoesToMy', async () => {
+  it('Home_StaffSeeOverview_DesignerGoesToMy', async () => {
     for (const role of ['Viewer', 'Operator', 'Admin']) {
       const { unmount } = as(role, '/');
       expect(await screen.findByRole('heading', { name: 'Обзор' })).toBeTruthy();
