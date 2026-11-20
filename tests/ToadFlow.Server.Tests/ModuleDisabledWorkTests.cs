@@ -131,3 +131,25 @@ public class ModuleWorkTests : ServerTest
         (await DbAsync(db => db.Jobs.SingleAsync(j => j.Id == jobId))).Status.ShouldBe(JobStatus.Queued);
     }
 }
+
+public class ModuleDisabledRunTests : ServerTest
+{
+    public ModuleDisabledRunTests() => Modules = "export";
+
+    [Test]
+    public async Task RunNow_ScheduleOfDisabledModule_404()
+    {
+        var scheduleId = await DbAsync(async db =>
+        {
+            var schedule = Seed.Schedule(db, Seed.Source(db).Id);
+            schedule.ModuleKind = ModuleKinds.Loi;
+            await db.SaveChangesAsync();
+            return schedule.Id;
+        });
+
+        var response = await (await AdminAsync()).PostAsync($"/api/schedules/{scheduleId}/run", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await DbAsync(db => db.Runs.AnyAsync(r => r.ScheduleId == scheduleId))).ShouldBeFalse();
+    }
+}

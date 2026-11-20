@@ -90,7 +90,9 @@ public static class ScheduleEndpoints
         write.MapPost("/{id:guid}/run", async (Guid id, ToadFlowDb db, RunFactory runs, ModuleSet modules, HttpContext http) =>
         {
             var kind = await db.Schedules.Where(s => s.Id == id).Select(s => s.ModuleKind).SingleOrDefaultAsync();
-            if (kind is null || !modules.IsKindEnabled(kind)) return Results.NotFound();
+            // Расписание выключенного модуля не видно — и запустить его нельзя. Вид, которого нет ни у одного модуля, доходит до
+            // развёртывания и там даёт запуск с предупреждением, как раньше.
+            if (kind is null || modules.NameOfKind(kind) is { } name && !modules.IsEnabled(name)) return Results.NotFound();
             var run = await runs.StartAsync(id, http.User.UserId(), http.User.Actor());
             return Results.Ok(new { runId = run.Id });
         });
