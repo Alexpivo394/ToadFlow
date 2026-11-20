@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -66,10 +67,21 @@ public sealed record HistoryFilter(
     Guid? AgentId,
     string? Search,
     int? Page,
-    int? PageSize)
+    int? PageSize,
+    string? Sort = null,
+    string? Dir = null)
 {
     public int Skip => (Math.Max(Page ?? 1, 1) - 1) * Take;
     public int Take => Math.Clamp(PageSize ?? 50, 1, 200);
+
+    /// <summary>Столбцы сортировки истории; по умолчанию — <c>created desc</c>.</summary>
+    public static readonly string[] SortKeys = ["created", "started", "finished", "duration", "name", "status"];
+
+    public bool Descending => (Dir ?? (Sort is null ? "desc" : "asc")) == "desc";
+
+    /// <summary>Ошибка в sort или dir для ответа 400; null — всё в порядке.</summary>
+    public string? SortError => Sort is not null && !SortKeys.Contains(Sort) ? $"Неизвестная сортировка «{Sort}». Допустимые: {string.Join(", ", SortKeys)}"
+        : Dir is not null and not ("asc" or "desc") ? "Направление сортировки — asc или desc" : null;
 }
 
 public static class HistoryEndpoints
@@ -78,10 +90,11 @@ public static class HistoryEndpoints
     {
         api.MapGet("/runs", async ([AsParameters] HistoryFilter filter, ToadFlowDb db, ModuleSet modules, TimeProvider time) =>
         {
+            if (filter.SortError is { } error) return Results.BadRequest(new { error });
             var query = FilterRuns(db, modules, filter);
             var total = await query.CountAsync();
-            var runs = await query.OrderByDescending(r => r.CreatedAt).Skip(filter.Skip).Take(filter.Take).ToListAsync();
-            return new Page<RunRow>(await RowsAsync(db, runs, time.GetUtcNow()), total);
+            var runs = await SortRuns(query, filter).Skip(filter.Skip).Take(filter.Take).ToListAsync();
+            return Results.Ok(new Page<RunRow>(await RowsAsync(db, runs, time.GetUtcNow()), total));
         });
 
         api.MapGet("/runs/{id:guid}", async (Guid id, ToadFlowDb db, AgentRegistry registry, TimeProvider time) =>
@@ -96,12 +109,13 @@ public static class HistoryEndpoints
 
         api.MapGet("/jobs", async ([AsParameters] HistoryFilter filter, ToadFlowDb db, ModuleSet modules, AgentRegistry registry) =>
         {
+            if (filter.SortError is { } error) return Results.BadRequest(new { error });
             var query = FilterJobs(db, modules, filter);
             var total = await query.CountAsync();
-            var jobs = await query.OrderByDescending(j => j.CreatedAt).ThenBy(j => j.ModelName).Skip(filter.Skip).Take(filter.Take).ToListAsync();
+            var jobs = await SortJobs(query, filter).Skip(filter.Skip).Take(filter.Take).ToListAsync();
             var runIds = jobs.Select(j => j.RunId).Distinct().ToList();
             var names = await db.Runs.Where(r => runIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name);
-            return new Page<JobRow>(await JobRowsAsync(db, registry, jobs, names), total);
+            return Results.Ok(new Page<JobRow>(await JobRowsAsync(db, registry, jobs, names), total));
         });
 
         api.MapGet("/jobs/{id:guid}/log", async (Guid id, ToadFlowDb db) =>
@@ -123,6 +137,43 @@ public static class HistoryEndpoints
             var fileName = $"{Path.GetFileNameWithoutExtension(job.ModelName)}_{job.Id.ToString()[..8]}.log";
             return Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(text.ToString())).ToArray(), "text/plain; charset=utf-8", fileName);
         });
+    }
+
+    private static IOrderedQueryable<T> By<T, TKey>(IQueryable<T> query, Expression<Func<T, TKey>> key, bool descending) =>
+        descending ? query.OrderByDescending(key) : query.OrderBy(key);
+
+    private static IOrderedQueryable<T> ThenBy<T, TKey>(IOrderedQueryable<T> query, Expression<Func<T, TKey>> key, bool descending) =>
+        descending ? query.ThenByDescending(key) : query.ThenBy(key);
+
+    /// <summary>Порядок запусков; пустые времена и длительность (ещё не начат, не закончен) — в конце при любом направлении.</summary>
+    private static IOrderedQueryable<Run> SortRuns(IQueryable<Run> query, HistoryFilter filter)
+    {
+        var desc = filter.Descending;
+        var sorted = (filter.Sort ?? "created") switch
+        {
+            "started" => ThenBy(query.OrderBy(r => r.StartedAt == null), r => r.StartedAt, desc),
+            "finished" => ThenBy(query.OrderBy(r => r.FinishedAt == null), r => r.FinishedAt, desc),
+            "duration" => ThenBy(query.OrderBy(r => r.StartedAt == null || r.FinishedAt == null), r => r.FinishedAt - r.StartedAt, desc),
+            "name" => By(query, r => r.Name, desc),
+            "status" => By(query, r => r.State, desc),
+            _ => By(query, r => r.CreatedAt, desc)
+        };
+        return sorted.ThenByDescending(r => r.CreatedAt);
+    }
+
+    private static IOrderedQueryable<Job> SortJobs(IQueryable<Job> query, HistoryFilter filter)
+    {
+        var desc = filter.Descending;
+        var sorted = (filter.Sort ?? "created") switch
+        {
+            "started" => ThenBy(query.OrderBy(j => j.StartedAt == null), j => j.StartedAt, desc),
+            "finished" => ThenBy(query.OrderBy(j => j.FinishedAt == null), j => j.FinishedAt, desc),
+            "duration" => ThenBy(query.OrderBy(j => j.StartedAt == null || j.FinishedAt == null), j => j.FinishedAt - j.StartedAt, desc),
+            "name" => By(query, j => j.ModelName, desc),
+            "status" => By(query, j => j.Status, desc),
+            _ => By(query, j => j.CreatedAt, desc)
+        };
+        return sorted.ThenBy(j => j.ModelName);
     }
 
     private static IQueryable<Run> FilterRuns(ToadFlowDb db, ModuleSet modules, HistoryFilter filter)

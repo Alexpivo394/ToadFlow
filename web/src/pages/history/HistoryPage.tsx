@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Anchor, Button, Group, Loader, Pagination, Stack, Table, Tabs, Text } from '@mantine/core';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { JobRow, Page, RunDetails as RunDetailsView, RunRow, SystemEvent } from '../../api/types';
@@ -13,6 +13,8 @@ import { ClashRunsLine } from './ClashRunsLine';
 import { toApiQuery } from './filters';
 import { Filters, useHistoryFilters } from './HistoryFilters';
 import { JobsTable } from './JobsTable';
+import { DataTable, type Column } from '../../components/DataTable';
+import { useTableState } from '../../components/tableState';
 import type { ModuleName } from '../../spaces/modules';
 
 /** Где открыта история: модуль (нет — все модули, «Ферма») и адрес страницы, от него — ссылки на запуски. */
@@ -66,54 +68,50 @@ function RunActions({ run }: { run: RunRow }) {
   );
 }
 
+/** Сортировка истории — на сервере: столбец и направление из адреса (как у общей таблицы). */
+function useSortQuery() {
+  const [state] = useTableState();
+  return state.sort ? `&sort=${state.sort}&dir=${state.dir}` : '';
+}
+
 function RunsTab() {
-  const [filters, update] = useHistoryFilters();
+  const [filters] = useHistoryFilters();
   const navigate = useNavigate();
   const scope = useScope();
-  const runs = useQuery({ queryKey: ['runs', scope.module, filters], queryFn: () => apiFetch<Page<RunRow>>(`/api/runs?${toApiQuery(filters)}${scope.query}`) });
+  const sort = useSortQuery();
+  const runs = useQuery({
+    queryKey: ['runs', scope.module, filters, sort],
+    queryFn: () => apiFetch<Page<RunRow>>(`/api/runs?${toApiQuery(filters)}${scope.query}${sort}`),
+    placeholderData: keepPreviousData, // пока идёт новая сортировка — прежние строки, а не пустая таблица
+  });
+
+  const columns: Column<RunRow>[] = [
+    { key: 'created', title: 'Начало', sort: (run) => run.createdAt, render: (run) => formatDateTime(run.createdAt) },
+    {
+      key: 'name', title: 'Расписание', sort: (run) => run.name,
+      render: (run) => (
+        <>
+          {run.name}
+          {run.warning && <Text size="xs" c="yellow.7" lineClamp={1}>{run.warning}</Text>}
+        </>
+      ),
+    },
+    {
+      key: 'who', title: 'Кто запустил',
+      render: (run) => <Text size="sm" c={run.triggeredBy ? undefined : 'dimmed'}>{run.triggeredBy ? `${run.triggeredBy} (вручную)` : 'по расписанию'}</Text>,
+    },
+    { key: 'status', title: 'Состояние', sort: (run) => run.state, render: (run) => <RunStateBadge state={run.state} /> },
+    { key: 'counts', title: 'Итог', render: (run) => <Counts run={run} /> },
+    { key: 'duration', title: 'Длительность', sort: (run) => run.durationSeconds, render: (run) => formatDuration(run.durationSeconds) },
+    { key: 'actions', title: '', render: (run) => <RunActions run={run} /> },
+  ];
 
   return (
     <>
       <Filters module={scope.module} fixed={scope.fixed} />
       <Panel>
-        {runs.data && runs.data.items.length === 0 ? (
-          <Empty>Запусков нет</Empty>
-        ) : (
-          <Table.ScrollContainer minWidth={900}>
-            <Table highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Начало</Table.Th>
-                  <Table.Th>Расписание</Table.Th>
-                  <Table.Th>Кто запустил</Table.Th>
-                  <Table.Th>Состояние</Table.Th>
-                  <Table.Th>Итог</Table.Th>
-                  <Table.Th>Длительность</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {runs.data?.items.map((run) => (
-                  <Table.Tr key={run.id} onClick={() => navigate(`${scope.base}/runs/${run.id}`)} style={{ cursor: 'pointer' }}>
-                    <Table.Td>{formatDateTime(run.createdAt)}</Table.Td>
-                    <Table.Td>
-                      {run.name}
-                      {run.warning && <Text size="xs" c="yellow.7" lineClamp={1}>{run.warning}</Text>}
-                    </Table.Td>
-                    <Table.Td c={run.triggeredBy ? undefined : 'dimmed'}>{run.triggeredBy ? `${run.triggeredBy} (вручную)` : 'по расписанию'}</Table.Td>
-                    <Table.Td><RunStateBadge state={run.state} /></Table.Td>
-                    <Table.Td><Counts run={run} /></Table.Td>
-                    <Table.Td>{formatDuration(run.durationSeconds)}</Table.Td>
-                    <Table.Td><RunActions run={run} /></Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
-        {runs.data && runs.data.total > pageSize && (
-          <Pagination mt="md" total={Math.ceil(runs.data.total / pageSize)} value={filters.page} onChange={(page) => update({ page })} />
-        )}
+        <DataTable rows={runs.data?.items ?? []} columns={columns} rowKey={(run) => run.id} onRowClick={(run) => navigate(`${scope.base}/runs/${run.id}`)}
+          server={{ total: runs.data?.total ?? 0, pageSize }} empty="Запусков нет" />
       </Panel>
     </>
   );
@@ -122,13 +120,20 @@ function RunsTab() {
 function ModelsTab() {
   const [filters, update] = useHistoryFilters();
   const scope = useScope();
-  const jobs = useQuery({ queryKey: ['jobs', scope.module, filters], queryFn: () => apiFetch<Page<JobRow>>(`/api/jobs?${toApiQuery(filters)}${scope.query}`) });
+  const sort = useSortQuery();
+  const jobs = useQuery({
+    queryKey: ['jobs', scope.module, filters, sort],
+    queryFn: () => apiFetch<Page<JobRow>>(`/api/jobs?${toApiQuery(filters)}${scope.query}${sort}`),
+    placeholderData: keepPreviousData,
+  });
 
   return (
     <>
       <Filters module={scope.module} fixed={scope.fixed} />
       <Panel>
-        {jobs.data && jobs.data.items.length === 0 ? <Empty>Моделей нет</Empty> : <JobsTable jobs={jobs.data?.items ?? []} showRun runBase={`${scope.base}/runs`} />}
+        {jobs.data && jobs.data.items.length === 0 ? <Empty>Моделей нет</Empty> : (
+          <JobsTable jobs={jobs.data?.items ?? []} showRun runBase={`${scope.base}/runs`} sortable />
+        )}
         {jobs.data && jobs.data.total > pageSize && (
           <Pagination mt="md" total={Math.ceil(jobs.data.total / pageSize)} value={filters.page} onChange={(page) => update({ page })} />
         )}

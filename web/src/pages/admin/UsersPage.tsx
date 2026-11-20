@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Button, Drawer, Group, Modal, MultiSelect, PasswordInput, Select, Stack, Switch, Table, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Drawer, Group, Modal, MultiSelect, PasswordInput, Select, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { UserRole, UserView } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
+import { DataTable, type Column } from '../../components/DataTable';
 import { ConfirmButton, Panel } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime } from '../../lib/format';
@@ -150,6 +151,72 @@ function UserCard({ user, known, onClose, onResetPassword }: { user: UserView; k
   );
 }
 
+type BulkAction = 'AddDiscipline' | 'RemoveDiscipline' | 'Disable' | 'Enable';
+
+/** Действия над выбранными: разделы — координатор, отключить и включить — администратор. Кого сервер пропустил — показываем. */
+function BulkBar({ selected, known, onDone }: { selected: string[]; known: string[]; onDone: () => void }) {
+  const { can } = useAuth();
+  const queryClient = useQueryClient();
+  const [choosing, setChoosing] = useState<'AddDiscipline' | 'RemoveDiscipline' | null>(null);
+  const [discipline, setDiscipline] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
+
+  async function run(action: BulkAction, name: string | null = null) {
+    setBusy(true);
+    try {
+      const result = await apiFetch<{ changed: number; skipped: string[] }>('/api/users/bulk', {
+        method: 'POST', json: { ids: selected, action, discipline: name },
+      });
+      setSkipped(result.skipped);
+      notifications.show({ color: 'green', message: `Изменено пользователей: ${result.changed}` });
+      setChoosing(null);
+      setDiscipline(null);
+      onDone();
+    } catch (error) {
+      notifications.show({ color: 'red', title: 'Не получилось', message: (error as Error).message });
+    } finally {
+      setBusy(false);
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+    }
+  }
+
+  return (
+    <Stack gap="xs">
+      {selected.length > 0 && (
+        <Group gap="xs">
+          <Text size="sm">Выбрано: {selected.length}</Text>
+          <Button size="xs" variant="default" onClick={() => setChoosing('AddDiscipline')}>Добавить раздел</Button>
+          <Button size="xs" variant="default" onClick={() => setChoosing('RemoveDiscipline')}>Убрать раздел</Button>
+          {can('Admin') && (
+            <>
+              <Button size="xs" variant="default" loading={busy} onClick={() => void run('Disable')}>Отключить</Button>
+              <Button size="xs" variant="default" loading={busy} onClick={() => void run('Enable')}>Включить</Button>
+            </>
+          )}
+        </Group>
+      )}
+      {skipped.length > 0 && (
+        <Alert color="yellow" withCloseButton onClose={() => setSkipped([])} title="Не изменены">
+          {skipped.map((line) => <Text key={line} size="sm">{line}</Text>)}
+        </Alert>
+      )}
+      {choosing && (
+        <Modal opened onClose={() => setChoosing(null)} title={choosing === 'AddDiscipline' ? 'Добавить раздел выбранным' : 'Убрать раздел у выбранных'}>
+          <Stack>
+            <Select label="Раздел" data={known} value={discipline} onChange={setDiscipline} searchable defaultDropdownOpened
+              comboboxProps={{ withinPortal: false }} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setChoosing(null)}>{t.common.cancel}</Button>
+              <Button disabled={!discipline} loading={busy} onClick={() => void run(choosing, discipline)}>Применить</Button>
+            </Group>
+          </Stack>
+        </Modal>
+      )}
+    </Stack>
+  );
+}
+
 /** Пользователи. Координатор подтверждает заявки; по щелчку в списке — карточка пользователя. Новые учётные записи — администратор. */
 export function UsersPage() {
   const { can } = useAuth();
@@ -160,7 +227,43 @@ export function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [opened, setOpened] = useState<UserView | null>(null);
   const [resetting, setResetting] = useState<UserView | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
   const list = known.data ?? [];
+  const rows = (users.data ?? []).filter((u) => !u.isPending);
+
+  const columns: Column<UserView>[] = [
+    {
+      key: 'name', title: 'Кто', sort: (u) => u.displayName,
+      render: (u) => (
+        <>
+          <Text fw={600} size="sm">{u.displayName}</Text>
+          <Text size="xs" c="dimmed">{[u.login, u.position].filter(Boolean).join(' · ')}</Text>
+        </>
+      ),
+    },
+    {
+      key: 'role', title: 'Роль', sort: (u) => t.role[u.role], render: (u) => <Text size="sm">{t.role[u.role]}</Text>,
+      filter: { options: roles, match: (u, values) => values.includes(u.role) },
+    },
+    {
+      key: 'disciplines', title: 'Разделы', sort: (u) => (u.disciplines ?? []).join(', ') || null,
+      render: (u) => <Text size="sm">{(u.disciplines ?? []).join(', ') || '—'}</Text>,
+      filter: {
+        options: [...new Set([...list, ...rows.flatMap((u) => u.disciplines ?? [])])].map((d) => ({ value: d, label: d })),
+        match: (u, values) => (u.disciplines ?? []).some((d) => values.includes(d)),
+      },
+    },
+    {
+      key: 'state', title: 'Состояние', sort: (u) => (u.isDisabled ? 1 : 0),
+      render: (u) => <Text size="sm" c={u.isDisabled ? 'dimmed' : undefined}>{u.isDisabled ? 'отключён' : 'активен'}</Text>,
+      filter: {
+        options: [{ value: 'active', label: 'активен' }, { value: 'disabled', label: 'отключён' }],
+        match: (u, values) => values.includes(u.isDisabled ? 'disabled' : 'active'),
+      },
+    },
+    { key: 'last', title: 'Последний вход', sort: (u) => u.lastLoginAt, render: (u) => <Text size="sm" c="dimmed">{formatDateTime(u.lastLoginAt)}</Text> },
+    { key: 'created', title: 'Создан', sort: (u) => u.createdAt ?? null, render: (u) => <Text size="sm" c="dimmed">{formatDateTime(u.createdAt ?? null)}</Text> },
+  ];
 
   return (
     <Stack gap="md">
@@ -170,31 +273,12 @@ export function UsersPage() {
         </Panel>
       )}
       <Panel title="Пользователи" actions={admin && <Button size="xs" onClick={() => setCreating(true)}>+ Добавить</Button>}>
-        <Table.ScrollContainer minWidth={700}>
-          <Table highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Кто</Table.Th>
-                <Table.Th>Роль</Table.Th>
-                <Table.Th>Разделы</Table.Th>
-                <Table.Th>Последний вход</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {users.data?.filter((u) => !u.isPending).map((u) => (
-                <Table.Tr key={u.id} style={{ cursor: 'pointer', opacity: u.isDisabled ? 0.55 : 1 }} onClick={() => setOpened(u)}>
-                  <Table.Td>
-                    <Text fw={600} size="sm">{u.displayName}</Text>
-                    <Text size="xs" c="dimmed">{[u.login, u.position, u.isDisabled ? 'отключён' : null].filter(Boolean).join(' · ')}</Text>
-                  </Table.Td>
-                  <Table.Td><Text size="sm">{t.role[u.role]}</Text></Table.Td>
-                  <Table.Td><Text size="sm">{(u.disciplines ?? []).join(', ') || '—'}</Text></Table.Td>
-                  <Table.Td c="dimmed">{formatDateTime(u.lastLoginAt)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+        <Stack gap="sm">
+          <BulkBar selected={selected} known={list} onDone={() => setSelected([])} />
+          <DataTable rows={rows} columns={columns} rowKey={(u) => u.id} search={(u) => [u.displayName, u.login, u.position ?? ''].join(' ')}
+            searchPlaceholder="имя, логин, должность…" selection={{ selected, onChange: setSelected }} onRowClick={setOpened}
+            rowStyle={(u) => (u.isDisabled ? { opacity: 0.55 } : undefined)} empty="Пользователей нет" />
+        </Stack>
         <Text size="xs" c="dimmed" mt="sm">
           Щёлкните по пользователю — откроется карточка. <b>Администратор</b> — всё. <b>Координатор</b> — расписания, запуски, настройка проверок
           коллизий, заявки, разделы и контакты. <b>Проектировщик</b> — свои коллизии. <b>Наблюдатель</b> — только смотрит.

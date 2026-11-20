@@ -6,6 +6,24 @@ import { applyTableState, useTableState, type Column } from './tableState';
 
 export type { Column } from './tableState';
 
+/**
+ * Заголовок столбца, сортирующий таблицу щелчком (по возрастанию → по убыванию → как было), — для таблиц со своей вёрсткой
+ * (например, со строками, раскрывающими лог); состояние — то же, что у <see cref="DataTable" />.
+ */
+export function SortHeader({ column, title, urlKey }: { column: string; title: string; urlKey?: string }) {
+  const [state, update] = useTableState(urlKey);
+  const sortBy = () =>
+    update(state.sort !== column ? { sort: column, dir: 'asc' } : state.dir === 'asc' ? { dir: 'desc' } : { sort: null, dir: 'asc' });
+  return (
+    <UnstyledButton onClick={sortBy} fw={600} fz="sm">
+      <Group gap={4} wrap="nowrap">
+        {title}
+        {state.sort === column ? (state.dir === 'asc' ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />) : <IconSelector size={14} opacity={0.4} />}
+      </Group>
+    </UnstyledButton>
+  );
+}
+
 /** Строк на странице, когда таблица делит строки сама. */
 const clientPageSize = 50;
 

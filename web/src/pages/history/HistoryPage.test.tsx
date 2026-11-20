@@ -121,3 +121,23 @@ describe('History inside a module and the farm queue', () => {
     await waitFor(() => expect(urls[urls.length - 1]).toContain('module=loi'));
   });
 });
+
+describe('History sorting', () => {
+  it('history sends sort and dir to the server', async () => {
+    const urls: string[] = [];
+    renderApp('/farm/queue', {
+      '/api/runs': (url: string) => {
+        urls.push(url);
+        return { items: [run], total: 1 };
+      },
+      '/api/schedules': [],
+      '/api/agents': [],
+    });
+    await screen.findByText('ЖК «Север» — все');
+
+    fireEvent.click(screen.getByRole('button', { name: /Длительность/ }));
+    await waitFor(() => expect(urls[urls.length - 1]).toContain('sort=duration'));
+    fireEvent.click(screen.getByRole('button', { name: /Длительность/ }));
+    await waitFor(() => expect(urls[urls.length - 1]).toContain('dir=desc'));
+  });
+});

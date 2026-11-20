@@ -333,3 +333,46 @@ public class HistoryDisabledModuleTests : ServerTest
         _ = loi;
     }
 }
+
+/// <summary>Сортировка истории на сервере: по умолчанию — новые сверху; неизвестный столбец — 400.</summary>
+public class HistorySortTests : ServerTest
+{
+    private Task<Guid> RunAsync(string name, int minutes, DateTimeOffset created) => DbAsync(async db =>
+    {
+        var run = Seed.Run(db, RunState.Completed);
+        run.Name = name;
+        run.ModuleName = "export";
+        run.CreatedAt = created;
+        run.StartedAt = created;
+        run.FinishedAt = created.AddMinutes(minutes);
+        Seed.Job(db, run.Id).Status = JobStatus.Succeeded;
+        await db.SaveChangesAsync();
+        return run.Id;
+    });
+
+    private static string[] Names(JsonElement page) => page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()!).ToArray();
+
+    [Test]
+    public async Task Runs_SortByDuration_Desc()
+    {
+        var now = DateTimeOffset.UtcNow;
+        await RunAsync("короткий", 5, now.AddHours(-1));
+        await RunAsync("длинный", 50, now.AddHours(-3));
+        await RunAsync("средний", 20, now.AddHours(-2));
+        var admin = await AdminAsync();
+
+        Names(await admin.GetJsonAsync<JsonElement>("/api/runs?sort=duration&dir=desc")).ShouldBe(["длинный", "средний", "короткий"]);
+        Names(await admin.GetJsonAsync<JsonElement>("/api/runs?sort=name&dir=asc")).ShouldBe(["длинный", "короткий", "средний"]);
+        Names(await admin.GetJsonAsync<JsonElement>("/api/runs")).ShouldBe(["короткий", "средний", "длинный"]); // created desc
+    }
+
+    [Test]
+    public async Task Jobs_UnknownSort_400()
+    {
+        var admin = await AdminAsync();
+
+        (await admin.GetAsync("/api/jobs?sort=agent")).StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest);
+        (await admin.GetAsync("/api/runs?sort=name&dir=up")).StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest);
+        (await admin.GetAsync("/api/jobs?sort=duration&dir=asc")).StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
+    }
+}

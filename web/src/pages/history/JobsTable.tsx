@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { Anchor, Badge, Table, Text } from '@mantine/core';
 import { Link } from 'react-router';
 import type { JobRow, StepStatus } from '../../api/types';
+import { SortHeader } from '../../components/DataTable';
 import { JobStatusBadge } from '../../components/ui';
 import { formatBytes, formatDuration } from '../../lib/format';
 import { formatShare, isCatalogResult, isExportResult, isLoiResult } from '../../lib/loi';
@@ -72,8 +73,9 @@ const headers: Record<Columns, [string, string] | [string]> = {
 
 /** Модели запуска: результат, где обрабатывалась, сколько заняла; клик раскрывает лог. */
 /** <c>runBase</c> — адрес запусков страницы, где открыта таблица: от него — ссылка на запуск задания. */
-export function JobsTable({ jobs, showRun, initiallyOpen, runBase }: {
-  jobs: JobRow[]; showRun?: boolean; initiallyOpen?: string | null; runBase: string;
+/** <c>sortable</c> — заголовки «Модель», «Статус», «Время» сортируют список на сервере (вкладка «Все модели»). */
+export function JobsTable({ jobs, showRun, initiallyOpen, runBase, sortable }: {
+  jobs: JobRow[]; showRun?: boolean; initiallyOpen?: string | null; runBase: string; sortable?: boolean;
 }) {
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null);
   const columns = columnsOf(jobs);
@@ -85,15 +87,15 @@ export function JobsTable({ jobs, showRun, initiallyOpen, runBase }: {
         <Table.Thead>
           <Table.Tr>
             {showRun && <Table.Th>Запуск</Table.Th>}
-            <Table.Th>Модель</Table.Th>
-            <Table.Th>Статус</Table.Th>
+            <Table.Th>{sortable ? <SortHeader column="name" title="Модель" /> : 'Модель'}</Table.Th>
+            <Table.Th>{sortable ? <SortHeader column="status" title="Статус" /> : 'Статус'}</Table.Th>
             {titles.map((title) => (
               <Table.Th key={title} colSpan={titles.length === 1 ? 2 : undefined}>
                 {title}
               </Table.Th>
             ))}
             <Table.Th>Где</Table.Th>
-            <Table.Th>Время</Table.Th>
+            <Table.Th>{sortable ? <SortHeader column="duration" title="Время" /> : 'Время'}</Table.Th>
             <Table.Th>Примечание</Table.Th>
           </Table.Tr>
         </Table.Thead>

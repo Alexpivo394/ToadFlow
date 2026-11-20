@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Anchor, Badge, Button, Code, Group, List, Menu, Modal, NumberInput, Stack, Table, Text } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Code, Group, List, Menu, Modal, NumberInput, Stack, Text } from '@mantine/core';
 import { IconChevronDown } from '@tabler/icons-react';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { AgentView, VersionLimit } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
-import { askConfirm, CopyTextButton, Empty, Panel, YearBadge } from '../../components/ui';
+import { DataTable } from '../../components/DataTable';
+import { askConfirm, CopyTextButton, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { validateLimits } from './limits';
@@ -97,81 +98,74 @@ export function AgentsPage() {
         </RequireRole>
       }
     >
-      {agents.data && agents.data.length === 0 ? (
-        <Empty>Агентов пока нет — нажмите «Подключить агента»</Empty>
-      ) : (
-        <Table.ScrollContainer minWidth={680}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Машина</Table.Th>
-                <Table.Th>Статус</Table.Th>
-                <Table.Th>Найденные Revit</Table.Th>
-                <Table.Th>Экземпляров (макс.)</Table.Th>
-                <Table.Th>Версия агента</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {agents.data?.map((agent) => (
-                <Table.Tr key={agent.id}>
-                  <Table.Td>
-                    <Text fw={600}>{agent.machineName}</Text>
-                    <Text size="xs" c="dimmed">{[agent.ip, agent.totalRamMb ? `${Math.round(agent.totalRamMb / 1024)} ГБ RAM` : null].filter(Boolean).join(' · ')}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text c={stateColor[agent.state]} size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      {t.agentState[agent.state]}
-                      {agent.state === 'Offline' && ` ${formatRelative(agent.lastSeenAt)}`}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap={4}>
-                      {agent.revits.map((r) => <YearBadge key={r.year} year={r.year} />)}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    {agent.limits.map((l) => `R${l.year}: ${l.maxInstances}`).join(' · ') || '—'}
-                  </Table.Td>
-                  <Table.Td>
-                    {agent.agentVersion || '—'} {agent.isOutdated && <Badge color="orange" variant="light">устарел</Badge>}
-                  </Table.Td>
-                  <Table.Td>
-                    <RequireRole role="Admin">
-                      {/* Действия — меню: строка таблицы не расползается и ничего не обрезается на узком экране */}
-                      <Group justify="flex-end">
-                        <Menu position="bottom-end" withinPortal>
-                          <Menu.Target>
-                            <Button size="compact-sm" variant="default" rightSection={<IconChevronDown size={14} />}>Действия</Button>
-                          </Menu.Target>
-                          <Menu.Dropdown>
-                            {agent.state !== 'Disabled' && (
-                              <>
-                                <Menu.Item onClick={() => setEditing(agent)} disabled={agent.revits.length === 0}>Лимиты экземпляров</Menu.Item>
-                                <Menu.Item onClick={() => drain.mutate({ id: agent.id, draining: !agent.isDraining })}>
-                                  {agent.isDraining ? 'Брать новые задания' : 'Не брать новые задания'}
-                                </Menu.Item>
-                                <Menu.Item onClick={() => askConfirm(`Отключить агента ${agent.machineName}? Он больше не сможет подключиться.`, () => disable.mutate(agent.id))}>
-                                  Отключить
-                                </Menu.Item>
-                              </>
-                            )}
-                            {(agent.state === 'Offline' || agent.state === 'Disabled') && (
-                              <Menu.Item color="red" onClick={() => askConfirm(`Удалить агента ${agent.machineName}?`, () => remove.mutate(agent.id))}>
-                                {t.common.delete}
-                              </Menu.Item>
-                            )}
-                          </Menu.Dropdown>
-                        </Menu>
-                      </Group>
-                    </RequireRole>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+      <DataTable rows={agents.data ?? []} rowKey={(agent) => agent.id} search={(agent) => `${agent.machineName} ${agent.ip ?? ''}`}
+        empty="Агентов пока нет — нажмите «Подключить агента»"
+        columns={[
+          {
+            key: 'machine', title: 'Машина', sort: (agent) => agent.machineName,
+            render: (agent) => (
+              <>
+                <Text fw={600}>{agent.machineName}</Text>
+                <Text size="xs" c="dimmed">{[agent.ip, agent.totalRamMb ? `${Math.round(agent.totalRamMb / 1024)} ГБ RAM` : null].filter(Boolean).join(' · ')}</Text>
+              </>
+            ),
+          },
+          {
+            key: 'state', title: 'Статус', sort: (agent) => t.agentState[agent.state],
+            render: (agent) => (
+              <Text c={stateColor[agent.state]} size="sm" style={{ whiteSpace: 'nowrap' }}>
+                {t.agentState[agent.state]}
+                {agent.state === 'Offline' && ` ${formatRelative(agent.lastSeenAt)}`}
+              </Text>
+            ),
+            filter: {
+              options: (Object.keys(t.agentState) as (keyof typeof t.agentState)[]).map((value) => ({ value, label: t.agentState[value] })),
+              match: (agent, values) => values.includes(agent.state),
+            },
+          },
+          {
+            key: 'revits', title: 'Найденные Revit', sort: (agent) => agent.revits.map((r) => r.year).join(' ') || null,
+            render: (agent) => <Group gap={4}>{agent.revits.map((r) => <YearBadge key={r.year} year={r.year} />)}</Group>,
+          },
+          { key: 'limits', title: 'Экземпляров (макс.)', render: (agent) => agent.limits.map((l) => `R${l.year}: ${l.maxInstances}`).join(' · ') || '—' },
+          {
+            key: 'version', title: 'Версия агента', sort: (agent) => agent.agentVersion || null,
+            render: (agent) => <>{agent.agentVersion || '—'} {agent.isOutdated && <Badge color="orange" variant="light">устарел</Badge>}</>,
+          },
+          {
+            key: 'actions', title: '',
+            render: (agent) => (
+              <RequireRole role="Admin">
+                {/* Действия — меню: строка таблицы не расползается и ничего не обрезается на узком экране */}
+                <Group justify="flex-end">
+                  <Menu position="bottom-end" withinPortal>
+                    <Menu.Target>
+                      <Button size="compact-sm" variant="default" rightSection={<IconChevronDown size={14} />}>Действия</Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {agent.state !== 'Disabled' && (
+                        <>
+                          <Menu.Item onClick={() => setEditing(agent)} disabled={agent.revits.length === 0}>Лимиты экземпляров</Menu.Item>
+                          <Menu.Item onClick={() => drain.mutate({ id: agent.id, draining: !agent.isDraining })}>
+                            {agent.isDraining ? 'Брать новые задания' : 'Не брать новые задания'}
+                          </Menu.Item>
+                          <Menu.Item onClick={() => askConfirm(`Отключить агента ${agent.machineName}? Он больше не сможет подключиться.`, () => disable.mutate(agent.id))}>
+                            Отключить
+                          </Menu.Item>
+                        </>
+                      )}
+                      {(agent.state === 'Offline' || agent.state === 'Disabled') && (
+                        <Menu.Item color="red" onClick={() => askConfirm(`Удалить агента ${agent.machineName}?`, () => remove.mutate(agent.id))}>
+                          {t.common.delete}
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
+                </Group>
+              </RequireRole>
+            ),
+          },
+        ]} />
       {editing && <LimitsModal agent={editing} onClose={() => setEditing(null)} />}
       {connecting && <ConnectAgentModal onClose={() => setConnecting(false)} />}
     </Panel>

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Badge, Button, Checkbox, Group, Stack, Table, TextInput } from '@mantine/core';
+import { Badge, Button, Checkbox, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { ExportSettings, Preset } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { RequireRole } from '../../auth/RequireRole';
 import { defaultExportSettings, ExportSettingsForm } from '../../components/ExportSettingsForm';
+import { DataTable } from '../../components/DataTable';
 import { ConfirmButton, Panel } from '../../components/ui';
 import { t } from '../../i18n/ru';
 
@@ -54,32 +55,36 @@ export function PresetsPage() {
           </RequireRole>
         }
       >
-        <Table>
-          <Table.Tbody>
-            {presets.data?.map((p) => (
-              <Table.Tr key={p.id} onClick={() => setEditing(p)} style={{ cursor: 'pointer' }}>
-                <Table.Td fw={600}>
-                  {p.name} {p.isDefault && <Badge variant="light">по умолчанию</Badge>}
-                </Table.Td>
-                <Table.Td c="dimmed">
+        <DataTable rows={presets.data ?? []} rowKey={(p) => p.id} onRowClick={setEditing} search={(p) => p.name} empty="Пресетов нет"
+          columns={[
+            {
+              key: 'name', title: 'Название', sort: (p) => p.name,
+              render: (p) => <Text fw={600} size="sm">{p.name} {p.isDefault && <Badge variant="light">по умолчанию</Badge>}</Text>,
+            },
+            {
+              key: 'what', title: 'Что делает',
+              render: (p) => (
+                <Text size="sm" c="dimmed">
                   {[p.settings.skipLinks && 'без связей', p.settings.purge && 'purge', p.settings.compact && 'сжатие', `NWC по виду «${p.settings.nwcViewName}»`]
                     .filter(Boolean).join(', ')}
-                </Table.Td>
-                <Table.Td>
-                  <RequireRole role="Operator">
-                    {!p.isDefault && (
-                      <Group justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                        <ConfirmButton size="compact-xs" variant="subtle" question={`Удалить пресет «${p.name}»?`} onConfirm={() => remove.mutate(p.id)}>
-                          {t.common.delete}
-                        </ConfirmButton>
-                      </Group>
-                    )}
-                  </RequireRole>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+                </Text>
+              ),
+            },
+            {
+              key: 'actions', title: '',
+              render: (p) => (
+                <RequireRole role="Operator">
+                  {!p.isDefault && (
+                    <Group justify="flex-end" onClick={(e) => e.stopPropagation()}>
+                      <ConfirmButton size="compact-xs" variant="subtle" question={`Удалить пресет «${p.name}»?`} onConfirm={() => remove.mutate(p.id)}>
+                        {t.common.delete}
+                      </ConfirmButton>
+                    </Group>
+                  )}
+                </RequireRole>
+              ),
+            },
+          ]} />
       </Panel>
       {editing && <PresetEditor key={editing.id ?? 'new'} preset={editing} onDone={() => setEditing(null)} />}
     </Stack>

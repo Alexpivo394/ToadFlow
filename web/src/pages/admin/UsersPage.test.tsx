@@ -76,3 +76,59 @@ describe('Users for coordinator', () => {
 });
 
 vi.setConfig({ testTimeout: 15_000 });
+
+describe('Users table', () => {
+  const people = [
+    person('a1', 'Анна', 'Admin', { lastLoginAt: '2026-10-05T10:00:00Z', position: 'ГИП' }),
+    person('b2', 'Борис', 'Designer', { lastLoginAt: '2026-10-01T10:00:00Z', disciplines: ['ОВ'] }),
+    person('c3', 'Вера', 'Designer', { lastLoginAt: null, login: 'vera', disciplines: ['АР'] }),
+    person('d4', 'Глеб', 'Viewer', { lastLoginAt: '2026-10-09T10:00:00Z' }),
+  ];
+  const table = { ...responses, '/api/users': people, '/api/users/pending': [] };
+  const names = () => within(screen.getByRole('table')).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[1].textContent);
+
+  it('users are sorted by last login when its header is clicked', async () => {
+    renderApp('/admin/users', table);
+    await screen.findByText('Анна');
+
+    fireEvent.click(screen.getByRole('button', { name: /Последний вход/ }));
+
+    expect(names()[0]).toMatch(/^Борис/);
+    expect(names()[2]).toMatch(/^Глеб/);
+    expect(names()[3]).toMatch(/^Вера/); // никогда не входила — в конце
+  });
+
+  it('role filter and search combine', async () => {
+    renderApp('/admin/users?f.role=Designer&q=vera', table);
+
+    await screen.findByText('Вера');
+    expect(names()).toHaveLength(1);
+  });
+
+  it('bulk "Добавить раздел" posts the selected ids and shows skipped users', async () => {
+    renderApp('/admin/users', { ...table, 'POST /api/users/bulk': { changed: 1, skipped: ['Вера: заявка ещё не подтверждена'] } });
+    await screen.findByText('Анна');
+
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    fireEvent.click(within(rows[2]).getByRole('checkbox'));
+    fireEvent.click(within(rows[3]).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить раздел' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('option', { name: 'КР', hidden: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Применить' }));
+
+    await waitFor(() => expect(posts('/api/users/bulk')).toHaveLength(1));
+    expect(JSON.parse(String(posts('/api/users/bulk')[0][1]!.body))).toEqual({ ids: ['b2', 'c3'], action: 'AddDiscipline', discipline: 'КР' });
+    expect(await screen.findByText('Вера: заявка ещё не подтверждена')).toBeTruthy();
+  });
+
+  it('bulk disable is hidden from an operator', async () => {
+    renderApp('/admin/users', table);
+    await screen.findByText('Анна');
+
+    fireEvent.click(within(within(screen.getByRole('table')).getAllByRole('row')[1]).getByRole('checkbox'));
+
+    expect(screen.getByRole('button', { name: 'Добавить раздел' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Отключить' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Включить' })).toBeNull();
+  });
+});

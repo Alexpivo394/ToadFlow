@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Button, Group, Modal, NumberInput, SegmentedControl, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Button, Group, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import type { Source, SourceKind } from '../../api/types';
 import { RequireRole } from '../../auth/RequireRole';
-import { ConfirmButton, Empty, Panel, YearBadge } from '../../components/ui';
+import { DataTable } from '../../components/DataTable';
+import { ConfirmButton, Panel, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 
 type Draft = Omit<Source, 'id'> & { id?: string };
@@ -58,31 +59,33 @@ export function SourcesPage() {
         </RequireRole>
       }
     >
-      {sources.data && sources.data.length === 0 ? (
-        <Empty>Источников нет — добавьте Revit Server или сетевую папку</Empty>
-      ) : (
-        <Table>
-          <Table.Tbody>
-            {sources.data?.map((s) => (
-              <Table.Tr key={s.id}>
-                <Table.Td fw={600}>{s.name}</Table.Td>
-                <Table.Td>{s.kind === 'RevitServer' ? `Revit Server ${s.host}${s.rootPath ? ` / ${s.rootPath}` : ''}` : `Папка ${s.host}`}</Table.Td>
-                <Table.Td>{s.revitYear ? <YearBadge year={s.revitYear} /> : <Text size="sm" c="dimmed">версия по каждому файлу</Text>}</Table.Td>
-                <Table.Td>
-                  <RequireRole role="Admin">
-                    <Group gap={4} justify="flex-end">
-                      <Button size="compact-xs" variant="default" onClick={() => setEditing(s)}>{t.common.edit}</Button>
-                      <ConfirmButton size="compact-xs" variant="subtle" question={`Удалить источник «${s.name}»?`} onConfirm={() => remove.mutate(s.id)}>
-                        {t.common.delete}
-                      </ConfirmButton>
-                    </Group>
-                  </RequireRole>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      )}
+      <DataTable rows={sources.data ?? []} rowKey={(s) => s.id} search={(s) => `${s.name} ${s.host} ${s.rootPath}`}
+        empty="Источников нет — добавьте Revit Server или сетевую папку"
+        columns={[
+          { key: 'name', title: 'Название', sort: (s) => s.name, render: (s) => <Text fw={600} size="sm">{s.name}</Text> },
+          {
+            key: 'where', title: 'Где', sort: (s) => `${s.kind} ${s.host}`,
+            render: (s) => (s.kind === 'RevitServer' ? `Revit Server ${s.host}${s.rootPath ? ` / ${s.rootPath}` : ''}` : `Папка ${s.host}`),
+            filter: { options: [{ value: 'RevitServer', label: 'Revit Server' }, { value: 'Folder', label: 'Папка' }], match: (s, values) => values.includes(s.kind) },
+          },
+          {
+            key: 'year', title: 'Revit', sort: (s) => s.revitYear,
+            render: (s) => (s.revitYear ? <YearBadge year={s.revitYear} /> : <Text size="sm" c="dimmed">версия по каждому файлу</Text>),
+          },
+          {
+            key: 'actions', title: '',
+            render: (s) => (
+              <RequireRole role="Admin">
+                <Group gap={4} justify="flex-end">
+                  <Button size="compact-xs" variant="default" onClick={() => setEditing(s)}>{t.common.edit}</Button>
+                  <ConfirmButton size="compact-xs" variant="subtle" question={`Удалить источник «${s.name}»?`} onConfirm={() => remove.mutate(s.id)}>
+                    {t.common.delete}
+                  </ConfirmButton>
+                </Group>
+              </RequireRole>
+            ),
+          },
+        ]} />
       <Text size="xs" c="dimmed" mt="sm">
         Дерево моделей для расписаний строит агент: сервер на Linux сетевые папки Windows не видит.
       </Text>
