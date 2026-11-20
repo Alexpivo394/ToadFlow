@@ -5,8 +5,8 @@ import { t } from '../i18n/ru';
 import { RoleOnly, Titled } from './guards';
 import type { Space } from './types';
 
-const UsersSettings = lazy(() => import('../pages/settings/UsersSettings').then((m) => ({ default: m.UsersSettings })));
-const GeneralSettingsForm = lazy(() => import('../pages/settings/GeneralSettingsForm').then((m) => ({ default: m.GeneralSettingsForm })));
+const UsersPage = lazy(() => import('../pages/admin/UsersPage').then((m) => ({ default: m.UsersPage })));
+const GeneralSettingsForm = lazy(() => import('../pages/admin/GeneralSettingsForm').then((m) => ({ default: m.GeneralSettingsForm })));
 
 /** Администрирование: пользователи, модули, сервер, журнал действий. */
 export const adminSpace: Space = {
@@ -22,7 +22,7 @@ export const adminSpace: Space = {
   ],
   routes: () => (
     <>
-      <Route path="users" element={<RoleOnly role="Operator"><Titled title={t.nav.users}><UsersSettings /></Titled></RoleOnly>} />
+      <Route path="users" element={<RoleOnly role="Operator"><Titled title={t.nav.users}><UsersPage /></Titled></RoleOnly>} />
       {/* Страницы «Модули» и «Журнал действий» — задача 19; до неё ведут на «Сервер» и прежнюю вкладку событий. */}
       <Route path="modules" element={<Navigate to="/admin/server" replace />} />
       <Route path="server" element={<RoleOnly role="Viewer"><Titled title={t.nav.server}><GeneralSettingsForm /></Titled></RoleOnly>} />

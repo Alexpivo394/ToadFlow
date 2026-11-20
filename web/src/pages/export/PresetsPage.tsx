@@ -39,7 +39,7 @@ function PresetEditor({ preset, onDone }: { preset: Draft; onDone: () => void })
   );
 }
 
-export function PresetsSettings() {
+export function PresetsPage() {
   const presets = useApi<Preset[]>(['presets'], '/api/export/presets');
   const [editing, setEditing] = useState<Draft | null>(null);
   const remove = useApiMutation<string>('DELETE', (id) => `/api/export/presets/${id}`, { invalidate: ['presets'], success: 'Пресет удалён' });

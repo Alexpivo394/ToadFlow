@@ -7,7 +7,7 @@ import type { Space } from './types';
 
 const SchedulesPage = lazy(() => import('../pages/schedules/SchedulesPage').then((m) => ({ default: m.SchedulesPage })));
 const HistoryPage = lazy(() => import('../pages/history/HistoryPage').then((m) => ({ default: m.HistoryPage })));
-const PresetsSettings = lazy(() => import('../pages/settings/PresetsSettings').then((m) => ({ default: m.PresetsSettings })));
+const PresetsPage = lazy(() => import('../pages/export/PresetsPage').then((m) => ({ default: m.PresetsPage })));
 
 export const exportSpace: Space = {
   id: 'export',
@@ -24,7 +24,7 @@ export const exportSpace: Space = {
     <>
       <Route path="schedules/:id?" element={<RoleOnly role="Viewer"><SchedulesPage module="export" base="/export/schedules" /></RoleOnly>} />
       <Route path="history/*" element={<RoleOnly role="Viewer"><HistoryPage module="export" base="/export/history" /></RoleOnly>} />
-      <Route path="presets" element={<RoleOnly role="Viewer"><Titled title={t.nav.presetsPage}><PresetsSettings /></Titled></RoleOnly>} />
+      <Route path="presets" element={<RoleOnly role="Viewer"><Titled title={t.nav.presetsPage}><PresetsPage /></Titled></RoleOnly>} />
     </>
   ),
 };

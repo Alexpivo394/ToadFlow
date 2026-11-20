@@ -44,7 +44,7 @@ function SourceModal({ source, onClose }: { source: Draft; onClose: () => void }
   );
 }
 
-export function SourcesSettings() {
+export function SourcesPage() {
   const sources = useApi<Source[]>(['sources'], '/api/sources');
   const [editing, setEditing] = useState<Draft | null>(null);
   const remove = useApiMutation<string>('DELETE', (id) => `/api/sources/${id}`, { invalidate: ['sources'], success: 'Источник удалён' });

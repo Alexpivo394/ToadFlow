@@ -12,7 +12,7 @@ export function PendingUsersNotice() {
 
   return (
     <Alert color="blue" mb="md" p="xs">
-      <Anchor component={RouterLink} to="/settings/users" size="sm">
+      <Anchor component={RouterLink} to="/admin/users" size="sm">
         {n} {pluralRu(n, ['заявка', 'заявки', 'заявок'])} на регистрацию {pluralRu(n, ['ждёт', 'ждут', 'ждут'])} подтверждения
       </Anchor>
     </Alert>

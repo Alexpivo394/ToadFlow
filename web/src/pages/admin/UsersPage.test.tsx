@@ -28,7 +28,7 @@ const responses = {
 
 describe('Users for coordinator', () => {
   it('Users_OperatorApprovesWithDisciplines', async () => {
-    renderApp('/settings/users', responses);
+    renderApp('/admin/users', responses);
 
     const request = (await screen.findByText('Ольга Ковалёва')).closest('[data-request]') as HTMLElement;
     expect(within(request).getByText(/Инженер ОВ/)).toBeTruthy();
@@ -41,7 +41,7 @@ describe('Users for coordinator', () => {
   });
 
   it('Users_ClickOpensCard_OperatorEditsContactsNotRole', async () => {
-    renderApp('/settings/users', responses);
+    renderApp('/admin/users', responses);
 
     fireEvent.click(await screen.findByText('Пётр'));
     const card = await screen.findByRole('dialog', { name: 'Пётр' });
@@ -61,7 +61,7 @@ describe('Users for coordinator', () => {
   });
 
   it('Users_AdminCardChangesRoleAndActive', async () => {
-    renderApp('/settings/users', { ...responses, '/api/auth/me': { ...coordinator, role: 'Admin' }, 'PUT /api/users/u2': null });
+    renderApp('/admin/users', { ...responses, '/api/auth/me': { ...coordinator, role: 'Admin' }, 'PUT /api/users/u2': null });
 
     fireEvent.click(await screen.findByText('Пётр'));
     const card = await screen.findByRole('dialog', { name: 'Пётр' });

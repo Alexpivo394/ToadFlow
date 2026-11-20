@@ -45,7 +45,7 @@ describe('Coordinator overview: schedules and agents', () => {
     });
 
     expect(await screen.findByText('Агенты не в сети 25 мин')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Агенты' }).getAttribute('href')).toBe('/settings/agents');
+    expect(screen.getByRole('link', { name: 'Агенты' }).getAttribute('href')).toBe('/farm/agents');
     expect(screen.getByText('Нет регулярного прогона')).toBeTruthy();
     expect(screen.getByRole('link', { name: /Корпус 3 — нет регулярного прогона/ }).getAttribute('href')).toBe('/clash/checks/p3');
     expect(screen.queryByText(/Всё в порядке/)).toBeNull();

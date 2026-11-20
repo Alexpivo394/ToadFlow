@@ -5,7 +5,6 @@ import type { AnalyticsFilters, AnalyticsSettings as Settings, KnownModel, Model
 import { useAuth } from '../../../auth/AuthContext';
 import { ConfirmButton, Empty, Panel } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
-import { NamingEditor } from './NamingEditor';
 
 function SettingsPanel({ readOnly }: { readOnly: boolean }) {
   const saved = useApi<Settings>(['loi-analytics', 'settings'], '/api/loi/analytics/settings');
@@ -54,7 +53,7 @@ const modelNameOf = (text: string) => text.split(/[\\/]/).pop()!.replace(/\.rvt$
 /** Ручные поправки: когда имя модели не разобрать справочником, объект и раздел задаются ей напрямую. */
 function OverridesPanel({ readOnly }: { readOnly: boolean }) {
   const overrides = useApi<ModelOverride[]>(['loi-analytics', 'overrides'], '/api/loi/models/overrides');
-  const known = useApi<KnownModel[]>(['loi-analytics', 'known-models'], readOnly ? null : '/api/loi/naming/models');
+  const known = useApi<KnownModel[]>(['loi-analytics', 'known-models'], readOnly ? null : '/api/naming/models');
   const filters = useApi<AnalyticsFilters>(['loi-analytics', 'filters'], readOnly ? null : '/api/loi/analytics/filters');
   const disciplines = useApi<string[]>(['loi-analytics', 'disciplines'], readOnly ? null : '/api/loi/disciplines');
   const empty = { modelPath: '', customer: '', object: '', discipline: '', part: '' };
@@ -137,7 +136,6 @@ export function AnalyticsSettings() {
   return (
     <Stack>
       <SettingsPanel readOnly={readOnly} />
-      <NamingEditor readOnly={readOnly} />
       <OverridesPanel readOnly={readOnly} />
     </Stack>
   );

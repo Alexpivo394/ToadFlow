@@ -21,7 +21,7 @@ const responses = {
 
 describe('LoiSettings', () => {
   it('lists profiles, readiness and the Revit catalog', async () => {
-    renderApp('/settings/loi', responses);
+    renderApp('/loi/profiles', responses);
 
     expect(await screen.findByText('ОВ')).toBeTruthy();
     expect(screen.getByText('Полковая')).toBeTruthy(); // группа
@@ -35,7 +35,7 @@ describe('LoiSettings', () => {
   });
 
   it('opens a profile with category names from the catalog', async () => {
-    renderApp('/settings/loi', responses);
+    renderApp('/loi/profiles', responses);
 
     fireEvent.click(await screen.findByText('ОВ'));
 
@@ -47,7 +47,7 @@ describe('LoiSettings', () => {
   });
 
   it('viewer sees profiles but cannot change them', async () => {
-    renderApp('/settings/loi', { ...responses, '/api/auth/me': { id: 'u3', login: 'gip', displayName: 'ГИП', role: 'Viewer', isDisabled: false, lastLoginAt: null } });
+    renderApp('/loi/profiles', { ...responses, '/api/auth/me': { id: 'u3', login: 'gip', displayName: 'ГИП', role: 'Viewer', isDisabled: false, lastLoginAt: null } });
 
     expect(await screen.findByText('ОВ')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '+ Новый профиль' })).toBeNull();

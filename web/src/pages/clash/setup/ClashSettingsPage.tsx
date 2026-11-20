@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Button, NumberInput, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { useApi, useApiMutation } from '../../api/queries';
-import type { ClashOverviewSettings, ClashSettingsView } from '../../api/types';
-import { useAuth } from '../../auth/AuthContext';
-import { Panel } from '../../components/ui';
+import { useApi, useApiMutation } from '../../../api/queries';
+import type { ClashOverviewSettings, ClashSettingsView } from '../../../api/types';
+import { useAuth } from '../../../auth/AuthContext';
+import { Panel } from '../../../components/ui';
 
 const between = (value: number, min: number, max: number) => Number.isFinite(value) && value >= min && value <= max;
 
 /** Хранение выгрузок геометрии и пороги обзора координатора. Меняет администратор. */
-export function ClashSettings() {
+export function ClashSettingsPage() {
   const { can } = useAuth();
   const readOnly = !can('Admin');
   const saved = useApi<ClashSettingsView>(['clash-settings'], '/api/clash/settings');
@@ -22,8 +22,6 @@ export function ClashSettings() {
 
   if (!value) return null;
   const o = value.overview;
-  // Порог агентов появился позже остальных: у сохранённых раньше настроек его нет — по умолчанию 10 мин.
-  const agentsOffline = o.agentsOfflineMinutes ?? 10;
   const setOverview = (patch: Partial<ClashOverviewSettings>) => setDraft({ ...value, overview: { ...o, ...patch } });
   const keepInvalid = !between(value.storage.keepSnapshots, 1, 20);
   const errors = {
@@ -32,7 +30,6 @@ export function ClashSettings() {
     spikeShare: !(o.spikeShare > 0 && o.spikeShare <= 1),
     spikeMin: !between(o.spikeMin, 0, 1_000_000),
     stuckDays: !between(o.stuckDays, 1, 3650),
-    agentsOffline: !between(agentsOffline, 1, 10_080),
   };
   const invalid = keepInvalid || Object.values(errors).some(Boolean);
 
@@ -58,8 +55,6 @@ export function ClashSettings() {
             error={errors.spikeMin ? 'От 0' : null} onChange={(v) => setOverview({ spikeMin: Number(v) })} />
           <NumberInput label="Висят — дней без движения" min={1} max={3650} value={o.stuckDays} disabled={readOnly}
             error={errors.stuckDays ? 'От 1 до 3650' : null} onChange={(v) => setOverview({ stuckDays: Number(v) })} />
-          <NumberInput label="Агенты не в сети — минут" min={1} max={10_080} value={agentsOffline} disabled={readOnly}
-            error={errors.agentsOffline ? 'От 1 до 10 080' : null} onChange={(v) => setOverview({ agentsOfflineMinutes: Number(v) })} />
         </SimpleGrid>
         {!readOnly && (
           <Button w="fit-content" disabled={invalid} loading={save.isPending} onClick={() => save.mutate(value)}>Сохранить</Button>

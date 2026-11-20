@@ -65,7 +65,7 @@ export function OverviewPage() {
       {o?.agentsOffline && (
         <Alert color="red" mb="md" title={o.agentsOffline.reason}>
           Выгрузки для коллизий не идут, проверки устаревают.{' '}
-          <Anchor component={RouterLink} to="/settings/agents" size="sm">Агенты</Anchor>
+          <Anchor component={RouterLink} to="/farm/agents" size="sm">Агенты</Anchor>
         </Alert>
       )}
       {o && (

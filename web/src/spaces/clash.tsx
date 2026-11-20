@@ -17,7 +17,7 @@ const SummaryPage = lazy(() => import('../pages/clash/summary/SummaryPage').then
 const ClashHome = lazy(() => import('../pages/clash/home/ClashHome').then((m) => ({ default: m.ClashHome })));
 const SchedulesPage = lazy(() => import('../pages/schedules/SchedulesPage').then((m) => ({ default: m.SchedulesPage })));
 const HistoryPage = lazy(() => import('../pages/history/HistoryPage').then((m) => ({ default: m.HistoryPage })));
-const ClashSettings = lazy(() => import('../pages/settings/ClashSettings').then((m) => ({ default: m.ClashSettings })));
+const ClashSettingsPage = lazy(() => import('../pages/clash/setup/ClashSettingsPage').then((m) => ({ default: m.ClashSettingsPage })));
 
 /** Адреса /clash/... стоят в разосланных отчётах HTML и в письмах — они не меняются. */
 export const clashSpace: Space = {
@@ -53,7 +53,7 @@ export const clashSpace: Space = {
       <Route path="setup/parts/:id" element={<SetupOnly><PartShell /></SetupOnly>} />
       <Route path="setup/schedules/:id?" element={<SetupOnly><SchedulesPage module="clash" base="/clash/setup/schedules" /></SetupOnly>} />
       <Route path="setup/history/*" element={<SetupOnly><HistoryPage module="clash" base="/clash/setup/history" /></SetupOnly>} />
-      <Route path="setup/settings" element={<SetupOnly><Titled title={t.nav.setupSettings}><ClashSettings /></Titled></SetupOnly>} />
+      <Route path="setup/settings" element={<SetupOnly><Titled title={t.nav.setupSettings}><ClashSettingsPage /></Titled></SetupOnly>} />
       {/* Старые адреса из чата и закладок. */}
       <Route path="parts/:id" element={<OldPartRedirect />} />
       <Route path="snapshots" element={<Navigate to="/clash/setup/snapshots" replace />} />

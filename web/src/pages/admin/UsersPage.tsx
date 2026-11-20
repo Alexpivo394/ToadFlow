@@ -151,7 +151,7 @@ function UserCard({ user, known, onClose, onResetPassword }: { user: UserView; k
 }
 
 /** Пользователи. Координатор подтверждает заявки; по щелчку в списке — карточка пользователя. Новые учётные записи — администратор. */
-export function UsersSettings() {
+export function UsersPage() {
   const { can } = useAuth();
   const admin = can('Admin');
   const users = useApi<UserView[]>(['users'], '/api/users');

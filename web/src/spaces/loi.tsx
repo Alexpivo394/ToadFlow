@@ -8,8 +8,8 @@ import type { Space } from './types';
 const AnalyticsPage = lazy(() => import('../pages/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const SchedulesPage = lazy(() => import('../pages/schedules/SchedulesPage').then((m) => ({ default: m.SchedulesPage })));
 const HistoryPage = lazy(() => import('../pages/history/HistoryPage').then((m) => ({ default: m.HistoryPage })));
-const LoiSettings = lazy(() => import('../pages/settings/loi/LoiSettings').then((m) => ({ default: m.LoiSettings })));
-const AnalyticsSettings = lazy(() => import('../pages/settings/loi/AnalyticsSettings').then((m) => ({ default: m.AnalyticsSettings })));
+const LoiSettings = lazy(() => import('../pages/loi/settings/LoiSettings').then((m) => ({ default: m.LoiSettings })));
+const AnalyticsSettings = lazy(() => import('../pages/loi/settings/AnalyticsSettings').then((m) => ({ default: m.AnalyticsSettings })));
 
 export const loiSpace: Space = {
   id: 'loi',

@@ -38,7 +38,7 @@ function AgentsPanel({ agents, silence }: { agents: AgentView[]; silence: number
   if (agents.length === 0) {
     return (
       <Empty>
-        Агенты не подключены — <Anchor component={Link} to="/settings/agents">Настройки → Агенты</Anchor>
+        Агенты не подключены — <Anchor component={Link} to="/farm/agents">Ферма → Агенты</Anchor>
       </Empty>
     );
   }

@@ -75,7 +75,7 @@ function ConnectAgentModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function AgentsSettings() {
+export function AgentsPage() {
   const agents = useApi<AgentView[]>(['agents'], '/api/agents');
   const [editing, setEditing] = useState<AgentView | null>(null);
   const [connecting, setConnecting] = useState(false);

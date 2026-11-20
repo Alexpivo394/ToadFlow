@@ -300,6 +300,8 @@ export interface GeneralSettings {
   recycleMemoryMb: number;
   ramReserveMb: number;
   ramPerJobMb: number;
+  /** Агент молчит дольше, мин — «не в сети» на «Обзоре» и в обзоре коллизий. */
+  agentsOfflineMinutes: number;
 }
 
 export interface Dashboard {
@@ -1178,8 +1180,6 @@ export interface ClashOverviewSettings {
   spikeShare: number;
   spikeMin: number;
   stuckDays: number;
-  /** Ни одного агента в сети дольше, мин — «агенты не в сети». */
-  agentsOfflineMinutes: number;
 }
 
 export interface ClashSettingsView {

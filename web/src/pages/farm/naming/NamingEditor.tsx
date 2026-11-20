@@ -50,7 +50,7 @@ function AddToken({ token, fields, onAdd }: { token: string; fields: string[]; o
  */
 export function NamingEditor({ readOnly }: { readOnly: boolean }) {
   const queryClient = useQueryClient();
-  const saved = useApi<NamingConfig>(['loi-analytics', 'naming'], '/api/loi/naming');
+  const saved = useApi<NamingConfig>(['naming'], '/api/naming');
   const [draft, setDraft] = useState<NamingConfig | null>(null);
   const [names, setNames] = useState('');
   const [preview, setPreview] = useState<NamingPreviewRow[] | null>(null);
@@ -70,7 +70,7 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
     const list = names.split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
     if (list.length === 0) return;
     try {
-      setPreview(await apiFetch<NamingPreviewRow[]>('/api/loi/naming/preview', { method: 'POST', json: { config: next, names: list } }));
+      setPreview(await apiFetch<NamingPreviewRow[]>('/api/naming/preview', { method: 'POST', json: { config: next, names: list } }));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -78,17 +78,18 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
   }
 
   async function loadKnown() {
-    const models = await apiFetch<KnownModel[]>('/api/loi/naming/models');
+    const models = await apiFetch<KnownModel[]>('/api/naming/models');
     setNames(models.map((m) => m.name).join('\n'));
     if (models.length === 0) notifications.show({ color: 'yellow', message: 'Сервис ещё не знает ни одной модели — вставьте имена вручную' });
   }
 
   async function save() {
     try {
-      const result = await apiFetch<NamingConfig>('/api/loi/naming', { method: 'PUT', json: config });
+      const result = await apiFetch<NamingConfig>('/api/naming', { method: 'PUT', json: config });
       setDraft(result);
       setError(null);
-      notifications.show({ color: 'green', message: 'Справочник сохранён. Чтобы применить его к уже записанным проверкам, нажмите «Пересчитать аналитику»' });
+      notifications.show({ color: 'green', message: 'Справочник сохранён. Чтобы применить его к уже записанным проверкам LOI, нажмите «Пересчитать аналитику» в «Проверка LOI → Настройка аналитики»' });
+      await queryClient.invalidateQueries({ queryKey: ['naming'] });
       await queryClient.invalidateQueries({ queryKey: ['loi-analytics'] });
     } catch (e) {
       setError((e as Error).message);
@@ -98,7 +99,7 @@ export function NamingEditor({ readOnly }: { readOnly: boolean }) {
   /** Стандартный справочник: дополнить им текущий или заменить всё. Сохранять — как обычно, кнопкой «Сохранить справочник». */
   async function applyDefaults(replace: boolean) {
     try {
-      const defaults = await apiFetch<NamingConfig>('/api/loi/naming/defaults');
+      const defaults = await apiFetch<NamingConfig>('/api/naming/defaults');
       if (replace) {
         askConfirm('Заменить весь справочник стандартным? Свои объекты, записи и шаблоны пропадут после сохранения.', () => {
           setDraft(defaults);
