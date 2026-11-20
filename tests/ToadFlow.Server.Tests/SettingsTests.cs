@@ -57,4 +57,27 @@ public class SettingsTests : ServerTest
         (await operatorClient.PutJsonAsync("/api/settings", new General("Europe/Moscow", 30, 10, 90, 20, 12000)))
             .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
+
+    [Test]
+    public async Task AgentsOffline_Default10()
+    {
+        var settings = await (await ClientAsync(UserRole.Viewer)).GetJsonAsync<System.Text.Json.JsonElement>("/api/settings");
+
+        settings.GetProperty("agentsOfflineMinutes").GetInt32().ShouldBe(10);
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(10_081)]
+    public async Task AgentsOffline_OutOfRange_400(int minutes)
+    {
+        var admin = await AdminAsync();
+        var body = System.Text.Json.Nodes.JsonNode.Parse(await admin.GetStringAsync("/api/settings"))!;
+        body["agentsOfflineMinutes"] = minutes;
+
+        var response = await admin.PutJsonAsync("/api/settings", body);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Агенты не в сети — от 1 до 10 080 минут");
+    }
 }

@@ -9,6 +9,7 @@ using ToadFlow.Server.Events;
 namespace ToadFlow.Server.Settings;
 
 /// <summary>Раздел «Общие». Значения по умолчанию — из спеки.</summary>
+/// <param name="AgentsOfflineMinutes">Агент молчит дольше — «не в сети» на «Обзоре» и в обзоре коллизий. Порог один на сервер.</param>
 public sealed record GeneralSettings(
     string TimeZoneId = "Europe/Moscow",
     int DefaultModelTimeoutMinutes = 30,
@@ -17,7 +18,8 @@ public sealed record GeneralSettings(
     int RecycleAfterModels = 20,
     int RecycleMemoryMb = 12000,
     int RamReserveMb = AgentSettingsDto.DefaultRamReserveMb,
-    int RamPerJobMb = AgentSettingsDto.DefaultRamPerJobMb)
+    int RamPerJobMb = AgentSettingsDto.DefaultRamPerJobMb,
+    int AgentsOfflineMinutes = 10)
 {
     public TimeZoneInfo TimeZone => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
 
@@ -32,6 +34,7 @@ public sealed record GeneralSettings(
         if (RecycleMemoryMb < 1000) errors.Add("Порог памяти для перезапуска Revit — не меньше 1000 МБ");
         if (RamReserveMb < 512) errors.Add("Резерв памяти для Windows — не меньше 512 МБ");
         if (RamPerJobMb < 512) errors.Add("Память на задание — не меньше 512 МБ");
+        if (AgentsOfflineMinutes is < 1 or > 10_080) errors.Add("Агенты не в сети — от 1 до 10 080 минут");
         return errors;
     }
 
@@ -48,6 +51,7 @@ public sealed record GeneralSettings(
         if (old.RecycleMemoryMb != RecycleMemoryMb) parts.Add($"порог памяти Revit {old.RecycleMemoryMb} → {RecycleMemoryMb} МБ");
         if (old.RamReserveMb != RamReserveMb) parts.Add($"резерв памяти {old.RamReserveMb} → {RamReserveMb} МБ");
         if (old.RamPerJobMb != RamPerJobMb) parts.Add($"память на задание {old.RamPerJobMb} → {RamPerJobMb} МБ");
+        if (old.AgentsOfflineMinutes != AgentsOfflineMinutes) parts.Add($"агенты не в сети {old.AgentsOfflineMinutes} → {AgentsOfflineMinutes} мин");
         return parts.Count == 0 ? "без изменений" : string.Join("; ", parts);
     }
 }

@@ -142,8 +142,6 @@ public class ClashOverviewTests : ServerTest
             .EnsureSuccessStatusCode();
 
         (await admin.GetJsonAsync<ClashSettingsView>("/api/clash/settings")).Overview.StuckDays.ShouldBe(14);
-        (await admin.PutJsonAsync("/api/clash/settings", new { storage = current.Storage, overview = new ClashOverviewSettings(AgentsOfflineMinutes: 0) }))
-            .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     /// <summary>Расписание выгрузки для коллизий с частями <paramref name="parts" />.</summary>
@@ -189,5 +187,23 @@ public class ClashOverviewTests : ServerTest
         _time.Advance(TimeSpan.FromMinutes(20));
         var offline = (await OverviewAsync(admin)).AgentsOffline.ShouldNotBeNull();
         (offline.Minutes, offline.Reason).ShouldBe((25, "Агенты не в сети 25 мин"));
+    }
+
+    [Test]
+    public async Task ClashOverview_UsesGeneralThreshold()
+    {
+        var (admin, agent, _, _) = await CheckAsync();
+        await using var _ = agent;
+        var general = System.Text.Json.Nodes.JsonNode.Parse(await admin.GetStringAsync("/api/settings"))!;
+        general["agentsOfflineMinutes"] = 30;
+        (await admin.PutJsonAsync("/api/settings", general)).EnsureSuccessStatusCode();
+
+        var seen = _time.GetUtcNow();
+        await DbAsync(db => db.Agents.ExecuteUpdateAsync(a => a.SetProperty(x => x.State, AgentState.Offline).SetProperty(x => x.LastSeenAt, seen)));
+        _time.Advance(TimeSpan.FromMinutes(20));
+        (await OverviewAsync(admin)).AgentsOffline.ShouldBeNull(); // меньше общего порога 30 мин
+
+        _time.Advance(TimeSpan.FromMinutes(15));
+        (await OverviewAsync(admin)).AgentsOffline.ShouldNotBeNull().Minutes.ShouldBe(35);
     }
 }

@@ -5,6 +5,7 @@ using ToadFlow.Server.Clash.Collisions;
 using ToadFlow.Server.Clash.Engine;
 using ToadFlow.Server.Clash.Parts;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Clash.Overview;
 
@@ -39,7 +40,8 @@ public static class OverviewEndpoints
     public static void MapClashOverview(this RouteGroupBuilder api) =>
         api.MapGet("/clash/overview", OverviewAsync).RequireAuthorization(Policies.Operator);
 
-    private static async Task<OverviewView> OverviewAsync(ToadFlowDb db, PartModels models, ClashSettingsStore settings, TimeProvider time,
+    private static async Task<OverviewView> OverviewAsync(ToadFlowDb db, PartModels models, ClashSettingsStore settings, ISettingsStore general,
+        TimeProvider time,
         CancellationToken ct)
     {
         var limits = await settings.OverviewAsync(ct);
@@ -108,7 +110,7 @@ public static class OverviewEndpoints
             .Select(p => new OverviewPart(p.Id, p.Name, p.Object, 0, "нет регулярного прогона")).ToList();
 
         return new OverviewView(notUploaded, runFailed, noRecentRun, uncheckedParts, spike, stuck, noSchedule,
-            parts.Count == 0 ? null : await AgentsOfflineAsync(db, now, limits.AgentsOfflineMinutes, ct), parts.Count);
+            parts.Count == 0 ? null : await AgentsOfflineAsync(db, now, (await general.GetAsync(ct)).AgentsOfflineMinutes, ct), parts.Count);
     }
 
     /// <summary>Ни одного агента в сети (или «не брать новые») дольше <paramref name="minutes" /> минут по последнему отклику.</summary>

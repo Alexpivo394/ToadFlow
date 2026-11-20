@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Shouldly;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Settings;
 using ToadFlow.Server.Tests.Infrastructure;
 
 namespace ToadFlow.Server.Tests;
@@ -17,6 +18,8 @@ public class MigrationTests
 
     /// <summary>Миграция выпуска 2.0 — последняя до платформы модулей.</summary>
     private const string Clash20 = "20261104102438_Clash2_0";
+
+    private const string RunModuleName = "20261120202222_RunModuleName";
 
     [ClassDataSource<PostgresFixture>(Shared = SharedType.PerTestSession)]
     public required PostgresFixture Postgres { get; init; }
@@ -100,6 +103,47 @@ public class MigrationTests
 
         var names = await db.Runs.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.ModuleName);
         runs.Select(id => names[id]).ShouldBe(["export", "export", "loi", "clash", "loi"]);
+        Postgres.DropDatabaseLater(connection);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Migration_CopiesClashThreshold(bool generalSaved)
+    {
+        var connection = await Postgres.CreateEmptyDatabaseAsync();
+        await using var server = new ServerFactory(connection + ";Pooling=false", services: NoHostedServices);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync(RunModuleName);
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO settings (key, value) VALUES ('clash.overview', '{{"staleDays":7,"agentsOfflineMinutes":25}}');
+            """);
+        if (generalSaved)
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO settings (key, value) VALUES ('general', '{{"timeZoneId":"Asia/Novosibirsk","defaultModelTimeoutMinutes":45}}');
+                """);
+
+        await migrator.MigrateAsync();
+
+        var general = await scope.ServiceProvider.GetRequiredService<ISettingsStore>().GetAsync();
+        general.AgentsOfflineMinutes.ShouldBe(25);
+        if (generalSaved) (general.TimeZoneId, general.DefaultModelTimeoutMinutes).ShouldBe(("Asia/Novosibirsk", 45));
+        Postgres.DropDatabaseLater(connection);
+    }
+
+    [Test]
+    public async Task Migration_NoClashThreshold_GeneralStaysDefault()
+    {
+        var connection = await Postgres.CreateEmptyDatabaseAsync();
+        await using var server = new ServerFactory(connection + ";Pooling=false", services: NoHostedServices);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
+        await db.GetService<IMigrator>().MigrateAsync();
+
+        (await scope.ServiceProvider.GetRequiredService<ISettingsStore>().GetAsync()).AgentsOfflineMinutes.ShouldBe(10);
+        (await db.Settings.CountAsync(s => s.Key == "general")).ShouldBe(0);
         Postgres.DropDatabaseLater(connection);
     }
 
