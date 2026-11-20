@@ -35,7 +35,9 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
         var running = nameof(JobStatus.Running);
         var queued = nameof(JobStatus.Queued);
         // Виды заданий, которые агент возьмёт: по его списку (агент 2.0+) или по версии. Пустой вид — выгрузка заданий до 1.1.
-        string[] kinds = [.. AgentCapabilities.Runnable(agent.AgentVersion, agent.Modules), ""];
+        // Выключенного модуля задания не выдаются, даже если попали в очередь после старта (например, повтором упавших).
+        var enabled = services.GetRequiredService<ModuleSet>().EnabledKinds;
+        string[] kinds = [.. AgentCapabilities.Runnable(agent.AgentVersion, agent.Modules).Append("").Where(enabled.Contains)];
         var claimed = await db.Jobs.FromSql($"""
             UPDATE jobs SET status = {running}, agent_id = {agentId}, instance_slot = {request.Slot}, attempt = attempt + 1,
                             started_at = {now}, lease_until = {lease}

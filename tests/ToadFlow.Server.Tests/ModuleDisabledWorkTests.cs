@@ -153,3 +153,50 @@ public class ModuleDisabledRunTests : ServerTest
         (await DbAsync(db => db.Runs.AnyAsync(r => r.ScheduleId == scheduleId))).ShouldBeFalse();
     }
 }
+
+/// <summary>Задание выключенного модуля, попавшее в очередь после старта (например, «повторить упавшие» через API), агенту не выдаётся.</summary>
+public class ModuleDisabledClaimTests : ServerTest
+{
+    public ModuleDisabledClaimTests() => Modules = "export";
+
+    [Test]
+    public async Task Claim_JobOfDisabledModule_NotHandedOut()
+    {
+        await using var agent = await FakeAgent.RegisterAsync(Server, await AdminAsync(), "FARM-01");
+        await agent.ConnectAsync(new InstalledRevitDto(2022, true));
+        var (loiJob, exportJob) = await DbAsync(async db =>
+        {
+            var run = Seed.Run(db);
+            var loi = Seed.Job(db, run.Id, priority: 10);
+            loi.ModuleKind = ModuleKinds.Loi;
+            var export = Seed.Job(db, run.Id);
+            await db.SaveChangesAsync();
+            return (loi.Id, export.Id);
+        });
+
+        var assignment = await agent.RequestJobAsync(1, 2022);
+
+        assignment.ShouldNotBeNull().JobId.ShouldBe(exportJob); // у LOI приоритет выше, но модуль выключен
+        (await agent.RequestJobAsync(2, 2022)).ShouldBeNull();
+        (await DbAsync(db => db.Jobs.SingleAsync(j => j.Id == loiJob))).Status.ShouldBe(JobStatus.Queued);
+    }
+}
+
+public class ScheduleKindLockedTests : ServerTest
+{
+    [Test]
+    public async Task UpdateSchedule_ChangingKind_400()
+    {
+        var admin = await AdminAsync();
+        var created = await ScheduleApi.CreateAsync(admin, ScheduleApi.Body(await ScheduleApi.SourceAsync(admin), await ScheduleApi.DefaultPresetAsync(admin)));
+        var body = JsonSerializer.SerializeToNode(ScheduleApi.Body(created.SourceId, await ScheduleApi.DefaultPresetAsync(admin)), TestJson.Options)!;
+        body["moduleKind"] = ModuleKinds.ClashExtract;
+        body["moduleSettings"] = JsonNode.Parse("""{"viewName":"Navisworks","worksetKeyword":"","parts":[]}""");
+
+        var response = await admin.PutJsonAsync($"/api/schedules/{created.Id}", body);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Вид задачи");
+        (await DbAsync(db => db.Schedules.SingleAsync(s => s.Id == created.Id))).ModuleKind.ShouldBe(ModuleKinds.Export);
+    }
+}

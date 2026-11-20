@@ -125,6 +125,9 @@ public static class ScheduleEndpoints
         {
             schedule = await db.Schedules.SingleOrDefaultAsync(s => s.Id == id) ?? null!;
             if (schedule is null) return Results.NotFound();
+            // Вид задачи задаёт модуль, где расписание создано: сменить его правкой нельзя — у другого вида другие настройки и история.
+            if (schedule.ModuleKind != request.ModuleKind)
+                return Results.BadRequest(new { error = "Вид задачи расписания не меняется: создайте расписание в нужном модуле" });
             // Время в базе — до микросекунд, а форма могла получить его из ответа сохранения с точностью до тиков.
             if (request.ExpectedUpdatedAt is { } expected && (schedule.UpdatedAt - expected).Duration() >= TimeSpan.FromMilliseconds(1))
                 return Results.Json(new { error = "Расписание уже изменили — обновите страницу и повторите" }, statusCode: StatusCodes.Status409Conflict);
