@@ -43,6 +43,7 @@ public static class ServerSetup
         builder.Services.AddQueue();
         builder.Services.AddSingleton<ModuleSet>();
         builder.Services.AddSingleton<ServerModuleRegistry>();
+        builder.Services.AddHostedService<DisabledModuleJobs>();
         builder.Services.AddSchedules();
         builder.Services.AddHostedService<RetentionCleaner>();
         builder.Services.AddRequestDecompression(); // агенты сжимают части загрузок (Content-Encoding: gzip)

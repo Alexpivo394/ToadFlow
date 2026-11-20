@@ -39,6 +39,7 @@ public sealed record ScheduleView(
     Guid Id,
     string Name,
     string ModuleKind,
+    string Module,
     Guid SourceId,
     string SourceName,
     int? SourceRevitYear,
@@ -72,9 +73,10 @@ public static class ScheduleEndpoints
     public static void MapSchedules(this RouteGroupBuilder api)
     {
         var schedules = api.MapGroup("/schedules");
-        schedules.MapGet("/", async (ToadFlowDb db) => await ViewsAsync(db, null));
-        schedules.MapGet("/{id:guid}", async (Guid id, ToadFlowDb db) =>
-            (await ViewsAsync(db, id)).SingleOrDefault() is { } view ? Results.Ok(view) : Results.NotFound());
+        // module — только расписания этого модуля; без него — всех включённых. Расписания выключенных модулей не видны.
+        schedules.MapGet("/", async (string? module, ToadFlowDb db, ModuleSet modules) => await ViewsAsync(db, modules, null, module));
+        schedules.MapGet("/{id:guid}", async (Guid id, ToadFlowDb db, ModuleSet modules) =>
+            (await ViewsAsync(db, modules, id)).SingleOrDefault() is { } view ? Results.Ok(view) : Results.NotFound());
         schedules.MapGet("/{id:guid}/changes", async (Guid id, ToadFlowDb db) =>
             await db.ScheduleChanges.Where(c => c.ScheduleId == id).OrderByDescending(c => c.At)
                 .Join(db.Users, c => c.UserId, u => u.Id, (c, u) => new ScheduleChangeView(c.At, u.DisplayName, c.Summary))
@@ -85,9 +87,10 @@ public static class ScheduleEndpoints
         write.MapPut("/{id:guid}", (Guid id, ScheduleRequest request, HttpContext http, IServiceProvider services) => SaveAsync(id, request, http, services));
         write.MapPost("/{id:guid}/enabled", SetEnabledAsync);
         write.MapDelete("/{id:guid}", DeleteAsync);
-        write.MapPost("/{id:guid}/run", async (Guid id, ToadFlowDb db, RunFactory runs, HttpContext http) =>
+        write.MapPost("/{id:guid}/run", async (Guid id, ToadFlowDb db, RunFactory runs, ModuleSet modules, HttpContext http) =>
         {
-            if (!await db.Schedules.AnyAsync(s => s.Id == id)) return Results.NotFound();
+            var kind = await db.Schedules.Where(s => s.Id == id).Select(s => s.ModuleKind).SingleOrDefaultAsync();
+            if (kind is null || !modules.IsKindEnabled(kind)) return Results.NotFound();
             var run = await runs.StartAsync(id, http.User.UserId(), http.User.Actor());
             return Results.Ok(new { runId = run.Id });
         });
@@ -137,7 +140,7 @@ public static class ScheduleEndpoints
         await db.SaveChangesAsync();
         services.GetRequiredService<IDomainEvents>().Publish(new ScheduleChanged(http.User.Actor(), schedule.Id, schedule.Name, summary));
 
-        var view = (await ViewsAsync(db, schedule.Id)).Single() with { Warnings = await WarningsAsync(db, schedule, source!) };
+        var view = (await ViewsAsync(db, services.GetRequiredService<ModuleSet>(), schedule.Id)).Single() with { Warnings = await WarningsAsync(db, schedule, source!) };
         return id is null ? Results.Created($"/api/schedules/{schedule.Id}", view) : Results.Ok(view);
     }
 
@@ -241,10 +244,12 @@ public static class ScheduleEndpoints
         return warnings;
     }
 
-    private static async Task<List<ScheduleView>> ViewsAsync(ToadFlowDb db, Guid? id)
+    private static async Task<List<ScheduleView>> ViewsAsync(ToadFlowDb db, ModuleSet modules, Guid? id, string? module = null)
     {
         var query = db.Schedules.AsNoTracking();
         if (id is not null) query = query.Where(s => s.Id == id);
+        var kinds = module is null ? modules.EnabledKinds : modules.IsEnabled(module) ? modules.KindsOf(module) : [];
+        query = query.Where(s => kinds.Contains(s.ModuleKind));
         var schedules = await query.OrderBy(s => s.Name).ToListAsync();
         var ids = schedules.Select(s => s.Id).ToList();
 
@@ -272,7 +277,7 @@ public static class ScheduleEndpoints
             var last = lastRuns.FirstOrDefault(r => r.ScheduleId == s.Id);
             var count = last is null ? null : counts.GetValueOrDefault(last.Id);
             using var settings = JsonDocument.Parse(s.ModuleSettingsJson);
-            return new ScheduleView(s.Id, s.Name, s.ModuleKind, s.SourceId, source?.Name ?? "—", source?.RevitYear, s.OutputFolderTemplate,
+            return new ScheduleView(s.Id, s.Name, s.ModuleKind, modules.NameOfKind(s.ModuleKind) ?? "", s.SourceId, source?.Name ?? "—", source?.RevitYear, s.OutputFolderTemplate,
                 s.Selection, settings.RootElement.Clone(), s.RecurrenceKind, s.DaysOfWeekMask, s.TimeOfDay, s.IntervalHours, s.OnceAt, s.Priority,
                 s.ModelTimeoutMinutes, s.MaxRetries, s.IsEnabled, s.NextRunAt,
                 s.LastKnownModels?.Count ?? s.Selection.Models.Length,

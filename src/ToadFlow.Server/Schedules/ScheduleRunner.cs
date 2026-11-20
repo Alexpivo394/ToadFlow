@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
+using ToadFlow.Server.Modules;
 using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Schedules;
@@ -38,7 +39,9 @@ public sealed class ScheduleRunner(IServiceScopeFactory scopes, TimeProvider tim
         var timeZone = (await scope.ServiceProvider.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone;
         var now = time.GetUtcNow();
 
-        var due = await db.Schedules.Where(s => s.IsEnabled && s.NextRunAt != null && s.NextRunAt <= now).ToListAsync(ct);
+        // Расписания выключенных модулей не запускаются и не сдвигаются: включат модуль — пойдут с ближайшего срока.
+        var kinds = scope.ServiceProvider.GetRequiredService<ModuleSet>().EnabledKinds;
+        var due = await db.Schedules.Where(s => s.IsEnabled && s.NextRunAt != null && s.NextRunAt <= now && kinds.Contains(s.ModuleKind)).ToListAsync(ct);
         foreach (var schedule in due)
         {
             // Сначала сдвигаем время следующего запуска: если создание запуска упадёт, расписание не будет дёргаться каждые 30 секунд.
