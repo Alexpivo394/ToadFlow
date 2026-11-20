@@ -102,3 +102,81 @@ public class EventsTests : ServerTest
         })
         .Build();
 }
+
+/// <summary>Фильтры журнала действий: кто (по вхождению, без учёта регистра), вид (точно), период — и листание вместе с ними.</summary>
+public class EventFilterTests : ServerTest
+{
+    private sealed record EventRow(long Id, DateTimeOffset At, ActorKind ActorKind, string ActorName, string Kind, string Text);
+
+    private static readonly DateTimeOffset Day = new(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+
+    private Task SeedAsync() => DbAsync(async db =>
+    {
+        void Add(string actor, string kind, DateTimeOffset at, string text) =>
+            db.SystemEvents.Add(new SystemEvent { At = at, ActorKind = ActorKind.User, ActorName = actor, Kind = kind, Text = text });
+
+        Add("Иван Петров", "ScheduleChanged", Day, "1");
+        Add("Пётр Иванов", "ScheduleChanged", Day.AddDays(1), "2");
+        Add("Иван Петров", "SettingsChanged", Day.AddDays(2), "3");
+        Add("Мария", "UserChanged", Day.AddDays(3), "4");
+        Add("иван сидоров", "UserChanged", Day.AddDays(4), "5");
+        await db.SaveChangesAsync();
+    });
+
+    private async Task<string[]> TextsAsync(string query) =>
+        (await (await AdminAsync()).GetJsonAsync<EventRow[]>($"/api/events?{query}")).Where(e => e.At.Year == 2026 && e.At.Month == 3)
+        .Select(e => e.Text).ToArray();
+
+    [Test]
+    public async Task Events_FilterByActor()
+    {
+        await SeedAsync();
+
+        (await TextsAsync("actor=ИВАН")).ShouldBe(["5", "3", "2", "1"]);
+        (await TextsAsync("actor=петров")).ShouldBe(["3", "1"]);
+    }
+
+    [Test]
+    public async Task Events_FilterByKind()
+    {
+        await SeedAsync();
+
+        (await TextsAsync("kind=UserChanged")).ShouldBe(["5", "4"]);
+        (await TextsAsync("kind=User")).ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Events_FilterByPeriod()
+    {
+        await SeedAsync();
+
+        (await TextsAsync($"from={Uri.EscapeDataString(Day.AddDays(1).ToString("O"))}&to={Uri.EscapeDataString(Day.AddDays(3).ToString("O"))}"))
+            .ShouldBe(["4", "3", "2"]);
+    }
+
+    [Test]
+    public async Task Events_FiltersCombineWithPaging()
+    {
+        await SeedAsync();
+        var admin = await AdminAsync();
+
+        var first = await admin.GetJsonAsync<EventRow[]>("/api/events?actor=иван&take=2");
+        var next = await admin.GetJsonAsync<EventRow[]>($"/api/events?actor=иван&take=2&before={first[^1].Id}");
+
+        first.Select(e => e.Text).ShouldBe(["5", "3"]);
+        next.Select(e => e.Text).ShouldBe(["2", "1"]);
+    }
+
+    [Test]
+    public async Task EventKinds_Distinct()
+    {
+        await SeedAsync();
+
+        var kinds = await (await AdminAsync()).GetJsonAsync<string[]>("/api/events/kinds");
+
+        kinds.ShouldBe(kinds.Distinct().Order(StringComparer.Ordinal).ToArray());
+        kinds.ShouldContain("ScheduleChanged");
+        kinds.ShouldContain("UserChanged");
+        kinds.ShouldContain("SettingsChanged");
+    }
+}

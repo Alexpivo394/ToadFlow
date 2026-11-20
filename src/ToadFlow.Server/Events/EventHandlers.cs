@@ -41,13 +41,26 @@ internal sealed class UiBroadcaster(IHubContext<UiHub> hub) : IDomainEventHandle
 
 public static class EventEndpoints
 {
-    public static void MapEvents(this RouteGroupBuilder api) =>
-        api.MapGet("/events", async (ToadFlowDb db, long? before, int? take) =>
+    /// <summary>
+    ///     <c>GET /api/events</c> — журнал действий, новые сверху. <c>actor</c> — вхождение в имя без учёта регистра, <c>kind</c> — вид
+    ///     точно, <c>from</c>/<c>to</c> — по времени; <c>before</c> и <c>take</c> листают уже отфильтрованное.
+    ///     <c>GET /api/events/kinds</c> — виды событий, что есть в журнале, по алфавиту.
+    /// </summary>
+    public static void MapEvents(this RouteGroupBuilder api)
+    {
+        api.MapGet("/events", async (ToadFlowDb db, string? actor, string? kind, DateTimeOffset? from, DateTimeOffset? to, long? before, int? take) =>
         {
             var query = db.SystemEvents.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(actor)) query = query.Where(e => EF.Functions.ILike(e.ActorName, $"%{actor.Trim()}%"));
+            if (!string.IsNullOrWhiteSpace(kind)) query = query.Where(e => e.Kind == kind.Trim());
+            if (from is { } start) query = query.Where(e => e.At >= start.ToUniversalTime());
+            if (to is { } end) query = query.Where(e => e.At <= end.ToUniversalTime());
             if (before is { } id) query = query.Where(e => e.Id < id);
             return await query.OrderByDescending(e => e.Id).Take(Math.Clamp(take ?? 50, 1, 200)).ToListAsync();
         });
+        api.MapGet("/events/kinds", async (ToadFlowDb db) =>
+            (await db.SystemEvents.AsNoTracking().Select(e => e.Kind).Distinct().ToListAsync()).Order(StringComparer.Ordinal).ToArray());
+    }
 
     public static void AddDomainEvents(this IServiceCollection services)
     {
