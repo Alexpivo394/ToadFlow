@@ -19,6 +19,8 @@ type LiveHub = {
   reconnected: (() => void) | null;
   failStarts: number;
   starts: number;
+  /** Подключения личного хаба уведомлений (/hubs/me) — отдельно: тесты общего хаба их не видят. */
+  personalStarts: number;
   reset(): void;
 };
 
@@ -30,11 +32,13 @@ function liveHubOf(): LiveHub {
     reconnected: null,
     failStarts: 0,
     starts: 0,
+    personalStarts: 0,
     reset() {
       this.handlers = {};
       this.reconnected = null;
       this.failStarts = 0;
       this.starts = 0;
+      this.personalStarts = 0;
     },
   };
   return holder.__liveHub;
@@ -45,7 +49,9 @@ export const liveHub = liveHubOf();
 vi.mock('@microsoft/signalr', () => {
   const liveHub = (globalThis as { __liveHub?: LiveHub }).__liveHub ?? liveHubOf();
   class Builder {
-    withUrl() {
+    private url = '';
+    withUrl(url: string) {
+      this.url = url;
       return this;
     }
     withAutomaticReconnect() {
@@ -55,6 +61,8 @@ vi.mock('@microsoft/signalr', () => {
       return this;
     }
     build() {
+      if (this.url === '/hubs/me')
+        return { on: () => undefined, onreconnected: () => undefined, start: () => { liveHub.personalStarts++; return Promise.resolve(); }, stop: () => Promise.resolve() };
       return {
         on: (name: string, handler: (...args: unknown[]) => void) => {
           liveHub.handlers[name] = handler;

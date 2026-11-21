@@ -299,6 +299,7 @@ export const t = {
     myCollisions: 'Мои коллизии',
     home: 'Главная',
     search: 'Поиск',
+    searchButton: 'Быстрый поиск (Ctrl+K)',
     searchPlaceholder: 'Найти семейство, заявку № 12, расписание, страницу…',
     searchHint: 'Ctrl+K — поиск по всему сервису',
     nothingFound: 'Ничего не нашлось',

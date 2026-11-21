@@ -23,7 +23,7 @@ export const openSearch = () => window.dispatchEvent(new Event(openEvent));
 export function SearchButton() {
   return (
     <Tooltip label={t.today.searchHint} position="right">
-      <ActionIcon variant="subtle" size="lg" aria-label={t.today.search} onClick={openSearch}>
+      <ActionIcon variant="subtle" size="lg" aria-label={t.today.searchButton} onClick={openSearch}>
         <IconSearch size={20} stroke={1.6} />
       </ActionIcon>
     </Tooltip>
