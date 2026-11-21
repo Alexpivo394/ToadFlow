@@ -82,6 +82,31 @@ public static class ScheduleEndpoints
                 .Join(db.Users, c => c.UserId, u => u.Id, (c, u) => new ScheduleChangeView(c.At, u.DisplayName, c.Summary))
                 .ToListAsync());
 
+        // Следить за расписанием: уведомления об ошибках его запусков. Личное — любой роли с доступом к расписаниям.
+        schedules.MapGet("/following", async (ToadFlowDb db, HttpContext http) =>
+        {
+            var me = http.User.UserId();
+            return await db.Set<ScheduleFollower>().Where(f => f.UserId == me).Select(f => f.ScheduleId).ToListAsync();
+        });
+        schedules.MapPost("/{id:guid}/follow", async (Guid id, ToadFlowDb db, HttpContext http) =>
+        {
+            if (!await db.Schedules.AnyAsync(s => s.Id == id)) return Results.NotFound();
+            var me = http.User.UserId();
+            if (!await db.Set<ScheduleFollower>().AnyAsync(f => f.ScheduleId == id && f.UserId == me))
+            {
+                db.Set<ScheduleFollower>().Add(new ScheduleFollower { ScheduleId = id, UserId = me });
+                await db.SaveChangesAsync();
+            }
+
+            return Results.Ok();
+        });
+        schedules.MapDelete("/{id:guid}/follow", async (Guid id, ToadFlowDb db, HttpContext http) =>
+        {
+            var me = http.User.UserId();
+            await db.Set<ScheduleFollower>().Where(f => f.ScheduleId == id && f.UserId == me).ExecuteDeleteAsync();
+            return Results.Ok();
+        });
+
         var write = schedules.MapGroup("").RequireAuthorization(Policies.Operator);
         write.MapPost("/", (ScheduleRequest request, HttpContext http, IServiceProvider services) => SaveAsync(null, request, http, services));
         write.MapPut("/{id:guid}", (Guid id, ScheduleRequest request, HttpContext http, IServiceProvider services) => SaveAsync(id, request, http, services));
@@ -120,6 +145,7 @@ public static class ScheduleEndpoints
         {
             schedule = new Schedule { Id = Guid.CreateVersion7(), CreatedByUserId = userId, CreatedAt = now };
             db.Schedules.Add(schedule);
+            db.Set<ScheduleFollower>().Add(new ScheduleFollower { ScheduleId = schedule.Id, UserId = userId });
         }
         else
         {

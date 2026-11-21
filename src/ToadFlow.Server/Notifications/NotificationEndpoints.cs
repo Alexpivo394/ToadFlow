@@ -78,5 +78,9 @@ public static class NotificationEndpoints
         return Results.Ok(await SettingsAsync(db, user, ct));
     }
 
-    public static void AddNotifications(this IServiceCollection services) => services.AddScoped<INotifications, NotificationService>();
+    public static void AddNotifications(this IServiceCollection services)
+    {
+        services.AddScoped<INotifications, NotificationService>();
+        services.AddScoped<Events.IDomainEventHandler, RunFailedNotifier>();
+    }
 }

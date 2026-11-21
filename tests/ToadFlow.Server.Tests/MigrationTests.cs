@@ -231,4 +231,33 @@ public class MigrationTests
         requests[urgent].DirectionId.ShouldBeNull();
         Postgres.DropDatabaseLater(connection);
     }
+    /// <summary>Создатель существующего расписания начинает следить за ним.</summary>
+    [Test]
+    public async Task Migration_ScheduleCreatorFollows()
+    {
+        var connection = await Postgres.CreateEmptyDatabaseAsync();
+        await using var server = new ServerFactory(connection + ";Pooling=false", services: NoHostedServices);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
+        var migrator = db.GetService<IMigrator>();
+        var before = db.Database.GetMigrations().Last(m => m.EndsWith("_Notifications"));
+        await migrator.MigrateAsync(before);
+        var (user, source, schedule) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        const string Selection = """{"models":[],"folders":[]}""", Empty = "{}";
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO users (id, login, display_name, password_hash, role, is_disabled, created_at)
+            VALUES ({user}, 'ivanov', 'Иванов', 'hash', 'Operator', false, now());
+            INSERT INTO sources (id, name, kind, host, root_path) VALUES ({source}, 'RS', 'RevitServer', 'rs22', '');
+            INSERT INTO schedules (id, name, module_kind, source_id, output_folder_template, selection, module_settings_json, recurrence_kind,
+                days_of_week_mask, time_of_day, priority, model_timeout_minutes, max_retries, is_enabled, created_by_user_id, created_at,
+                updated_by_user_id, updated_at)
+            VALUES ({schedule}, 'LOI', 'loi', {source}, '', {Selection}::jsonb, {Empty}::jsonb, 'Weekly', 0, '20:00', 0, 30, 1, true, {user}, now(),
+                {user}, now());
+            """);
+
+        await migrator.MigrateAsync();
+
+        (await db.Set<ToadFlow.Server.Schedules.ScheduleFollower>().AsNoTracking().ToListAsync()).Select(f => (f.ScheduleId, f.UserId)).ShouldBe([(schedule, user)]);
+        Postgres.DropDatabaseLater(connection);
+    }
 }

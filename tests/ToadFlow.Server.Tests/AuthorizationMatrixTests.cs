@@ -26,7 +26,9 @@ public class AuthorizationMatrixTests : ServerTest
          "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit", "/api/clash/collisions/{id:guid}/seen", "/api/clash/reports/{runId:guid}/archive", "/api/clash/report-archives/{id:guid}",
          "/api/families/project-status", "/api/families/{id:guid}/loads", "/api/families/requests/{id:guid}/seen",
          // Свои уведомления: прочесть, настроить
-         "/api/notifications/{id:long}/read", "/api/notifications/read-all", "/api/notifications/read-link", "/api/notifications/settings"];
+         "/api/notifications/{id:long}/read", "/api/notifications/read-all", "/api/notifications/read-link", "/api/notifications/settings",
+         // Следить за расписанием — личная подписка на уведомления
+         "/api/schedules/{id:guid}/follow"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()

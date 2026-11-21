@@ -3074,6 +3074,25 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Schedules.ScheduleFollower", b =>
+                {
+                    b.Property<Guid>("ScheduleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schedule_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("ScheduleId", "UserId")
+                        .HasName("pk_schedule_followers");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_schedule_followers_user_id");
+
+                    b.ToTable("schedule_followers", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Auth.RefreshToken", b =>
                 {
                     b.HasOne("ToadFlow.Server.Data.Entities.User", null)
@@ -3374,6 +3393,23 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_notifications_users_user_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Schedules.ScheduleFollower", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Data.Entities.Schedule", null)
+                        .WithMany()
+                        .HasForeignKey("ScheduleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_schedule_followers_schedules_schedule_id");
+
+                    b.HasOne("ToadFlow.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_schedule_followers_users_user_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>

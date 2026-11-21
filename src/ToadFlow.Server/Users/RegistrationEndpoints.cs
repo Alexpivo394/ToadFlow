@@ -38,7 +38,7 @@ public static class RegistrationEndpoints
     }
 
     private static async Task<IResult> RegisterAsync(RegisterRequest request, ToadFlowDb db, NamingStore naming, IEnumerable<IDisciplineSource> sources,
-        TimeProvider time, IDomainEvents events, CancellationToken ct)
+        TimeProvider time, IDomainEvents events, Notifications.INotifications notifications, CancellationToken ct)
     {
         if (UserEndpoints.Validate(request.Login, request.DisplayName, request.Password) is { } error) return Results.BadRequest(new { error });
         if (ProfileEndpoints.Contacts(request.Position, request.Email, request.Phone, out var contacts) is { } contactError)
@@ -61,6 +61,10 @@ public static class RegistrationEndpoints
         await db.SaveChangesAsync(ct);
         events.Publish(new UserChanged(new Actor(ActorKind.User, user.DisplayName), user.Id,
             $"Заявка на регистрацию: {user.DisplayName} ({user.Login}), разделы: {DisciplineText(user.Disciplines)}"));
+        var approvers = await db.Users.AsNoTracking().Where(u => !u.IsDisabled && !u.IsPending && (u.Role == UserRole.Operator || u.Role == UserRole.Admin))
+            .Select(u => u.Id).ToListAsync(ct);
+        await notifications.NotifyAsync(approvers, Notifications.NotificationKinds.UserPending, "Заявка на регистрацию", $"{user.DisplayName} ({user.Login}) ждёт подтверждения",
+            "/admin/users", "user.pending", null, ct);
         return Results.Accepted();
     }
 

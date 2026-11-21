@@ -111,6 +111,15 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
             n.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<Schedules.ScheduleFollower>(f =>
+        {
+            f.ToTable("schedule_followers");
+            f.HasKey(x => new { x.ScheduleId, x.UserId });
+            f.HasIndex(x => x.UserId);
+            f.HasOne<Schedule>().WithMany().HasForeignKey(x => x.ScheduleId).OnDelete(DeleteBehavior.Cascade);
+            f.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<Setting>().HasKey(s => s.Key);
 
         foreach (var module in modules) module.ConfigureModel(model);
