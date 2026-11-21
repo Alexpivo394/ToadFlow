@@ -41,6 +41,27 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
         _port = FreePort();
         _server = new PgServer("17.11.0", dbDir: Root, port: _port, pgServerParams: Parameters, clearInstanceDirOnStop: false);
         await _server.StartAsync();
+        await WaitReadyAsync();
+    }
+
+    /// <summary>
+    ///     PostgresEmbed возвращается, когда процесс запущен, а не когда база принимает подключения: первый тест получал
+    ///     57P03 «система баз данных запускается».
+    /// </summary>
+    private async Task WaitReadyAsync()
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await ScalarAsync(ConnectionString("postgres") + ";Pooling=false", "select 1");
+                return;
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.CannotConnectNow && attempt < 300)
+            {
+                await Task.Delay(100);
+            }
+        }
     }
 
     /// <summary>
