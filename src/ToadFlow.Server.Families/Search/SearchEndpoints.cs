@@ -34,7 +34,11 @@ public static class CardVisibility
 
     public static IQueryable<FamilyCard> Visible(this IQueryable<FamilyCard> cards, ClaimsPrincipal user, CardState? state, bool unreviewed)
     {
-        if (!user.IsDesigner()) return cards.Where(c => c.State == (state ?? CardState.Approved));
+        // Координатор выбирает состояние фильтром веба; «непроверенные» без состояния (панель Revit) — утверждённые и на проверке, как у проектировщика.
+        if (!user.IsDesigner())
+            return state is { } chosen ? cards.Where(c => c.State == chosen)
+                : unreviewed ? cards.Where(c => c.State == CardState.Approved || c.State == CardState.InReview)
+                : cards.Where(c => c.State == CardState.Approved);
         return unreviewed ? cards.Where(c => c.State == CardState.Approved || c.State == CardState.InReview) : cards.Where(c => c.State == CardState.Approved);
     }
 

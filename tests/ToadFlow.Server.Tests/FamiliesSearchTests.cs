@@ -157,6 +157,7 @@ public class FamiliesSearchTests : ServerTest
         (await NamesAsync(viewer, "q=")).ShouldBe(["Утверждено"]);
         (await NamesAsync(viewer, "state=InReview")).ShouldBe(["На проверке"]);
         (await NamesAsync(viewer, "state=Archived")).ShouldBe(["В архиве"]);
+        (await NamesAsync(viewer, "unreviewed=true")).ShouldBe(["Утверждено", "На проверке"], ignoreOrder: true); // панель Revit координатора
     }
 
     [Test]
