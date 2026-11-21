@@ -13,7 +13,7 @@ describe('Settings pages at their places', () => {
   it('agents: outdated badge and offline agent can be deleted', async () => {
     renderApp('/farm/agents', { '/api/agents': [agent] });
 
-    expect(await screen.findByText('BIM-FARM-03')).toBeTruthy();
+    expect((await screen.findAllByText('BIM-FARM-03')).length).toBeGreaterThan(0); // в таблице и в «Что делают сейчас»
     expect(screen.getByText('устарел')).toBeTruthy();
     expect(screen.getByText('R2020: 1 · R2023: 1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Действия' }));
