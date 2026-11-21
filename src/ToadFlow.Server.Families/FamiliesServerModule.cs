@@ -48,6 +48,7 @@ public sealed class FamiliesServerModule : IServerModule
                     : "/data/families");
         services.AddScoped<FamiliesSettingsStore>();
         services.AddScoped<Requests.RequestNotices>();
+        services.AddScoped<Requests.FamilyNotices>();
         services.AddSingleton<LibraryScanGate>();
         services.AddScoped<LibraryScanner>();
         services.AddScoped<ScanApplier>();

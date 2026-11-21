@@ -25,7 +25,7 @@ public sealed record ScanApplied(int NewCards, int NewVersions, int Moved, int A
 ///     транзакции, и второй такой же отчёт (или отчёт обхода, который сервер уже счёл потерянным) ничего не меняет.
 /// </summary>
 public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsStore, TimeProvider time, IDomainEvents events, ILogger<ScanApplier> logger,
-    Requests.RequestNotices notices)
+    Requests.RequestNotices notices, Requests.FamilyNotices familyNotices)
 {
     public const string CatalogNote = "изменён каталог типоразмеров";
     public const string UnreviewedNote = "изменено без проверки";
@@ -69,6 +69,8 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
         var unsettled = report.Unsettled.Select(Normalize).ToList();
         var certain = report.Complete && unsettled.Count == 0;
         var known = await LoadAsync(ct);
+        var currentBefore = _cards.Values.ToDictionary(c => c.Id, c => c.CurrentVersionId);
+        var reviewBefore = _versions.Values.Where(v => v.State == VersionState.InReview).Select(v => v.Id).ToHashSet();
         var questions = _openIssues.Where(i => i is { Kind: IssueKind.Ambiguous, CardId: not null })
             .Select(i => new OpenQuestion(i.CardId!.Value, i.RelativePath)).ToList();
         var diff = ScanDiff.Compare(known, scanned, new ScanOptions(_reviewFolder, report.Complete) { Unsettled = unsettled, OpenQuestions = questions });
@@ -137,6 +139,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
         foreach (var request in await db.Set<Requests.FamilyRequest>().AsNoTracking().Where(r => closed.Select(c => c.Id).Contains(r.Id)).ToListAsync(ct))
             await notices.MembersAsync(request, Notifications.NotificationKinds.RequestReview,
                 $"«{request.Title}»: опубликовано семейство — проверьте, подходит ли", request.AssigneeUserId, ct);
+        await familyNotices.AfterScanAsync(currentBefore, reviewBefore, _cards, _versions, ct);
         return applied;
     }
 

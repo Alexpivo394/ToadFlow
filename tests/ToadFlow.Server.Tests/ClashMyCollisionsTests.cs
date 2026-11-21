@@ -61,6 +61,23 @@ public class ClashMyCollisionsTests : ServerTest
         row.PartName.ShouldStartWith("Часть");
     }
 
+    /// <summary>Утверждённый прогон нашёл новые коллизии — уведомление тем, у кого их разделы в профиле.</summary>
+    [Test]
+    public async Task ApprovedRun_NotifiesDisciplineUsers()
+    {
+        var (admin, agent, partId, engine) = await SetupAsync();
+        await using var _ = agent;
+        var ovk = await DesignerAsync("ОВК");
+        var ar = await DesignerAsync("АР");
+
+        await RunAsync(admin, engine, partId, [Hit(1, disciplineA: "КР", disciplineB: "ОВК"), Hit(2, disciplineA: "КР", disciplineB: "ОВК")], approve: true);
+
+        var notification = (await ovk.GetJsonAsync<List<ToadFlow.Server.Notifications.NotificationView>>("/api/notifications")).ShouldHaveSingleItem();
+        (notification.Kind, notification.Link).ShouldBe((ToadFlow.Server.Notifications.NotificationKinds.ClashNew, "/clash/my"));
+        notification.Text.ShouldContain("2");
+        (await ar.GetJsonAsync<List<ToadFlow.Server.Notifications.NotificationView>>("/api/notifications")).ShouldBeEmpty();
+    }
+
     /// <summary>ОВК × ОВК — для ОВК одна строка; «Беру» ставит «обе стороны».</summary>
     [Test]
     public async Task My_SameDiscipline_OnceAndTakeBoth()

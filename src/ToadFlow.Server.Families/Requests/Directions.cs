@@ -51,6 +51,14 @@ public static class Directions
         return byProfile.Count == 1 ? byProfile[0].Id : null;
     }
 
+    /// <summary>Направление, в которое входит раздел библиотеки; null — ни в одно.</summary>
+    public static async Task<Guid?> BySectionAsync(ToadFlowDb db, string section, CancellationToken ct)
+    {
+        if (section.Trim() is not { Length: > 0 } wanted) return null;
+        var directions = await db.Set<FamilyDirection>().AsNoTracking().OrderBy(d => d.Order).ToListAsync(ct);
+        return directions.FirstOrDefault(d => d.Sections.Contains(wanted, StringComparer.OrdinalIgnoreCase))?.Id;
+    }
+
     /// <summary>Координаторы направления, действующие сейчас; нет направления или в нём никого — все координаторы и администраторы.</summary>
     public static async Task<IReadOnlyList<Guid>> CoordinatorsAsync(ToadFlowDb db, Guid? directionId, CancellationToken ct)
     {

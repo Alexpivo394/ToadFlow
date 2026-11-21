@@ -13,7 +13,7 @@ namespace ToadFlow.Server.Clash.Collisions;
 ///     Сверка утверждённого прогона с базой коллизий части: найденные пары получают номера и статусы, ненайденные открытые —
 ///     статус по фактам работника, лента и образцы глубины пополняются. Всё в одной транзакции; массовая запись — COPY.
 /// </summary>
-public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
+public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time, Notifications.INotifications notifications)
 {
     private const string CollisionColumns =
         "id, part_id, number, status, assignee, found_now, model_a, unique_id_a, element_id_a, discipline_a, sets_a, category_a, family_a, type_a, level_a, " +
@@ -177,6 +177,7 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
             run.FinishedAt = now;
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
+            await NotifyNewAsync(part, inserted, ct);
             return summary;
         }
         finally
@@ -442,5 +443,21 @@ public sealed class CollisionReconciler(ToadFlowDb db, TimeProvider time)
         }
 
         await importer.CompleteAsync(ct);
+    }
+
+    /// <summary>Новые коллизии прогона — людям, у которых их разделы в профиле: по одному уведомлению с числом новых в их разделах.</summary>
+    private async Task NotifyNewAsync(ClashPart part, IReadOnlyCollection<ClashCollision> created, CancellationToken ct)
+    {
+        if (created.Count == 0) return;
+        var disciplines = created.SelectMany(c => new[] { c.DisciplineA, c.DisciplineB }).Where(d => d.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var users = await db.Users.AsNoTracking().Where(u => !u.IsDisabled && !u.IsPending && u.Disciplines.Length > 0)
+            .Select(u => new { u.Id, u.Disciplines }).ToListAsync(ct);
+        foreach (var user in users.Where(u => u.Disciplines.Any(disciplines.Contains)))
+        {
+            var mine = created.Count(c => user.Disciplines.Contains(c.DisciplineA, StringComparer.OrdinalIgnoreCase)
+                                          || user.Disciplines.Contains(c.DisciplineB, StringComparer.OrdinalIgnoreCase));
+            await notifications.NotifyAsync([user.Id], Notifications.NotificationKinds.ClashNew, $"Коллизии: {part.Name}", $"Новых коллизий в ваших разделах: {mine}",
+                "/clash/my", $"clash:{part.Id}", null, ct);
+        }
     }
 }
