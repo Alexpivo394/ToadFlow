@@ -70,7 +70,7 @@ internal static class ActionEndpoints
         if (Folder(body.Folder, settings.ReviewFolder) is not { } folder)
             return Error("Укажите папку библиотеки вне папки проверки и служебной папки, без «..»");
 
-        var target = $@"{folder}\{Path.GetFileName(card.RelativePath)}";
+        var target = $@"{folder}\{FileName(card.RelativePath)}";
         return await DoAsync(files.RunAsync(FamilyFileActionKind.Move, card.RelativePath, target, current.Hash, current.CatalogHash, null, ct), events, user, card,
             $"утверждено и переложено в «{folder}»");
     }
@@ -185,11 +185,11 @@ internal static class ActionEndpoints
             case (IssueKind.NameConflict, "rename"):
             {
                 var name = body.Name?.Trim() ?? "";
-                if (name.Length == 0 || name.Length > 200 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.EndsWith('.'))
+                if (name.Length == 0 || name.Length > 200 || name.IndexOfAny(InvalidNameChars) >= 0 || name.EndsWith('.'))
                     return Error("Новое имя — без знаков \\ / : * ? \" < > | и не длиннее 200");
                 var key = name.ToLowerInvariant();
                 if (await db.Set<FamilyCard>().AnyAsync(c => c.NameKey == key && c.State != CardState.Archived, ct)) return Error($"Имя «{name}» тоже занято");
-                var folder = Path.GetDirectoryName(issue.RelativePath) ?? "";
+                var folder = FolderOf(issue.RelativePath);
                 var target = folder.Length == 0 ? $"{name}.rfa" : $@"{folder}\{name}.rfa";
                 error = await files.RunAsync(FamilyFileActionKind.Move, issue.RelativePath, target, issue.Hash, issue.CatalogHash, null, ct);
                 resolution = $"переименован в «{name}»";
@@ -240,11 +240,23 @@ internal static class ActionEndpoints
         return (version, card, current);
     }
 
+    /// <summary>
+    ///     Знаки, недопустимые в имени файла Windows. Сервер работает на Linux, где <c>Path.GetInvalidFileNameChars</c> знает только
+    ///     <c>/</c> и <c>\0</c>, а <c>Path.GetFileName</c> и <c>Path.GetDirectoryName</c> не знают разделителя <c>\</c>.
+    /// </summary>
+    private static readonly char[] InvalidNameChars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', .. Enumerable.Range(0, 32).Select(c => (char)c)];
+
+    /// <summary>Имя файла из пути библиотеки (разделитель Windows).</summary>
+    internal static string FileName(string relativePath) => relativePath[(relativePath.LastIndexOf('\\') + 1)..];
+
+    /// <summary>Папка из пути библиотеки (разделитель Windows); пусто — файл в корне.</summary>
+    internal static string FolderOf(string relativePath) => relativePath.LastIndexOf('\\') is var i and >= 0 ? relativePath[..i] : "";
+
     /// <summary>Папка от корня без переходов наверх, вне папки проверки и служебной папки; null — такая не годится.</summary>
     internal static string? Folder(string? folder, string reviewFolder)
     {
         var parts = (folder ?? "").Replace('/', '\\').Trim().Trim('\\').Split('\\', StringSplitOptions.TrimEntries);
-        if (parts.Length == 0 || parts.Any(p => p is "" or "." or ".." || p.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)) return null;
+        if (parts.Length == 0 || parts.Any(p => p is "" or "." or ".." || p.IndexOfAny(InvalidNameChars) >= 0)) return null;
         if (parts[0].Equals(reviewFolder, StringComparison.OrdinalIgnoreCase) || parts[0].Equals(LibraryPaths.ServiceFolder, StringComparison.OrdinalIgnoreCase)) return null;
         return string.Join('\\', parts);
     }

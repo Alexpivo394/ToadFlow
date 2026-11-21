@@ -334,3 +334,29 @@ public class FamiliesActionTests : ServerTest
             .ShouldBe(HttpStatusCode.Forbidden);
     }
 }
+
+/// <summary>Пути библиотеки — с разделителем Windows, а сервер работает на Linux: разбор не должен зависеть от ОС.</summary>
+public class FamiliesLibraryPathTests
+{
+    [Test]
+    [Arguments(@"_На проверке\Задвижка.rfa", "Задвижка.rfa", "_На проверке")]
+    [Arguments(@"ОВ\Арматура\Кран.rfa", "Кран.rfa", @"ОВ\Арматура")]
+    [Arguments("Кран.rfa", "Кран.rfa", "")]
+    public async Task FileNameAndFolder_SplitOnBackslash(string path, string name, string folder)
+    {
+        ActionEndpoints.FileName(path).ShouldBe(name);
+        ActionEndpoints.FolderOf(path).ShouldBe(folder);
+        await Task.CompletedTask;
+    }
+
+    [Test]
+    [Arguments("ОВ:Арматура")]
+    [Arguments("ОВ*")]
+    [Arguments("ОВ\"")]
+    [Arguments("ОВ|Арматура")]
+    public async Task Folder_RejectsWindowsInvalidChars(string folder)
+    {
+        ActionEndpoints.Folder(folder, "_На проверке").ShouldBeNull();
+        await Task.CompletedTask;
+    }
+}
