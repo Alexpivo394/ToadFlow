@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
@@ -14,7 +15,8 @@ internal static partial class RequestEndpoints
     private const int MinRevitYear = 2015;
     private const int MaxRevitYear = 2040;
 
-    private static async Task<IResult> CreateAsync(NewRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(NewRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
+        IOptions<FamiliesStorageOptions> storage, CancellationToken ct)
     {
         var title = body.Title?.Trim() ?? "";
         var text = body.Text?.Trim() ?? "";
@@ -68,6 +70,7 @@ internal static partial class RequestEndpoints
         };
         db.Set<FamilyRequest>().Add(request);
         db.Set<FamilyRequestMember>().Add(new FamilyRequestMember { RequestId = request.Id, UserId = me, JoinedAt = now, SeenAt = now });
+        if (await AttachAsync(db, storage.Value.Root, request.Id, null, body.FileIds, me, ct) is { } fileRefusal) return Results.BadRequest(new { error = fileRefusal });
         await db.SaveChangesAsync(ct);
         events.Publish(new CatalogChanged(user.Actor(), Requests.UiEntity, request.Id, $"Семейства: новая заявка № {request.Number} «{title}»"));
         return Results.Ok(new { request.Id, request.Number });
@@ -130,15 +133,17 @@ internal static partial class RequestEndpoints
         }, (string?)null, touch: false);
 
     private static async Task<IResult> MessageAsync(Guid id, RequestMessageRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
+        IOptions<FamiliesStorageOptions> storage,
         CancellationToken ct)
     {
         var text = body.Text?.Trim() ?? "";
-        if (text.Length == 0 || text.Length > MaxText) return Results.BadRequest(new { error = $"Сообщение — от 1 до {MaxText} знаков" });
+        if ((text.Length == 0 && body.FileIds is not { Length: > 0 }) || text.Length > MaxText)
+            return Results.BadRequest(new { error = $"Сообщение — до {MaxText} знаков; пустое — только с файлами" });
         var answered = false;
         return await ChangeAsync(id, db, user, time, events, ct, async (request, me, now) =>
         {
             if (!await CanWriteAsync(db, user, request, ct)) return "Писать в заявку могут её участники и координаторы — присоединитесь к ней";
-            db.Set<FamilyRequestMessage>().Add(new FamilyRequestMessage { Id = Guid.CreateVersion7(), RequestId = id, AuthorUserId = me, Text = text, At = now });
+            if (await AddMessageAsync(db, storage.Value.Root, id, me, text, body.FileIds, now, ct) is { } refused) return refused;
             answered = await AnswerAsync(db, request, me, ct);
             return null;
         }, () => answered ? "автор ответил" : null);
@@ -233,19 +238,28 @@ internal static partial class RequestEndpoints
 
     /// <summary>Вопрос автору: сообщение и ход переходит к автору («ждёт автора»).</summary>
     private static async Task<IResult> AskAsync(Guid id, RequestMessageRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
+        IOptions<FamiliesStorageOptions> storage,
         CancellationToken ct)
     {
         var text = body.Text?.Trim() ?? "";
         if (text.Length == 0 || text.Length > MaxText) return Results.BadRequest(new { error = $"Напишите вопрос — до {MaxText} знаков" });
-        return await ChangeAsync(id, db, user, time, events, ct, (request, me, now) =>
+        return await ChangeAsync(id, db, user, time, events, ct, async (request, me, now) =>
         {
-            if (request.State is not (RequestState.New or RequestState.InWork or RequestState.NeedInfo))
-                return Task.FromResult<string?>("Спросить можно, пока заявка в работе");
+            if (request.State is not (RequestState.New or RequestState.InWork or RequestState.NeedInfo)) return "Спросить можно, пока заявка в работе";
             request.State = RequestState.NeedInfo;
             request.AssigneeUserId ??= me;
-            db.Set<FamilyRequestMessage>().Add(new FamilyRequestMessage { Id = Guid.CreateVersion7(), RequestId = id, AuthorUserId = me, Text = text, At = now });
-            return Task.FromResult<string?>(null);
+            return await AddMessageAsync(db, storage.Value.Root, id, me, text, body.FileIds, now, ct);
         }, "ждёт ответа автора");
+    }
+
+    /// <summary>Сообщение человека с вложениями (свои «ничейные» загрузки).</summary>
+    /// <returns>Отказ для показа; null — добавлено.</returns>
+    private static async Task<string?> AddMessageAsync(ToadFlowDb db, string root, Guid requestId, Guid me, string text, Guid[]? fileIds, DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var message = new FamilyRequestMessage { Id = Guid.CreateVersion7(), RequestId = requestId, AuthorUserId = me, Text = text, At = now };
+        db.Set<FamilyRequestMessage>().Add(message);
+        return await AttachAsync(db, root, requestId, message.Id, fileIds, me, ct);
     }
 
     /// <summary>«Подходит» — автор или присоединившийся принимает работу.</summary>
@@ -260,6 +274,7 @@ internal static partial class RequestEndpoints
 
     /// <summary>«Не то» — с объяснением; заявка возвращается тому же исполнителю.</summary>
     private static async Task<IResult> DeclineAsync(Guid id, RequestMessageRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time,
+        IOptions<FamiliesStorageOptions> storage,
         IDomainEvents events, CancellationToken ct)
     {
         var text = body.Text?.Trim() ?? "";
@@ -272,7 +287,7 @@ internal static partial class RequestEndpoints
             request.Resolution = null;
             request.ReviewSince = null;
             request.DeclineCount++;
-            db.Set<FamilyRequestMessage>().Add(new FamilyRequestMessage { Id = Guid.CreateVersion7(), RequestId = id, AuthorUserId = me, Text = text, At = now });
+            if (await AddMessageAsync(db, storage.Value.Root, id, me, text, body.FileIds, now, ct) is { } refused) return refused;
             return null;
         }, "не то — вернул в работу");
     }

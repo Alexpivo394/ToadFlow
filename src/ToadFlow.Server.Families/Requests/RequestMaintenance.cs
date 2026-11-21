@@ -70,6 +70,8 @@ internal sealed class RequestMaintenance(IServiceScopeFactory scopes, TimeProvid
                 $"«{request.Title}» примется сама {request.ReviewSince!.Value.AddDays(days):dd.MM} — проверьте, подходит ли", Link(request), null, null, ct);
         }
 
+        await RequestEndpoints.RemoveOrphansAsync(db, services.GetRequiredService<Microsoft.Extensions.Options.IOptions<FamiliesStorageOptions>>().Value.Root, now, ct);
+
         var open = FamilyRequest.OpenStates;
         foreach (var request in await db.Set<FamilyRequest>().Where(r => open.Contains(r.State) && !r.OverdueNotified && r.NeededBy < today).ToListAsync(ct))
         {

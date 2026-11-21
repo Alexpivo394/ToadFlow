@@ -110,7 +110,9 @@ public class AuthorizationMatrixTests : ServerTest
             // Правка своей заявки, подсказка проектов и направления — форма показывает, кому уйдёт заявка
             "PUT /api/families/requests/{id:guid}", "GET /api/families/requests/projects", "GET /api/families/directions",
             // Приёмка и отзыв своей заявки
-            "POST /api/families/requests/{id:guid}/accept", "POST /api/families/requests/{id:guid}/decline", "POST /api/families/requests/{id:guid}/withdraw"
+            "POST /api/families/requests/{id:guid}/accept", "POST /api/families/requests/{id:guid}/decline", "POST /api/families/requests/{id:guid}/withdraw",
+            // Вложения: загрузка до подачи, свой «ничейный» файл, удаление своего
+            "POST /api/families/requests/uploads", "GET /api/families/requests/uploads/{fileId:guid}", "DELETE /api/families/requests/{id:guid}/files/{fileId:guid}"
         ];
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
