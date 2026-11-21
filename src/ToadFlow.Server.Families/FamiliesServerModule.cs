@@ -2,8 +2,10 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ToadFlow.Contracts;
+using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Families.Cards;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Families.Read;
 using ToadFlow.Server.Families.Scan;
 using ToadFlow.Server.Families.Search;
 using ToadFlow.Server.Modules;
@@ -46,6 +48,9 @@ public sealed class FamiliesServerModule : IServerModule
         services.AddScoped<LibraryScanner>();
         services.AddScoped<ScanApplier>();
         services.AddHostedService<LibraryScanLoop>();
+        services.AddSingleton<PreviewStore>();
+        services.AddScoped<FamilyReadJobs>();
+        services.AddHostedService<FamilyReadLoop>();
         services.AddSingleton<ToadFlow.Server.Overview.IDataVolume>(provider => new ToadFlow.Server.Overview.PathVolume("Картинки семейств",
             () => provider.GetRequiredService<IOptions<FamiliesStorageOptions>>().Value.Root));
     }
@@ -116,4 +121,8 @@ public sealed class FamiliesServerModule : IServerModule
 
     public Task<string> BuildPayloadAsync(JobBuildContext context, IServiceProvider services, CancellationToken ct) =>
         throw new NotSupportedException("У модуля «Семейства» нет расписаний: задания чтения создаёт сам модуль");
+
+    /// <summary>Итог чтения семейства фермой — в версию и карточку.</summary>
+    public Task OnJobCompletedAsync(Job job, IServiceProvider services, CancellationToken ct) =>
+        job.ModuleKind == ModuleKinds.FamiliesRead ? services.GetRequiredService<FamilyReadJobs>().CompleteAsync(job, ct) : Task.CompletedTask;
 }

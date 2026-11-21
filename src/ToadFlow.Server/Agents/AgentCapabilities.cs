@@ -9,7 +9,7 @@ namespace ToadFlow.Server.Agents;
 public static class AgentCapabilities
 {
     /// <summary>Виды заданий, которые знает сервер.</summary>
-    public static readonly string[] Known = [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract];
+    public static readonly string[] Known = [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead];
 
     /// <summary>
     ///     Агент передаёт аддину вид задания. Агенты 1.0.x его не передают, и их аддин принял бы любое задание за выгрузку
@@ -26,7 +26,12 @@ public static class AgentCapabilities
     private static readonly Version ClashExtractSince = new(1, 8);
 
     /// <summary>С какой версии агент умеет задания этого вида — для подсказки «обновите агента».</summary>
-    public static string MinimumVersion(string moduleKind) => moduleKind == ModuleKinds.ClashExtract ? "1.8" : "1.1";
+    public static string MinimumVersion(string moduleKind) => moduleKind switch
+    {
+        ModuleKinds.ClashExtract => "1.8",
+        ModuleKinds.FamiliesRead => "2.5",
+        _ => "1.1"
+    };
 
     /// <summary>Может ли агент взять задание этого вида: по его списку, а без списка — по версии. Выгрузку умеют все.</summary>
     /// <param name="modules">Список видов из hello агента; null — агент до 2.0.</param>
@@ -42,6 +47,8 @@ public static class AgentCapabilities
     {
         ModuleKinds.Export => true,
         ModuleKinds.ClashExtract => AtLeast(agentVersion, ClashExtractSince),
+        // Чтение семейств появилось, когда агенты уже присылали список видов: агент без списка его не знает.
+        ModuleKinds.FamiliesRead => false,
         _ => KnowsModuleKind(agentVersion)
     };
 

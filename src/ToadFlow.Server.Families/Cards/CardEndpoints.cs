@@ -4,6 +4,7 @@ using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Families.Read;
 using ToadFlow.Server.Families.Scan;
 using ToadFlow.Server.Families.Search;
 
@@ -15,7 +16,31 @@ internal static class CardEndpoints
     private const int MaxText = 2000;
 
     /// <summary>Маршруты участников: карточку видит и проектировщик (по правилам <see cref="CardVisibility" />).</summary>
-    public static void MapFamiliesCards(this RouteGroupBuilder families) => families.MapGet("/{id:guid}", CardAsync);
+    public static void MapFamiliesCards(this RouteGroupBuilder families)
+    {
+        families.MapGet("/{id:guid}", CardAsync);
+        families.MapGet("/{id:guid}/preview", PreviewAsync);
+    }
+
+    /// <summary>
+    ///     Картинка версии <paramref name="version" /> (её хеш) или действующей. С хешем в адресе ответ не меняется никогда — кешируется
+    ///     на год. Видна тем, кому видна карточка.
+    /// </summary>
+    private static async Task<IResult> PreviewAsync(Guid id, string? version, bool? unreviewed, ToadFlowDb db, PreviewStore previews, ClaimsPrincipal user,
+        HttpContext http, CancellationToken ct)
+    {
+        var card = await db.Set<FamilyCard>().AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct);
+        if (card is null || !user.CanSee(card, unreviewed == true)) return Results.NotFound();
+
+        var versions = db.Set<FamilyVersion>().AsNoTracking().Where(v => v.CardId == id && v.HasPreview);
+        var hash = version is { Length: > 0 }
+            ? await versions.Where(v => v.Hash == version).Select(v => v.Hash).FirstOrDefaultAsync(ct)
+            : await versions.Where(v => v.Id == card.CurrentVersionId).Select(v => v.Hash).FirstOrDefaultAsync(ct);
+        if (hash is null || !previews.Exists(hash)) return Results.NotFound();
+
+        http.Response.Headers.CacheControl = version is { Length: > 0 } ? "private, max-age=31536000, immutable" : "private, no-cache";
+        return Results.File(previews.PathOf(hash), "image/png");
+    }
 
     /// <summary>Маршруты наблюдателя и старше: «На проверке», «Нужно решение», правка карточки координатором.</summary>
     public static void MapFamiliesReview(this RouteGroupBuilder families)

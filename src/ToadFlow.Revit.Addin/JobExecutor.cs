@@ -73,6 +73,10 @@ internal sealed class JobExecutor(int revitYear, PipeProgress progress) : IExter
                     var (outcome, note, resultJson) = new ClashExtractRunner(revitYear, progress).Run(application, job);
                     Result(job, outcome, note, resultJson);
                     break;
+                case ModuleKinds.FamiliesRead:
+                    var (readOutcome, readNote, readJson) = new FamilyReadRunner(progress).Run(application, job);
+                    Result(job, readOutcome, readNote, readJson);
+                    break;
                 case "" or ModuleKinds.Export:
                     Export(application, job);
                     break;

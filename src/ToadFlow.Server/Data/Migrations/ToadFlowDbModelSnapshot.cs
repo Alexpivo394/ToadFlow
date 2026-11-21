@@ -2217,6 +2217,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("read_error");
 
+                    b.Property<Guid?>("ReadJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("read_job_id");
+
                     b.Property<string>("ReadState")
                         .IsRequired()
                         .HasMaxLength(32)

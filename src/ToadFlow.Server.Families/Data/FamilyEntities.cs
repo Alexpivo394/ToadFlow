@@ -144,6 +144,9 @@ public sealed class FamilyVersion
 
     public bool HasPreview { get; set; }
 
+    /// <summary>Последнее задание чтения этой версии; по нему сервер видит, ждёт ли версия уже ферму.</summary>
+    public Guid? ReadJobId { get; set; }
+
     public DateTimeOffset SeenAt { get; set; }
 }
 

@@ -27,7 +27,8 @@ public static class FamiliesFixtures
     /// <summary>Без фонового обхода по интервалу: тест сам решает, когда обходить.</summary>
     public static void WithoutScanLoop(IServiceCollection services)
     {
-        foreach (var hosted in services.Where(s => s.ImplementationType == typeof(LibraryScanLoop)).ToList()) services.Remove(hosted);
+        foreach (var hosted in services.Where(s => s.ImplementationType == typeof(LibraryScanLoop) || s.ImplementationType == typeof(ToadFlow.Server.Families.Read.FamilyReadLoop)).ToList())
+            services.Remove(hosted);
     }
 
     public static FamilyCard Card(string name, string relativePath, CardState state, DateTimeOffset at)
