@@ -108,7 +108,9 @@ public class AuthorizationMatrixTests : ServerTest
             "POST /api/families/requests/{id:guid}/join", "POST /api/families/requests/{id:guid}/leave", "POST /api/families/requests/{id:guid}/messages",
             "POST /api/families/requests/{id:guid}/files",
             // Правка своей заявки, подсказка проектов и направления — форма показывает, кому уйдёт заявка
-            "PUT /api/families/requests/{id:guid}", "GET /api/families/requests/projects", "GET /api/families/directions"
+            "PUT /api/families/requests/{id:guid}", "GET /api/families/requests/projects", "GET /api/families/directions",
+            // Приёмка и отзыв своей заявки
+            "POST /api/families/requests/{id:guid}/accept", "POST /api/families/requests/{id:guid}/decline", "POST /api/families/requests/{id:guid}/withdraw"
         ];
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")

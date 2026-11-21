@@ -13,7 +13,7 @@ public static class Requests
         db.Set<FamilyRequest>().AnyAsync(r => r.Id == id && FamilyRequest.OpenStates.Contains(r.State), ct);
 
     /// <summary>
-    ///     Публикации с заявкой, которые обход привязал к версиям: заявка «готова» со ссылкой на карточку. Уже закрытую заявку публикация не
+    ///     Публикации с заявкой, которые обход привязал к версиям: заявка уходит на приёмку автору со ссылкой на карточку. Уже закрытую заявку публикация не
     ///     трогает. Изменения сохраняет вызывающий — в транзакции обхода.
     /// </summary>
     /// <param name="cards">Карточки обхода по id: у привязанной версии карточка всегда среди них.</param>
@@ -29,21 +29,18 @@ public static class Requests
             var request = await db.Set<FamilyRequest>().SingleOrDefaultAsync(r => r.Id == publication.RequestId, ct);
             if (request is not { IsOpen: true }) continue;
 
-            request.State = RequestState.Done;
-            request.CardId = card.Id;
-            request.AssigneeUserId ??= publication.AuthorUserId;
-            request.ClosedAt = now;
+            RequestEndpoints.ToReview(request, card.Id, RequestResolution.Made, publication.AuthorUserId, now);
             request.UpdatedAt = now;
             db.Set<FamilyRequestMessage>().Add(new FamilyRequestMessage
             {
                 Id = Guid.CreateVersion7(),
                 RequestId = request.Id,
                 AuthorUserId = publication.AuthorUserId,
-                Text = $"Готова: опубликовано семейство «{card.Name}»",
+                Text = $"Готово: опубликовано семейство «{card.Name}» — на приёмке у автора",
                 IsEvent = true,
                 At = now
             });
-            closed.Add((request.Id, $"Семейства: заявка № {request.Number} готова — «{card.Name}»"));
+            closed.Add((request.Id, $"Семейства: заявка № {request.Number} на приёмке — «{card.Name}»"));
         }
 
         return closed;

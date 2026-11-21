@@ -118,7 +118,8 @@ public class FamiliesRequestTests : ServerTest
         (await designer.PostJsonAsync($"/api/families/requests/{second.Id}/reject", new RequestReject("x"))).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var exists = await ViewAsync(designer, first.Id);
-        (exists.Request.State, exists.Request.CardId, exists.Request.CardName).ShouldBe((RequestState.Exists, (Guid?)card, "Клапан"));
+        (exists.Request.State, exists.Request.Resolution, exists.Request.CardId, exists.Request.CardName)
+            .ShouldBe((RequestState.Review, (RequestResolution?)RequestResolution.Existed, (Guid?)card, "Клапан"));
         var rejected = await ViewAsync(designer, second.Id);
         (rejected.Request.State, rejected.Reason).ShouldBe((RequestState.Rejected, "не наш раздел"));
 
@@ -156,7 +157,8 @@ public class FamiliesRequestTests : ServerTest
         await _library.ReportLastAsync(File(@"_На проверке\Клапан обратный.rfa", "k"));
 
         var view = await ViewAsync(designer, created.Id);
-        (view.Request.State, view.Request.CardName, view.Request.AssigneeName, view.Request.Unread).ShouldBe((RequestState.Done, "Клапан обратный", "Тест Operator", true));
+        (view.Request.State, view.Request.Resolution, view.Request.CardName, view.Request.AssigneeName, view.Request.Unread)
+            .ShouldBe((RequestState.Review, (RequestResolution?)RequestResolution.Made, "Клапан обратный", "Тест Operator", true));
         view.Messages.Last().Text.ShouldContain("Клапан обратный");
     }
 

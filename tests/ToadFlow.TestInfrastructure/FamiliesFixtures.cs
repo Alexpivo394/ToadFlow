@@ -24,10 +24,11 @@ public static class FamiliesFixtures
     public static readonly string[] AgentModules =
         [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead, ModuleKinds.FamiliesScan, ModuleKinds.FamiliesFiles];
 
-    /// <summary>Без фонового обхода по интервалу: тест сам решает, когда обходить.</summary>
+    /// <summary>Без фонового обхода по интервалу и обслуживания заявок: тест сам решает, когда обходить и обслуживать.</summary>
     public static void WithoutScanLoop(IServiceCollection services)
     {
-        foreach (var hosted in services.Where(s => s.ImplementationType == typeof(LibraryScanLoop) || s.ImplementationType == typeof(ToadFlow.Server.Families.Read.FamilyReadLoop)).ToList())
+        foreach (var hosted in services.Where(s => s.ImplementationType == typeof(LibraryScanLoop) || s.ImplementationType == typeof(ToadFlow.Server.Families.Read.FamilyReadLoop)
+                                                     || s.ImplementationType?.Name == "RequestMaintenance").ToList())
             services.Remove(hosted);
     }
 

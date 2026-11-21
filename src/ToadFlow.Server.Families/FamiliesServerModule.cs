@@ -56,6 +56,7 @@ public sealed class FamiliesServerModule : IServerModule
         services.AddSingleton<PreviewStore>();
         services.AddScoped<FamilyReadJobs>();
         services.AddHostedService<FamilyReadLoop>();
+        services.AddHostedService<Requests.RequestMaintenance>();
         services.AddSingleton<ToadFlow.Server.Overview.IDataVolume>(provider => new ToadFlow.Server.Overview.PathVolume("Картинки семейств",
             () => provider.GetRequiredService<IOptions<FamiliesStorageOptions>>().Value.Root));
     }

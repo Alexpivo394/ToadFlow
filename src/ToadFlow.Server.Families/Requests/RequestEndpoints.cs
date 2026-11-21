@@ -97,6 +97,8 @@ public sealed record RequestTake(DateOnly? PromisedBy);
 
 public sealed record RequestCard(Guid CardId);
 
+public sealed record RequestDirection(Guid? DirectionId);
+
 public sealed record RequestReject(string Reason);
 
 public sealed record SimilarResult(IReadOnlyList<FamilyHit> Families, IReadOnlyList<RequestListItem> Requests);
@@ -137,9 +139,15 @@ internal static partial class RequestEndpoints
         requests.MapPost("/{id:guid}/join", JoinAsync).RequireAuthorization(Policies.Designer);
         requests.MapPost("/{id:guid}/leave", LeaveAsync).RequireAuthorization(Policies.Designer);
         requests.MapPost("/{id:guid}/messages", MessageAsync).RequireAuthorization(Policies.Designer);
+        requests.MapPost("/{id:guid}/accept", AcceptAsync).RequireAuthorization(Policies.Designer);
+        requests.MapPost("/{id:guid}/decline", DeclineAsync).RequireAuthorization(Policies.Designer);
+        requests.MapPost("/{id:guid}/withdraw", WithdrawAsync).RequireAuthorization(Policies.Designer);
 
         requests.MapPost("/{id:guid}/take", TakeAsync).RequireAuthorization(Policies.Operator);
         requests.MapPost("/{id:guid}/assign", AssignAsync).RequireAuthorization(Policies.Operator);
+        requests.MapPost("/{id:guid}/promise", PromiseAsync).RequireAuthorization(Policies.Operator);
+        requests.MapPost("/{id:guid}/ask", AskAsync).RequireAuthorization(Policies.Operator);
+        requests.MapPost("/{id:guid}/direction", DirectionAsync).RequireAuthorization(Policies.Operator);
         requests.MapPost("/{id:guid}/done", DoneAsync).RequireAuthorization(Policies.Operator);
         requests.MapPost("/{id:guid}/exists", ExistsAsync).RequireAuthorization(Policies.Operator);
         requests.MapPost("/{id:guid}/reject", RejectAsync).RequireAuthorization(Policies.Operator);
