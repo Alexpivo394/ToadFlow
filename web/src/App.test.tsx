@@ -33,6 +33,7 @@ const responses = {
   '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null, checks: 3 },
   '/api/clash/checks': [check],
   '/api/clash/checks/p1': check,
+  '/api/me/today': { items: [] },
   '/api/clash/my': { total: 0, items: [] },
   '/api/clash/my/summary': { disciplines: ['ОВ'], toFix: 0, takenByOther: 0, newSinceVisit: 0, previousSeenAt: null },
   'POST /api/clash/my/visit': null,
@@ -53,19 +54,16 @@ const as = (role: string, path: string, disciplines: string[] = []) => renderApp
 const nav = () => screen.getByRole('navigation');
 
 describe('Role workspaces', () => {
-  it('Home_StaffSeeOverview_DesignerGoesToMy', async () => {
+  it('Home_StaffSeeOverview_DesignerSeesForYou', async () => {
     for (const role of ['Viewer', 'Operator', 'Admin']) {
       const { unmount } = as(role, '/');
       expect(await screen.findByRole('heading', { name: 'Обзор' })).toBeTruthy();
       unmount();
     }
 
-    const designer = as('Designer', '/', ['ОВ']);
-    expect(await screen.findByRole('heading', { name: 'Мои коллизии' })).toBeTruthy();
-    designer.unmount();
-
-    as('Designer', '/');
-    expect(await screen.findByRole('heading', { name: 'Проверки' })).toBeTruthy();
+    as('Designer', '/', ['ОВ']);
+    expect(await screen.findByRole('heading', { name: 'Для вас' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Мои коллизии/ }).getAttribute('href')).toBe('/clash/my');
   });
 
   it('Nav_DesignerSeesOnlyClash', async () => {

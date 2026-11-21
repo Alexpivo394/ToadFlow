@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router';
-import { AppShell as Shell, Box, Burger, Center, Group, Loader, Text } from '@mantine/core';
+import { AppShell as Shell, Burger, Center, Group, Loader, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../auth/AuthContext';
 import { Brand } from '../components/ui';
@@ -8,6 +8,7 @@ import { t } from '../i18n/ru';
 import { useLiveUpdates } from '../live/useLiveUpdates';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { useNotificationsLive } from '../notifications/useNotificationsLive';
+import { CommandPalette, SearchButton } from '../search/CommandPalette';
 import type { Space } from '../spaces/types';
 import { Rail, railWidth } from './Rail';
 import { menuWidth, SpaceMenu } from './SpaceMenu';
@@ -39,7 +40,7 @@ export function AppShell({ spaces }: { spaces: Space[] }) {
         <Group h="100%" px="md">
           <Burger opened={opened} onClick={toggle} size="sm" aria-label={t.nav.menu} />
           <Brand><Text fw={700}>{t.appName}</Text></Brand>
-          <Box ml="auto"><NotificationBell position="bottom-end" /></Box>
+          <Group ml="auto" gap={4}><SearchButton /><NotificationBell position="bottom-end" /></Group>
         </Group>
       </Shell.Header>
 
@@ -50,6 +51,7 @@ export function AppShell({ spaces }: { spaces: Space[] }) {
         </Group>
       </Shell.Navbar>
 
+      <CommandPalette />
       <Shell.Main>
         {/* Страницы грузятся своими чанками: пока чанк идёт, меню остаётся, на месте страницы — загрузка. */}
         <Suspense fallback={<Center py="xl"><Loader /></Center>}>

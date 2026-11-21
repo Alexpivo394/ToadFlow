@@ -1,19 +1,20 @@
 import type { ReactNode } from 'react';
 import { Navigate, useParams, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
-import { useSpaces, visiblePages } from '../spaces/useSpaces';
+import { useSpaces } from '../spaces/useSpaces';
 import { OverviewPage } from './overview/OverviewPage';
+import { TodayPage } from './today/TodayPage';
 
 /**
- * Главный экран: не проектировщику — «Обзор»; проектировщику — первая видимая страница первого доступного пространства, а если
- * таких нет (коллизии выключены) — профиль с пояснением.
+ * Главный экран: не проектировщику — «Обзор»; проектировщику — «Для вас» (что ждёт его ответа и быстрые переходы), а если доступных
+ * пространств нет (модули выключены) — профиль с пояснением.
  */
 export function HomeRedirect() {
   const auth = useAuth();
-  const { spaces } = useSpaces();
+  const { spaces, loading } = useSpaces();
   if (auth.isStaff) return <OverviewPage />;
-  const first = spaces[0];
-  return first ? <Navigate to={visiblePages(first, auth)[0].to} replace /> : <Navigate to="/profile" state={{ noSpaces: true }} replace />;
+  if (loading) return null;
+  return spaces.length > 0 ? <TodayPage /> : <Navigate to="/profile" state={{ noSpaces: true }} replace />;
 }
 
 /** «Коллизии»: есть разделы — «Мои», иначе — «Проверки». */

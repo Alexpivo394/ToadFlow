@@ -13,6 +13,7 @@ import { HourlyChart } from './HourlyChart';
 import { LiveFeed } from './LiveFeed';
 import { ModuleTile } from './ModuleTile';
 import { ServerBlock } from './ServerBlock';
+import { TodayBlock } from '../today/TodayBlock';
 import './overview.css';
 
 /**
@@ -31,6 +32,7 @@ export function OverviewPage() {
       <PageTitle>{t.nav.overview}</PageTitle>
       <Stack gap="md">
         {data?.pulse && <HeroBanner pulse={data.pulse} attention={data.attention} tiles={data.tiles} userName={user?.displayName || user?.login || ''} />}
+        <TodayBlock hideEmpty />
         <AttentionBlock items={data?.attention} />
         {data && data.tiles.length > 0 && (
           <SimpleGrid cols={{ base: 1, sm: 2, lg: Math.min(data.tiles.length, 4) }}>

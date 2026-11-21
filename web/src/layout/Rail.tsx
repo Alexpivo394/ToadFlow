@@ -1,9 +1,10 @@
 import { NavLink as RouterLink, useLocation } from 'react-router';
 import { ActionIcon, Box, Center, Stack, Text, Tooltip, UnstyledButton, useMantineColorScheme } from '@mantine/core';
-import { IconLayoutDashboard, IconLogout, IconMoon, IconSun, IconUserCircle, type Icon } from '@tabler/icons-react';
+import { IconHome, IconLayoutDashboard, IconLogout, IconMoon, IconSun, IconUserCircle, type Icon } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
 import { t } from '../i18n/ru';
 import { NotificationBell } from '../notifications/NotificationBell';
+import { SearchButton } from '../search/CommandPalette';
 import { visiblePages } from '../spaces/useSpaces';
 import type { Space } from '../spaces/types';
 
@@ -43,11 +44,15 @@ export function Rail({ spaces, current, onNavigate }: { spaces: Space[]; current
         {auth.isStaff && (
           <RailLink to="/" label={t.nav.overview} short={t.nav.shortOverview} icon={IconLayoutDashboard} active={pathname === '/'} onClick={onNavigate} />
         )}
+        {!auth.isStaff && auth.user && (
+          <RailLink to="/" label={t.today.home} short={t.today.home} icon={IconHome} active={pathname === '/'} onClick={onNavigate} />
+        )}
         {spaces.map((space) => (
           <RailLink key={space.id} to={visiblePages(space, auth)[0].to} label={space.label} short={space.short} icon={space.icon}
             active={current?.id === space.id} onClick={onNavigate} />
         ))}
         <Box mt="auto" />
+        <Center visibleFrom="sm"><SearchButton /></Center>
         <Center visibleFrom="sm"><NotificationBell /></Center>
         <RailLink to="/profile" label={t.nav.profile} short={t.nav.profile} icon={IconUserCircle} active={pathname === '/profile'} onClick={onNavigate}
           tooltip={auth.user ? `${auth.user.displayName} · ${t.role[auth.user.role]}` : undefined} />
