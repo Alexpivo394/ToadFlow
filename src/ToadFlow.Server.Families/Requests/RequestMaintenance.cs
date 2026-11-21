@@ -72,6 +72,8 @@ internal sealed class RequestMaintenance(IServiceScopeFactory scopes, TimeProvid
 
         await RequestEndpoints.RemoveOrphansAsync(db, services.GetRequiredService<Microsoft.Extensions.Options.IOptions<FamiliesStorageOptions>>().Value.Root, now, ct);
 
+        await Search.SearchMisses.CleanAsync(db, now, ct);
+
         var open = FamilyRequest.OpenStates;
         foreach (var request in await db.Set<FamilyRequest>().Where(r => open.Contains(r.State) && !r.OverdueNotified && r.NeededBy < today).ToListAsync(ct))
         {

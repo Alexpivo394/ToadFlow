@@ -2683,6 +2683,44 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("family_request_messages", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Families.Search.FamilySearchMiss", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("Query")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("query");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("source");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_search_misses");
+
+                    b.HasIndex("At")
+                        .HasDatabaseName("ix_family_search_misses_at");
+
+                    b.HasIndex("UserId", "At")
+                        .HasDatabaseName("ix_family_search_misses_user_id_at");
+
+                    b.ToTable("family_search_misses", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>
                 {
                     b.Property<Guid>("Id")

@@ -126,6 +126,16 @@ public sealed class FamiliesServerModule : IServerModule
             request.Ignore(r => r.IsOpen);
         });
 
+        model.Entity<Search.FamilySearchMiss>(miss =>
+        {
+            miss.ToTable("family_search_misses");
+            miss.Property(m => m.Id).ValueGeneratedNever();
+            miss.Property(m => m.Query).HasMaxLength(200);
+            miss.Property(m => m.Source).HasMaxLength(16);
+            miss.HasIndex(m => m.At);
+            miss.HasIndex(m => new { m.UserId, m.At });
+        });
+
         model.Entity<FamilyDirection>(direction =>
         {
             direction.ToTable("family_directions");
@@ -181,6 +191,7 @@ public sealed class FamiliesServerModule : IServerModule
     {
         var families = members.MapGroup("/families");
         families.MapFamiliesSearch();
+        families.MapSearchMisses();
         families.MapFamiliesPanel();
         families.MapFamilyRequests();
         families.MapFamilyDirections();

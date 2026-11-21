@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
+using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Families.Data;
 using ToadFlow.Server.Runs;
@@ -59,7 +60,7 @@ internal static class SearchEndpoints
     }
 
     private static async Task<Page<FamilyHit>> SearchAsync(ToadFlowDb db, ClaimsPrincipal user, string? q, string? section, string? category, int? year,
-        CardState? state, string? placement, bool? unreviewed, int? page, int? pageSize, CancellationToken ct)
+        CardState? state, string? placement, bool? unreviewed, int? page, int? pageSize, string? source, TimeProvider time, CancellationToken ct)
     {
         var cards = db.Set<FamilyCard>().AsNoTracking().Visible(user, state, unreviewed == true);
         var patterns = (q ?? "").ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -71,6 +72,9 @@ internal static class SearchEndpoints
         if (!string.IsNullOrEmpty(placement)) cards = cards.Where(c => c.Placement == placement);
 
         var total = await cards.CountAsync(ct);
+        // Пустой поиск без фильтров — в «Искали и не нашли»; с фильтром пустоту мог дать сам фильтр.
+        if (total == 0 && (page ?? 1) == 1 && string.IsNullOrEmpty(section) && string.IsNullOrEmpty(category) && year is null && string.IsNullOrEmpty(placement))
+            await SearchMisses.RecordAsync(db, user.UserId(), q, source, time.GetUtcNow(), ct);
         var ordered = patterns.Count > 0
             ? cards.OrderByDescending(NameMatches(patterns)).ThenByDescending(c => c.LoadCount).ThenByDescending(c => c.UpdatedAt)
             : cards.OrderByDescending(c => c.LoadCount).ThenByDescending(c => c.UpdatedAt);
