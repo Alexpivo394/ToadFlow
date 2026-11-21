@@ -1913,6 +1913,13 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("login");
 
+                    b.PrimitiveCollection<string[]>("MutedNotifications")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("muted_notifications")
+                        .HasDefaultValueSql("'{}'::text[]");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text")
@@ -3007,6 +3014,66 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("loi_profiles", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Notifications.Notification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.Property<string>("GroupKey")
+                        .HasColumnType("text")
+                        .HasColumnName("group_key");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Link")
+                        .HasColumnType("text")
+                        .HasColumnName("link");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("UserId", "GroupKey")
+                        .HasDatabaseName("ix_notifications_user_id_group_key");
+
+                    b.HasIndex("UserId", "Id")
+                        .HasDatabaseName("ix_notifications_user_id_id");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Auth.RefreshToken", b =>
                 {
                     b.HasOne("ToadFlow.Server.Data.Entities.User", null)
@@ -3297,6 +3364,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_loi_check_rules_loi_checks_check_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Notifications.Notification", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_users_user_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>

@@ -24,7 +24,9 @@ public class AuthorizationMatrixTests : ServerTest
         ["/api/auth/tokens", "/api/auth/tokens/current", "/api/auth/tokens/{id:guid}", "/api/profile", "/api/profile/password", "/api/naming/preview", "/api/loi/routing/preview",
          "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned", "/api/clash/parts/{id:guid}/draft/sets/preview/batch",
          "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit", "/api/clash/collisions/{id:guid}/seen", "/api/clash/reports/{runId:guid}/archive", "/api/clash/report-archives/{id:guid}",
-         "/api/families/project-status", "/api/families/{id:guid}/loads", "/api/families/requests/{id:guid}/seen"];
+         "/api/families/project-status", "/api/families/{id:guid}/loads", "/api/families/requests/{id:guid}/seen",
+         // Свои уведомления: прочесть, настроить
+         "/api/notifications/{id:long}/read", "/api/notifications/read-all", "/api/notifications/read-link", "/api/notifications/settings"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()
@@ -44,7 +46,7 @@ public class AuthorizationMatrixTests : ServerTest
         foreach (var (method, path) in routes)
         {
             var url = System.Text.RegularExpressions.Regex.Replace(path, @"\{[^}]+\}", match =>
-                match.Value.Contains("slot") ? "1" : Guid.NewGuid().ToString());
+                match.Value.Contains("slot") || match.Value.Contains(":long") ? "1" : Guid.NewGuid().ToString());
             using var request = new HttpRequestMessage(new HttpMethod(method), url)
             {
                 Content = new StringContent("{}", Encoding.UTF8, "application/json")
@@ -111,14 +113,14 @@ public class AuthorizationMatrixTests : ServerTest
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
                                && !route.EndsWith(" /api/modules") && !families.Contains(route)
-                               && !route.Contains(" /api/profile") && !route.EndsWith("/card"))
+                               && !route.Contains(" /api/profile") && !route.EndsWith("/card") && !route.Contains(" /api/notifications"))
             .ShouldBeEmpty();
 
         var wrong = new List<string>();
         foreach (var (method, path, staff) in routes)
         {
             var url = System.Text.RegularExpressions.Regex.Replace(path, @"\{[^}]+\}", match =>
-                match.Value.Contains("slot") || match.Value.Contains(":int") ? "1" : Guid.NewGuid().ToString());
+                match.Value.Contains("slot") || match.Value.Contains(":int") || match.Value.Contains(":long") ? "1" : Guid.NewGuid().ToString());
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
             if (method is "POST" or "PUT" or "DELETE") request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 

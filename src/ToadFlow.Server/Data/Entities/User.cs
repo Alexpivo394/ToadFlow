@@ -24,6 +24,9 @@ public sealed class User
     /// <summary>Разделы, которые человек ведёт, — как в списке <c>Disciplines.ListAsync</c>; по ним считаются «Мои коллизии».</summary>
     public string[] Disciplines { get; set; } = [];
 
+    /// <summary>Виды уведомлений, которые человек отключил (<c>NotificationKinds</c>).</summary>
+    public string[] MutedNotifications { get; set; } = [];
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 

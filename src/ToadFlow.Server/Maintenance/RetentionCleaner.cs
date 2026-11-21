@@ -43,5 +43,6 @@ public sealed class RetentionCleaner(IServiceScopeFactory scopes, TimeProvider t
         var events = await db.SystemEvents.Where(e => e.At < cutoff).ExecuteDeleteAsync(ct);
         if (runs + events > 0) logger.LogInformation("Удалено старых запусков: {Runs}, событий: {Events}", runs, events);
         await RegistrationEndpoints.DeleteExpiredAsync(db, time, scope.ServiceProvider.GetRequiredService<IDomainEvents>(), ct);
+        await Notifications.NotificationCleanup.RunOnceAsync(db, time.GetUtcNow(), ct);
     }
 }

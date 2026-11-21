@@ -15,6 +15,7 @@ using ToadFlow.Server.Schedules;
 using ToadFlow.Server.Settings;
 using ToadFlow.Server.Sources;
 using ToadFlow.Server.Users;
+using ToadFlow.Server.Notifications;
 #if DEBUG
 using ToadFlow.Server.Dev;
 #endif
@@ -37,6 +38,7 @@ public static class ServerSetup
         builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
         builder.AddToadFlowAuth();
         builder.Services.AddDomainEvents();
+        builder.Services.AddNotifications();
         builder.Services.AddScoped<ISettingsStore, SettingsStore>();
         builder.Services.AddScoped<NamingStore>();
         builder.Services.AddAgents();
@@ -72,6 +74,7 @@ public static class ServerSetup
         members.MapApiTokens();
         members.MapRegistration();
         members.MapProfile();
+        members.MapNotifications();
         members.MapModuleList();
         members.MapModuleMemberEndpoints(app.Services);
 
@@ -96,6 +99,7 @@ public static class ServerSetup
 
         // Хаб рассылает события всех модулей: проектировщику их видеть не положено.
         app.MapHub<UiHub>("/hubs/ui").RequireAuthorization(Policies.Viewer);
+        app.MapHub<MeHub>("/hubs/me").RequireAuthorization(Policies.Member);
         app.MapHub<AgentHub>("/hubs/agent");
     }
 }

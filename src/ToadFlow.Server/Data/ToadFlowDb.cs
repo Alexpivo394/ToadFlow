@@ -38,6 +38,7 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
         {
             user.HasIndex(u => u.Login).IsUnique();
             user.Property(u => u.Disciplines).HasDefaultValueSql("'{}'::text[]");
+            user.Property(u => u.MutedNotifications).HasDefaultValueSql("'{}'::text[]");
             user.Property(u => u.SecurityStamp).HasDefaultValueSql("gen_random_uuid()");
         });
 
@@ -101,6 +102,14 @@ public sealed class ToadFlowDb(DbContextOptions<ToadFlowDb> options, IEnumerable
         });
 
         model.Entity<SystemEvent>(e => e.HasIndex(x => x.At).IsDescending());
+
+        model.Entity<Notifications.Notification>(n =>
+        {
+            n.ToTable("notifications");
+            n.HasIndex(x => new { x.UserId, x.Id });
+            n.HasIndex(x => new { x.UserId, x.GroupKey });
+            n.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         model.Entity<Setting>().HasKey(s => s.Key);
 
