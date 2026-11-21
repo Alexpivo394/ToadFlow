@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using ToadFlow.Contracts;
+using ToadFlow.Contracts.Families;
 
 namespace ToadFlow.Server.Tests.Infrastructure;
 
@@ -25,6 +26,11 @@ public sealed class FakeAgent : IAsyncDisposable
         Hub.On<int>(nameof(IAgentClient.KillInstance), slot => Killed.Add(slot));
         Hub.On<Guid>(nameof(IAgentClient.CancelJob), jobId => Cancelled.Add(jobId));
         Hub.On<AgentSettingsDto>(nameof(IAgentClient.ApplySettings), settings => AppliedSettings.Add(settings));
+        Hub.On<FamilyScanRequestDto, bool>(nameof(IAgentClient.StartFamilyScan), request =>
+        {
+            ScanRequests.Enqueue(request);
+            return Task.FromResult(StartFamilyScan(request));
+        });
     }
 
     public Guid Id { get; }
@@ -37,6 +43,11 @@ public sealed class FakeAgent : IAsyncDisposable
     public ConcurrentBag<int> Killed { get; } = [];
     public ConcurrentBag<Guid> Cancelled { get; } = [];
     public ConcurrentBag<AgentSettingsDto> AppliedSettings { get; } = [];
+
+    /// <summary>Ответ на просьбу обойти библиотеку; false — «прошлый обход ещё идёт».</summary>
+    public Func<FamilyScanRequestDto, bool> StartFamilyScan { get; set; } = _ => true;
+
+    public ConcurrentQueue<FamilyScanRequestDto> ScanRequests { get; } = new();
 
     /// <summary>Регистрирует нового агента через одноразовый код, выданный администратором.</summary>
     public static async Task<FakeAgent> RegisterAsync(ServerFactory server, HttpClient admin, string machineName = "BIM-FARM-01")
@@ -51,11 +62,14 @@ public sealed class FakeAgent : IAsyncDisposable
     public Task<AgentSettingsDto> ConnectAsync(params InstalledRevitDto[] revits) => ConnectAsync("1.1.0", revits);
 
     /// <param name="version">Версия агента: 1.0.x — до заданий LOI, такие получают только выгрузку.</param>
-    public async Task<AgentSettingsDto> ConnectAsync(string version, params InstalledRevitDto[] revits)
+    public Task<AgentSettingsDto> ConnectAsync(string version, params InstalledRevitDto[] revits) => ConnectAsync(version, null, revits);
+
+    /// <param name="modules">Виды заданий и возможности из hello агента 2.0+; null — агент до 2.0, без списка.</param>
+    public async Task<AgentSettingsDto> ConnectAsync(string version, IReadOnlyList<string>? modules, params InstalledRevitDto[] revits)
     {
         await Hub.StartAsync();
         return await Hub.InvokeAsync<AgentSettingsDto>(nameof(IAgentHub.Hello),
-            new AgentHelloDto(MachineName, version, 65536, revits.Length > 0 ? revits : [new InstalledRevitDto(2022, true)]));
+            new AgentHelloDto(MachineName, version, 65536, revits.Length > 0 ? revits : [new InstalledRevitDto(2022, true)], modules));
     }
 
     public Task HeartbeatAsync(InstanceStatusDto[] instances, IReadOnlyList<ActiveJobDto> uploading) =>

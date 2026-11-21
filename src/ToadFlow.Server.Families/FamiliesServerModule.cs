@@ -2,7 +2,10 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ToadFlow.Contracts;
+using ToadFlow.Server.Families.Cards;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Families.Scan;
+using ToadFlow.Server.Families.Search;
 using ToadFlow.Server.Modules;
 
 namespace ToadFlow.Server.Families;
@@ -39,6 +42,10 @@ public sealed class FamiliesServerModule : IServerModule
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToadFlow", "families")
                     : "/data/families");
         services.AddScoped<FamiliesSettingsStore>();
+        services.AddSingleton<LibraryScanGate>();
+        services.AddScoped<LibraryScanner>();
+        services.AddScoped<ScanApplier>();
+        services.AddHostedService<LibraryScanLoop>();
         services.AddSingleton<ToadFlow.Server.Overview.IDataVolume>(provider => new ToadFlow.Server.Overview.PathVolume("Картинки семейств",
             () => provider.GetRequiredService<IOptions<FamiliesStorageOptions>>().Value.Root));
     }
@@ -90,7 +97,19 @@ public sealed class FamiliesServerModule : IServerModule
     {
         var families = api.MapGroup("/families");
         families.MapFamiliesSettings();
+        families.MapFamiliesScan();
+        families.MapFamiliesReview();
     }
+
+    /// <summary>Поиск и карточка — и проектировщику.</summary>
+    public void MapMemberEndpoints(RouteGroupBuilder members)
+    {
+        var families = members.MapGroup("/families");
+        families.MapFamiliesSearch();
+        families.MapFamiliesCards();
+    }
+
+    public void MapAgentEndpoints(RouteGroupBuilder agentApi) => agentApi.MapFamiliesAgent();
 
     public Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<string>>(["У модуля «Семейства» нет расписаний"]);

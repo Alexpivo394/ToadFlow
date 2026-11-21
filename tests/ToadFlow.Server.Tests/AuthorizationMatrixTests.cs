@@ -92,8 +92,11 @@ public class AuthorizationMatrixTests : ServerTest
         members.ShouldNotContain("GET /api/clash/parts/{id:guid}");
         members.ShouldNotContain("POST /api/loi/checks"); // статистику LOI отправляют только координаторы и администраторы
         members.ShouldContain("GET /api/modules"); // по нему веб проектировщика собирает меню
+        // Семейства: проектировщик ищет и открывает карточку; «На проверке», «Нужно решение», параметры и правка — не ему
+        string[] families = ["GET /api/families/search", "GET /api/families/facets", "GET /api/families/{id:guid}"];
+        members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
-                               && !route.EndsWith(" /api/modules")
+                               && !route.EndsWith(" /api/modules") && !families.Contains(route)
                                && !route.Contains(" /api/profile") && !route.EndsWith("/card"))
             .ShouldBeEmpty();
 
