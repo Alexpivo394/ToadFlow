@@ -106,6 +106,53 @@ public class MigrationTests
         Postgres.DropDatabaseLater(connection);
     }
 
+    /// <summary>
+    ///     После отката на прежнюю версию без восстановления копии она создаёт запуски без модуля; миграция при повторном
+    ///     обновлении уже применена, поэтому модуль дозаполняет запуск сервера.
+    /// </summary>
+    [Test]
+    public async Task Startup_FillsModuleOfRunsCreatedByPreviousVersion()
+    {
+        var connection = await Postgres.CreateEmptyDatabaseAsync();
+        await using var server = new ServerFactory(connection + ";Pooling=false", services: NoHostedServices);
+        var runner = new MigrationRunner(server.Services.GetRequiredService<IServiceScopeFactory>());
+        await runner.StartAsync(CancellationToken.None);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
+
+        var (user, source, schedule) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        const string Selection = """{"models":[],"folders":[]}""", Empty = "{}";
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO users (id, login, display_name, password_hash, role, is_disabled, created_at)
+            VALUES ({user}, 'ivanov', 'Иванов', 'hash', 'Operator', false, now());
+            INSERT INTO sources (id, name, kind, host, root_path) VALUES ({source}, 'RS', 'RevitServer', 'rs22', '');
+            INSERT INTO schedules (id, name, module_kind, source_id, output_folder_template, selection, module_settings_json, recurrence_kind,
+                days_of_week_mask, time_of_day, priority, model_timeout_minutes, max_retries, is_enabled, created_by_user_id, created_at,
+                updated_by_user_id, updated_at)
+            VALUES ({schedule}, 'Коллизии', 'clash-extract', {source}, '', {Selection}::jsonb, {Empty}::jsonb, 'Weekly', 0, '20:00', 0, 30, 1, true,
+                {user}, now(), {user}, now());
+            """);
+        var (byJob, byEmptyKind, bySchedule, orphan, filled) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO runs (id, name, state, created_at, cancel_requested) VALUES ({byJob}, 'Запуск', 'Completed', now(), false);
+            INSERT INTO runs (id, name, state, created_at, cancel_requested) VALUES ({byEmptyKind}, 'Запуск', 'Completed', now(), false);
+            INSERT INTO runs (id, schedule_id, name, state, created_at, cancel_requested) VALUES ({bySchedule}, {schedule}, 'Коллизии', 'Completed', now(), false);
+            INSERT INTO runs (id, name, state, created_at, cancel_requested) VALUES ({orphan}, 'Запуск', 'Completed', now(), false);
+            INSERT INTO runs (id, name, state, created_at, cancel_requested, module_name) VALUES ({filled}, 'Запуск', 'Completed', now(), false, 'export');
+            INSERT INTO jobs (id, run_id, module_kind, model_name, model_path, payload_json, status, attempt, max_attempts, priority,
+                timeout_minutes, created_at, cancel_requested, requires_nwc)
+            VALUES ({Guid.NewGuid()}, {byJob}, 'loi-catalog', 'АР.rvt', 'RSN://rs22/АР.rvt', {Empty}::jsonb, 'Succeeded', 1, 1, 0, 30, now(), false, false),
+                   ({Guid.NewGuid()}, {byEmptyKind}, '', 'АР.rvt', 'RSN://rs22/АР.rvt', {Empty}::jsonb, 'Succeeded', 1, 1, 0, 30, now(), false, false),
+                   ({Guid.NewGuid()}, {filled}, 'loi', 'АР.rvt', 'RSN://rs22/АР.rvt', {Empty}::jsonb, 'Succeeded', 1, 1, 0, 30, now(), false, false);
+            """);
+
+        await runner.StartAsync(CancellationToken.None);
+
+        var names = await db.Runs.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.ModuleName);
+        new[] { byJob, byEmptyKind, bySchedule, orphan, filled }.Select(id => names[id]).ShouldBe(["loi", "export", "clash", null, "export"]);
+        Postgres.DropDatabaseLater(connection);
+    }
+
     [Test]
     [Arguments(false)]
     [Arguments(true)]
