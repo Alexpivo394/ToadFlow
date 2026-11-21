@@ -4,6 +4,7 @@ using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Families;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Families.Requests;
 using ToadFlow.Server.Overview;
 using ToadFlow.Server.Tests.Infrastructure;
 using OverviewDto = ToadFlow.Server.Overview.OverviewView;
@@ -82,7 +83,7 @@ public class FamiliesOverviewTests : ServerTest
         var tile = (await OverviewAsync()).Tiles.Single(t => t.Module == "families");
 
         (tile.Value, tile.Label, tile.Link).ShouldBe(("2", "в каталоге", "/families/catalog"));
-        tile.Lines.ShouldBe(["на проверке: 1", "нужно решение: 1"]);
+        tile.Lines.ShouldBe(["заявок ждёт: 0", "на проверке: 1", "нужно решение: 1"]);
     }
 
     [Test]
@@ -145,5 +146,29 @@ public class FamiliesOverviewTests : ServerTest
             (AttentionLevel.Problem, "Семейства: 1 файл не удалось прочитать", "/families/issues")
         ], ignoreOrder: true);
         FamilyLines(viewer).ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Requests_WaitingOnTile_NewOnesInAttentionForCoordinator()
+    {
+        await ConfigureAsync(withAgent: true);
+        await ScanAsync(minutesAgo: 1, complete: true);
+        var author = await DbAsync(db => db.Users.Select(u => u.Id).FirstAsync());
+        await DbAsync(async db =>
+        {
+            var now = _time.GetUtcNow();
+            foreach (var state in new[] { RequestState.New, RequestState.InWork, RequestState.Done })
+                db.Set<FamilyRequest>().Add(new FamilyRequest
+                {
+                    Id = Guid.CreateVersion7(), Title = state.ToString(), State = state, AuthorUserId = author, CreatedAt = now, UpdatedAt = now
+                });
+            await db.SaveChangesAsync();
+        });
+
+        var admin = await OverviewAsync();
+
+        admin.Tiles.Single(t => t.Module == "families").Lines[0].ShouldBe("заявок ждёт: 2");
+        FamilyLines(admin).ShouldContain("Семейства: 1 новая заявка ждёт исполнителя");
+        FamilyLines(await OverviewAsync(UserRole.Viewer)).ShouldBeEmpty();
     }
 }

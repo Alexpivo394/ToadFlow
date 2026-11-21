@@ -113,6 +113,13 @@ public sealed class FamilyLibrary : IAsyncDisposable
         return scanId;
     }
 
+    /// <summary>Отчёт последнего обхода, о котором попросили агента (публикация или действие с файлом начинают обход сами).</summary>
+    public async Task ReportLastAsync(params FamilyScanFileDto[] files)
+    {
+        var scanId = Agent.ScanRequests.Last().ScanId;
+        (await ReportAsync(new FamilyScanReportDto(scanId, true, files, [], []))).EnsureSuccessStatusCode();
+    }
+
     /// <summary>«Обойти сейчас» от имени администратора: номер обхода, который получил агент.</summary>
     public async Task<Guid> RequestScanAsync()
     {

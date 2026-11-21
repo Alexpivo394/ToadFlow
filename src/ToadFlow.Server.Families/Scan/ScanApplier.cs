@@ -13,6 +13,9 @@ namespace ToadFlow.Server.Families.Scan;
 /// <summary>Что изменил один отчёт обхода; <see cref="VersionsToRead" /> — новое содержимое, которое должна прочитать ферма.</summary>
 public sealed record ScanApplied(int NewCards, int NewVersions, int Moved, int Archived, int NewIssues, IReadOnlyList<Guid> VersionsToRead)
 {
+    /// <summary>Публикации, которые этот обход привязал к версиям.</summary>
+    public IReadOnlyList<FamilyPublication> Published { get; init; } = [];
+
     public bool Changed => NewCards + NewVersions + Moved + Archived + NewIssues > 0;
 }
 
@@ -34,7 +37,13 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
     private readonly Dictionary<Guid, FamilyVersion> _versions = [];
     private readonly List<FamilyIssue> _openIssues = [];
     private readonly HashSet<(IssueKind, string)> _seenIssues = [];
+
+    /// <summary>Случаи, на которые координатор ответил «оставить как есть»: вид, хеш, путь в нижнем регистре.</summary>
+    private readonly HashSet<(IssueKind, string, string)> _dismissed = [];
     private readonly List<Guid> _toRead = [];
+
+    /// <summary>Версии, которые этот обход создал или сделал действующими: к ним привязываются публикации.</summary>
+    private readonly List<FamilyVersion> _touched = [];
     private string _reviewFolder = FamiliesSettings.DefaultReviewFolder;
     private DateTimeOffset _now;
     private int _newCards, _newVersions, _moved, _archived, _newIssues;
@@ -113,15 +122,52 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
                 issue.ResolvedAt = _now;
         }
 
+        var published = await PublishAsync(ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        var applied = new ScanApplied(_newCards, _newVersions, _moved, _archived, _newIssues, _toRead);
+        var applied = new ScanApplied(_newCards, _newVersions, _moved, _archived, _newIssues, _toRead) { Published = published };
         if (applied.Changed)
             events.Publish(new CatalogChanged(Actor.System, UiEntity, scanId,
                 $"Семейства: обход библиотеки — новых семейств {_newCards}, новых версий {_newVersions}, перенесено {_moved}, в архив {_archived}, новых случаев {_newIssues}"));
         return applied;
     }
+
+    /// <summary>
+    ///     Публикации и возвраты, чей файл этот обход увидел новой версией: версия получает автора, описание и пометку. Публикация ждёт
+    ///     не дольше <see cref="PublicationLifetime" />: файл, который так и не появился, её больше не ищет.
+    /// </summary>
+    private async Task<List<FamilyPublication>> PublishAsync(CancellationToken ct)
+    {
+        if (_touched.Count == 0) return [];
+        var hashes = _touched.Select(v => v.Hash).Distinct().ToList();
+        var since = _now - PublicationLifetime;
+        var waiting = await db.Set<FamilyPublication>().Where(p => p.AppliedAt == null && p.CreatedAt > since && hashes.Contains(p.Hash))
+            .OrderByDescending(p => p.CreatedAt).ToListAsync(ct);
+        var published = new List<FamilyPublication>();
+        foreach (var version in _touched)
+        {
+            // Тот же путь — точнее; иначе любая ожидающая с этим хешем (файл переложили до обхода).
+            var match = waiting.FirstOrDefault(p => p.VersionId is null && p.Hash == version.Hash && p.RelativePath.Equals(version.RelativePath, StringComparison.OrdinalIgnoreCase))
+                        ?? waiting.FirstOrDefault(p => p.VersionId is null && p.Hash == version.Hash);
+            if (match is null) continue;
+
+            match.VersionId = version.Id;
+            match.AppliedAt = _now;
+            version.AuthorUserId = match.AuthorUserId ?? version.AuthorUserId;
+            version.Comment = match.Comment ?? version.Comment;
+            // Действие координатора (возврат версии из веба) — не «правка мимо проверки».
+            if (version.Note == UnreviewedNote || match.Note.Length > 0) version.Note = match.Note;
+            foreach (var issue in _openIssues.Where(i => i.Kind == IssueKind.UnreviewedChange && i.ResolvedAt == null && i.Hash == version.Hash && i.CardId == version.CardId))
+                issue.ResolvedAt = _now;
+            published.Add(match);
+        }
+
+        return published;
+    }
+
+    /// <summary>Сколько публикация ждёт свой файл в обходах.</summary>
+    public static readonly TimeSpan PublicationLifetime = TimeSpan.FromDays(7);
 
     private List<ScannedFile> Scanned(FamilyScanReportDto report)
     {
@@ -149,6 +195,8 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             .ToListAsync(ct);
         foreach (var version in versions) _versions[version.Id] = version;
         _openIssues.AddRange(await db.Set<FamilyIssue>().Where(i => i.ResolvedAt == null).ToListAsync(ct));
+        foreach (var dismissed in await db.Set<FamilyIssue>().Where(i => i.Dismissed && i.Hash != null).Select(i => new { i.Kind, i.Hash, i.RelativePath }).ToListAsync(ct))
+            _dismissed.Add((dismissed.Kind, dismissed.Hash!, dismissed.RelativePath.ToLowerInvariant()));
 
         var known = new List<KnownFile>();
         foreach (var card in cards)
@@ -206,6 +254,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             {
                 version.State = StateOf(file);
                 returned.CurrentVersionId = version.Id;
+                _touched.Add(version);
             }
 
             Place(returned, file);
@@ -243,6 +292,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             }
 
             card.CurrentVersionId = approved.Id;
+            _touched.Add(approved);
             current = approved;
         }
         else
@@ -296,6 +346,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
         db.Set<FamilyVersion>().Add(version);
         _versions[version.Id] = version;
         _toRead.Add(version.Id);
+        _touched.Add(version);
         _newVersions++;
     }
 
@@ -307,6 +358,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
         _versions[version.Id] = version;
         card.CurrentVersionId = version.Id;
         _toRead.Add(version.Id);
+        _touched.Add(version);
         _newVersions++;
         return version;
     }
@@ -343,7 +395,8 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
     private void Issue(IssueKind kind, Guid? cardId, ScannedFile file, string text)
     {
         _seenIssues.Add((kind, file.RelativePath.ToLowerInvariant()));
-        if (_openIssues.Any(i => i.Kind == kind && i.Hash == file.Hash && i.RelativePath.Equals(file.RelativePath, StringComparison.OrdinalIgnoreCase)))
+        if (_openIssues.Any(i => i.Kind == kind && i.Hash == file.Hash && i.RelativePath.Equals(file.RelativePath, StringComparison.OrdinalIgnoreCase))
+            || _dismissed.Contains((kind, file.Hash, file.RelativePath.ToLowerInvariant())))
             return;
 
         var issue = new FamilyIssue
@@ -353,6 +406,9 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             CardId = cardId,
             RelativePath = file.RelativePath,
             Hash = file.Hash,
+            CatalogHash = file.CatalogHash,
+            RevitYear = file.RevitYear,
+            Size = file.Size,
             Text = text,
             CreatedAt = _now
         };

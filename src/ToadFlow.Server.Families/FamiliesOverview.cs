@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Families.Requests;
 using ToadFlow.Server.Families.Scan;
 using ToadFlow.Server.Overview;
 using ToadFlow.Server.Settings;
@@ -30,7 +31,9 @@ internal sealed class FamiliesOverview : IOverviewSource
         var inReview = await db.Set<FamilyVersion>().AsNoTracking()
             .CountAsync(v => v.State == VersionState.InReview && cards.Any(c => c.Id == v.CardId && c.State != CardState.Archived), ct);
         var issues = await db.Set<FamilyIssue>().CountAsync(i => i.ResolvedAt == null, ct);
-        return new OverviewTile(Module, approved.ToString(), "в каталоге", null, [$"на проверке: {inReview}", $"нужно решение: {issues}"], "/families/catalog");
+        var waiting = await db.Set<FamilyRequest>().CountAsync(r => r.State == RequestState.New || r.State == RequestState.InWork, ct);
+        return new OverviewTile(Module, approved.ToString(), "в каталоге", null,
+            [$"заявок ждёт: {waiting}", $"на проверке: {inReview}", $"нужно решение: {issues}"], "/families/catalog");
     }
 
     public async Task<IReadOnlyList<AttentionItem>> AttentionAsync(IServiceProvider services, CancellationToken ct)
@@ -55,6 +58,11 @@ internal sealed class FamiliesOverview : IOverviewSource
             var when = lastComplete is { } complete ? $"последний полный обход {await LocalAsync(services, complete, ct)}" : "полного обхода ещё не было";
             items.Add(new AttentionItem(AttentionLevel.Problem, $"Семейства: библиотека недоступна — {when}", "/families/settings", Module));
         }
+
+        var fresh = await db.Set<FamilyRequest>().CountAsync(r => r.State == RequestState.New, ct);
+        if (fresh > 0)
+            items.Add(new AttentionItem(AttentionLevel.Todo, $"Семейства: {fresh} {Russian.Plural(fresh, "новая заявка ждёт", "новые заявки ждут", "новых заявок ждут")} исполнителя",
+                "/families/requests?scope=all&state=New", Module, UserRole.Operator));
 
         var issues = await db.Set<FamilyIssue>().CountAsync(i => i.ResolvedAt == null, ct);
         if (issues > 0)

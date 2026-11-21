@@ -98,6 +98,11 @@ public sealed class FamilyCard
 
     public DateTimeOffset? ArchivedAt { get; set; }
 
+    /// <summary>Сколько раз загружали в проекты из панели Revit; при равном соответствии поиска такие выше.</summary>
+    public int LoadCount { get; set; }
+
+    public DateTimeOffset? LastLoadedAt { get; set; }
+
     public void SetName(string name)
     {
         Name = name;
@@ -164,6 +169,22 @@ public sealed class FamilyIssue
 
     public string? Hash { get; set; }
 
+    /// <summary>Файл из отчёта обхода — чтобы ответ «это новая версия» или «это другое семейство» применить без нового обхода.</summary>
+    public string? CatalogHash { get; set; }
+
+    public int? RevitYear { get; set; }
+
+    public long? Size { get; set; }
+
+    /// <summary>
+    ///     Координатор ответил «оставить как есть» (дубль): закрытый случай с этим путём и хешем больше не открывается. Изменится файл —
+    ///     случай новый.
+    /// </summary>
+    public bool Dismissed { get; set; }
+
+    /// <summary>Как решён: «удалена копия», «новая версия …», «оставлено как есть». Пусто — закрылся сам.</summary>
+    public string? Resolution { get; set; }
+
     /// <summary>Что случилось и что сделать в проводнике.</summary>
     public string Text { get; set; } = "";
 
@@ -189,4 +210,57 @@ public sealed class FamilyScan
     public int Files { get; set; }
 
     public string[] Errors { get; set; } = [];
+}
+
+/// <summary>
+///     Ожидаемая версия: плагин сохранил файл в библиотеку (публикация) или агент положил туда прежнее содержимое (возврат). Когда обход
+///     увидит файл с этим хешем, версия получает автора, описание и пометку, а заявка, если указана, закрывается.
+/// </summary>
+public sealed class FamilyPublication
+{
+    public Guid Id { get; set; }
+
+    /// <summary>Куда сохранён файл: путь от корня библиотеки.</summary>
+    public string RelativePath { get; set; } = "";
+
+    public string Hash { get; set; } = "";
+
+    public Guid? AuthorUserId { get; set; }
+
+    /// <summary>Что изменилось — словами автора.</summary>
+    public string? Comment { get; set; }
+
+    /// <summary>Пометка версии: «возврат к версии от …»; пусто — обычная публикация.</summary>
+    public string Note { get; set; } = "";
+
+    /// <summary>Карточка, новую версию которой публиковали; null — новое семейство.</summary>
+    public Guid? CardId { get; set; }
+
+    /// <summary>Заявка, которую закрывает публикация.</summary>
+    public Guid? RequestId { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Версия, к которой публикация привязана; null — обход файл ещё не увидел.</summary>
+    public Guid? VersionId { get; set; }
+
+    public DateTimeOffset? AppliedAt { get; set; }
+}
+
+/// <summary>Загрузка семейства в проект из панели Revit.</summary>
+public sealed class FamilyLoad
+{
+    public Guid Id { get; set; }
+
+    public Guid CardId { get; set; }
+
+    /// <summary>Загруженная версия; null — хеш файла не совпал ни с одной версией карточки.</summary>
+    public Guid? VersionId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    /// <summary>Имя модели, в которую загружено.</summary>
+    public string Project { get; set; } = "";
+
+    public DateTimeOffset At { get; set; }
 }

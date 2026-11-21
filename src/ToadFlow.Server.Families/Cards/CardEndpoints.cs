@@ -85,11 +85,14 @@ internal static class CardEndpoints
                 .ToList();
         var current = versions.FirstOrDefault(v => v.Id == card.CurrentVersionId);
         var root = (await store.GetAsync(ct)).Root;
+        var authorIds = versions.Select(v => v.AuthorUserId).OfType<Guid>().Distinct().ToList();
+        var authors = await db.Users.AsNoTracking().Where(u => authorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         return Results.Ok(new FamilyCardView(card.Id, card.Name, card.RelativePath, FullPath(root, card.RelativePath), card.Section, card.State, card.Category,
             card.Placement, card.RevitYear, card.TypeCount, card.Description, card.Tags, card.Manufacturer, card.CreatedAt, card.UpdatedAt, card.ArchivedAt,
             card.CurrentVersionId, current?.ReadState, current?.ReadError, current?.HasPreview == true, SearchText.ContentOf(current),
             versions.Select(v => new FamilyVersionView(v.Id, v.Hash, v.RevitYear, v.State, v.Note, v.RelativePath, v.SeenAt, v.ReadState, v.ReadError, v.HasPreview,
-                v.Id == card.CurrentVersionId)).ToList()));
+                v.Id == card.CurrentVersionId, v.AuthorUserId is { } author ? authors.GetValueOrDefault(author) : null, v.Comment)).ToList(),
+            card.LoadCount, card.LastLoadedAt));
     }
 
     public static string FullPath(string root, string relativePath) =>

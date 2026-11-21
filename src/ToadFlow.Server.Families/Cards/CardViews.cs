@@ -15,7 +15,9 @@ public sealed record FamilyVersionView(
     ReadState ReadState,
     string? ReadError,
     bool HasPreview,
-    bool IsCurrent);
+    bool IsCurrent,
+    string? AuthorName,
+    string? Comment);
 
 /// <summary>Карточка семейства с содержимым действующей версии и историей версий (новые первыми).</summary>
 /// <param name="FullPath">Где лежит файл: корень библиотеки и путь от него.</param>
@@ -42,7 +44,9 @@ public sealed record FamilyCardView(
     string? CurrentReadError,
     bool HasPreview,
     FamilyContent? Content,
-    IReadOnlyList<FamilyVersionView> Versions);
+    IReadOnlyList<FamilyVersionView> Versions,
+    int LoadCount,
+    DateTimeOffset? LastLoadedAt);
 
 /// <summary>Что лежит в папке проверки: новое семейство или версия-кандидат утверждённого.</summary>
 public sealed record FamilyReviewItem(Guid CardId, Guid VersionId, string Name, string RelativePath, bool IsNew, int? RevitYear, DateTimeOffset SeenAt);

@@ -37,6 +37,9 @@ public sealed record LibraryAgent(Guid Id, string MachineName, bool Online);
 public sealed class LibraryScanGate
 {
     public SemaphoreSlim Lock { get; } = new(1, 1);
+
+    /// <summary>Обход попросили (публикация, действие с файлом), а начать не вышло: прошлый ещё идёт. Цикл начнёт его, не дожидаясь интервала.</summary>
+    public volatile bool Requested;
 }
 
 /// <summary>
@@ -55,7 +58,7 @@ public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settings
         var settings = await settingsStore.GetAsync(ct);
         if (!settings.Configured) return;
         var last = await db.Set<FamilyScan>().MaxAsync(s => (DateTimeOffset?)s.StartedAt, ct);
-        if (last is { } at && time.GetUtcNow() - at < TimeSpan.FromMinutes(settings.ScanIntervalMinutes)) return;
+        if (!gate.Requested && last is { } at && time.GetUtcNow() - at < TimeSpan.FromMinutes(settings.ScanIntervalMinutes)) return;
         var result = await StartAsync(ct);
         if (result.Outcome is ScanStart.Failed) logger.LogWarning("Обход библиотеки не начат: {Error}", result.Error);
     }
@@ -71,6 +74,14 @@ public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settings
         {
             gate.Lock.Release();
         }
+    }
+
+    /// <summary>Обойти как можно скорее: сейчас или, если прошлый обход ещё идёт, сразу после него.</summary>
+    public async Task<ScanStartResult> RequestAsync(CancellationToken ct)
+    {
+        var result = await StartAsync(ct);
+        if (result.Outcome is ScanStart.Running or ScanStart.AgentBusy) gate.Requested = true;
+        return result;
     }
 
     /// <summary>Агенты, которые умеют обходить библиотеку, — из них администратор выбирает агента библиотеки.</summary>
@@ -127,6 +138,7 @@ public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settings
             }
 
             await db.SaveChangesAsync(ct);
+            gate.Requested = false;
             return new ScanStartResult(ScanStart.Started, scan.Id);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !ct.IsCancellationRequested)

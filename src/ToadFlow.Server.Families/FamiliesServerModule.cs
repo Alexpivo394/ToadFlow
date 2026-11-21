@@ -5,7 +5,9 @@ using ToadFlow.Contracts;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Families.Cards;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Families.Panel;
 using ToadFlow.Server.Families.Read;
+using ToadFlow.Server.Families.Requests;
 using ToadFlow.Server.Families.Scan;
 using ToadFlow.Server.Families.Search;
 using ToadFlow.Server.Modules;
@@ -90,6 +92,58 @@ public sealed class FamiliesServerModule : IServerModule
             issue.HasIndex(i => i.ResolvedAt);
         });
 
+        model.Entity<FamilyPublication>(publication =>
+        {
+            publication.ToTable("family_publications");
+            publication.Property(p => p.Id).ValueGeneratedNever();
+            publication.Property(p => p.Hash).HasMaxLength(64);
+            publication.HasIndex(p => new { p.Hash, p.AppliedAt });
+        });
+
+        model.Entity<FamilyLoad>(load =>
+        {
+            load.ToTable("family_loads");
+            load.Property(l => l.Id).ValueGeneratedNever();
+            load.Property(l => l.Project).HasMaxLength(260);
+            load.HasIndex(l => new { l.CardId, l.At });
+            load.HasOne<FamilyCard>().WithMany().HasForeignKey(l => l.CardId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<FamilyRequest>(request =>
+        {
+            request.ToTable("family_requests");
+            request.Property(r => r.Id).ValueGeneratedNever();
+            request.Property(r => r.Number).UseIdentityByDefaultColumn();
+            request.HasIndex(r => r.Number).IsUnique();
+            request.Property(r => r.Title).HasMaxLength(RequestEndpoints.MaxTitle);
+            request.HasIndex(r => new { r.State, r.UpdatedAt });
+            request.Ignore(r => r.IsOpen);
+        });
+
+        model.Entity<FamilyRequestMember>(member =>
+        {
+            member.ToTable("family_request_members");
+            member.HasKey(m => new { m.RequestId, m.UserId });
+            member.HasIndex(m => m.UserId);
+            member.HasOne<FamilyRequest>().WithMany().HasForeignKey(m => m.RequestId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<FamilyRequestMessage>(message =>
+        {
+            message.ToTable("family_request_messages");
+            message.Property(m => m.Id).ValueGeneratedNever();
+            message.HasIndex(m => new { m.RequestId, m.At });
+            message.HasOne<FamilyRequest>().WithMany().HasForeignKey(m => m.RequestId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<FamilyRequestFile>(file =>
+        {
+            file.ToTable("family_request_files");
+            file.Property(f => f.Id).ValueGeneratedNever();
+            file.HasIndex(f => f.RequestId);
+            file.HasOne<FamilyRequest>().WithMany().HasForeignKey(f => f.RequestId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<FamilyScan>(scan =>
         {
             scan.ToTable("family_scans");
@@ -105,13 +159,16 @@ public sealed class FamiliesServerModule : IServerModule
         families.MapFamiliesSettings();
         families.MapFamiliesScan();
         families.MapFamiliesReview();
+        families.MapFamiliesVersions();
     }
 
-    /// <summary>Поиск и карточка — и проектировщику.</summary>
+    /// <summary>Поиск, карточка, панель Revit и заявки — и проектировщику.</summary>
     public void MapMemberEndpoints(RouteGroupBuilder members)
     {
         var families = members.MapGroup("/families");
         families.MapFamiliesSearch();
+        families.MapFamiliesPanel();
+        families.MapFamilyRequests();
         families.MapFamiliesCards();
     }
 

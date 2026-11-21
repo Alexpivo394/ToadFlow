@@ -23,7 +23,8 @@ public class AuthorizationMatrixTests : ServerTest
     private static readonly string[] Personal =
         ["/api/auth/tokens", "/api/auth/tokens/current", "/api/auth/tokens/{id:guid}", "/api/profile", "/api/profile/password", "/api/naming/preview", "/api/loi/routing/preview",
          "/api/clash/parts/{id:guid}/preview", "/api/clash/parts/{id:guid}/values", "/api/clash/parts/{id:guid}/unassigned", "/api/clash/parts/{id:guid}/draft/sets/preview/batch",
-         "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit", "/api/clash/collisions/{id:guid}/seen", "/api/clash/reports/{runId:guid}/archive", "/api/clash/report-archives/{id:guid}"];
+         "/api/clash/parts/{id:guid}/presence", "/api/clash/my/visit", "/api/clash/collisions/{id:guid}/seen", "/api/clash/reports/{runId:guid}/archive", "/api/clash/report-archives/{id:guid}",
+         "/api/families/project-status", "/api/families/{id:guid}/loads", "/api/families/requests/{id:guid}/seen"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()
@@ -92,8 +93,19 @@ public class AuthorizationMatrixTests : ServerTest
         members.ShouldNotContain("GET /api/clash/parts/{id:guid}");
         members.ShouldNotContain("POST /api/loi/checks"); // статистику LOI отправляют только координаторы и администраторы
         members.ShouldContain("GET /api/modules"); // по нему веб проектировщика собирает меню
-        // Семейства: проектировщик ищет и открывает карточку; «На проверке», «Нужно решение», параметры и правка — не ему
-        string[] families = ["GET /api/families/search", "GET /api/families/facets", "GET /api/families/{id:guid}", "GET /api/families/{id:guid}/preview"];
+        // Семейства: проектировщик ищет, открывает карточку, грузит из панели и ведёт свои заявки; «На проверке», «Нужно решение», параметры,
+        // публикация и правка — не ему
+        string[] families =
+        [
+            "GET /api/families/search", "GET /api/families/facets", "GET /api/families/{id:guid}", "GET /api/families/{id:guid}/preview",
+            // Панель Revit: библиотека, учёт загрузок, состояние семейств проекта
+            "GET /api/families/library", "POST /api/families/{id:guid}/loads", "POST /api/families/project-status",
+            // Заявки: проектировщик подаёт, пишет, прикладывает файлы и присоединяется; ведёт заявку координатор
+            "GET /api/families/requests", "GET /api/families/requests/updates", "GET /api/families/requests/similar", "GET /api/families/requests/{id:guid}",
+            "GET /api/families/requests/{id:guid}/files/{fileId:guid}", "POST /api/families/requests/{id:guid}/seen", "POST /api/families/requests",
+            "POST /api/families/requests/{id:guid}/join", "POST /api/families/requests/{id:guid}/leave", "POST /api/families/requests/{id:guid}/messages",
+            "POST /api/families/requests/{id:guid}/files"
+        ];
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
                                && !route.EndsWith(" /api/modules") && !families.Contains(route)

@@ -2006,6 +2006,14 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
+                    b.Property<DateTimeOffset?>("LastLoadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_loaded_at");
+
+                    b.Property<int>("LoadCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("load_count");
+
                     b.Property<string>("Manufacturer")
                         .HasColumnType("text")
                         .HasColumnName("manufacturer");
@@ -2091,9 +2099,17 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("card_id");
 
+                    b.Property<string>("CatalogHash")
+                        .HasColumnType("text")
+                        .HasColumnName("catalog_hash");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<bool>("Dismissed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("dismissed");
 
                     b.Property<string>("Hash")
                         .HasMaxLength(64)
@@ -2111,9 +2127,21 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("relative_path");
 
+                    b.Property<string>("Resolution")
+                        .HasColumnType("text")
+                        .HasColumnName("resolution");
+
                     b.Property<DateTimeOffset?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("resolved_at");
+
+                    b.Property<int?>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<long?>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
 
                     b.Property<string>("Text")
                         .IsRequired()
@@ -2127,6 +2155,102 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasDatabaseName("ix_family_issues_resolved_at");
 
                     b.ToTable("family_issues", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyLoad", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid>("CardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("card_id");
+
+                    b.Property<string>("Project")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("project");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid?>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_loads");
+
+                    b.HasIndex("CardId", "At")
+                        .HasDatabaseName("ix_family_loads_card_id_at");
+
+                    b.ToTable("family_loads", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyPublication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applied_at");
+
+                    b.Property<Guid?>("AuthorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_user_id");
+
+                    b.Property<Guid?>("CardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("card_id");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("relative_path");
+
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<Guid?>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_publications");
+
+                    b.HasIndex("Hash", "AppliedAt")
+                        .HasDatabaseName("ix_family_publications_hash_applied_at");
+
+                    b.ToTable("family_publications", (string)null);
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyScan", b =>
@@ -2260,6 +2384,202 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasDatabaseName("ix_family_versions_card_id_seen_at");
 
                     b.ToTable("family_versions", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AssigneeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_user_id");
+
+                    b.Property<Guid?>("CardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("card_id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Number"));
+
+                    b.Property<string>("Project")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("project");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("search_text");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("section");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Urgency")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("urgency");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_requests");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_family_requests_number");
+
+                    b.HasIndex("State", "UpdatedAt")
+                        .HasDatabaseName("ix_family_requests_state_updated_at");
+
+                    b.ToTable("family_requests", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequestFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content_type");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("file_name");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<Guid>("UploadedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_request_files");
+
+                    b.HasIndex("RequestId")
+                        .HasDatabaseName("ix_family_request_files_request_id");
+
+                    b.ToTable("family_request_files", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequestMember", b =>
+                {
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.Property<DateTimeOffset?>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.HasKey("RequestId", "UserId")
+                        .HasName("pk_family_request_members");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_family_request_members_user_id");
+
+                    b.ToTable("family_request_members", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequestMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid?>("AuthorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_user_id");
+
+                    b.Property<bool>("IsEvent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_event");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_request_messages");
+
+                    b.HasIndex("RequestId", "At")
+                        .HasDatabaseName("ix_family_request_messages_request_id_at");
+
+                    b.ToTable("family_request_messages", (string)null);
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>
@@ -2816,6 +3136,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasConstraintName("fk_schedule_changes_schedules_schedule_id");
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyLoad", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Families.Data.FamilyCard", null)
+                        .WithMany()
+                        .HasForeignKey("CardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_family_loads_family_cards_card_id");
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyVersion", b =>
                 {
                     b.HasOne("ToadFlow.Server.Families.Data.FamilyCard", null)
@@ -2824,6 +3154,36 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_family_versions_family_cards_card_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequestFile", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Families.Requests.FamilyRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_family_request_files_family_requests_request_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequestMember", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Families.Requests.FamilyRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_family_request_members_family_requests_request_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequestMessage", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Families.Requests.FamilyRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_family_request_messages_family_requests_request_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckParameter", b =>
