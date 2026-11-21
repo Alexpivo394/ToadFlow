@@ -36,4 +36,21 @@ internal sealed class ClashOverviewSource : CoreOverview.IOverviewSource
             series.Series.Select(p => (double)p.Open).ToList(),
             fixedToday == 0 ? null : CoreOverview.Russian.Counted(fixedToday, "закрыта", "закрыто", "коллизия", "коллизии", "коллизий"));
     }
+
+    /// <summary>«Для вас»: новые коллизии в разделах человека (ещё не открытые им) и сколько ждут его исправления — как в «Моих коллизиях».</summary>
+    public async Task<IReadOnlyList<CoreOverview.PersonalItem>> PersonalAsync(IServiceProvider services, Guid userId, CancellationToken ct)
+    {
+        var db = services.GetRequiredService<ToadFlowDb>();
+        var (disciplines, state) = await Collisions.MyEndpoints.UserAsync(db, userId, ct);
+        if (disciplines.Length == 0) return [];
+        var parts = await Collisions.MyCollisions.PartsAsync(db, ct);
+        var mark = Collisions.MyCollisions.Mark(state, services.GetRequiredService<TimeProvider>().GetUtcNow());
+        var unseen = await Collisions.MyCollisions.Query(db, disciplines, parts, new Collisions.MyFilter(Scope: "all", Since: "unseen"), mark, userId).CountAsync(ct);
+        var toFix = await Collisions.MyCollisions.Query(db, disciplines, parts, new Collisions.MyFilter(), mark, userId).CountAsync(ct);
+        return
+        [
+            new CoreOverview.PersonalItem(Module, "Новые коллизии в ваших разделах", "/clash/my?since=unseen", CoreOverview.PersonalTone.Action, unseen),
+            new CoreOverview.PersonalItem(Module, "Коллизии ждут исправления", "/clash/my", CoreOverview.PersonalTone.Info, toFix)
+        ];
+    }
 }

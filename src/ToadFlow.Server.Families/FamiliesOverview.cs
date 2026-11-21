@@ -88,6 +88,35 @@ internal sealed class FamiliesOverview : IOverviewSource
         return items;
     }
 
+    /// <summary>
+    ///     «Для вас»: заявки, где ход за человеком (вопрос или приёмка); координатору — заявки его направлений без исполнителя и его
+    ///     просроченные.
+    /// </summary>
+    public async Task<IReadOnlyList<PersonalItem>> PersonalAsync(IServiceProvider services, Guid userId, CancellationToken ct)
+    {
+        var db = services.GetRequiredService<ToadFlowDb>();
+        var requests = db.Set<FamilyRequest>().AsNoTracking();
+        var members = db.Set<FamilyRequestMember>();
+        var waiting = await requests.CountAsync(r => (r.State == RequestState.NeedInfo || r.State == RequestState.Review)
+                                                     && members.Any(m => m.RequestId == r.Id && m.UserId == userId) && r.AssigneeUserId != userId, ct);
+        var items = new List<PersonalItem>
+            { new(Module, "Заявки ждут вашего ответа или приёмки", "/families/requests?scope=mine", PersonalTone.Action, waiting) };
+
+        var role = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Role).SingleAsync(ct);
+        if (role is UserRole.Operator or UserRole.Admin)
+        {
+            var open = FamilyRequest.OpenStates;
+            var opened = requests.Where(r => open.Contains(r.State));
+            var unassigned = await (await RequestEndpoints.InMyDirectionsAsync(db, opened.Where(r => r.AssigneeUserId == null), userId, ct)).CountAsync(ct);
+            var today = await RequestEndpoints.TodayAsync(services.GetRequiredService<ISettingsStore>(), services.GetRequiredService<TimeProvider>(), ct);
+            var overdue = await opened.CountAsync(r => r.AssigneeUserId == userId && r.NeededBy < today, ct);
+            items.Add(new PersonalItem(Module, "Заявки вашего направления без исполнителя", "/families/requests?scope=direction", PersonalTone.Action, unassigned));
+            items.Add(new PersonalItem(Module, "Ваши заявки просрочены", "/families/requests?scope=assigned", PersonalTone.Action, overdue));
+        }
+
+        return items;
+    }
+
     private static async Task<string> LocalAsync(IServiceProvider services, DateTimeOffset at, CancellationToken ct)
     {
         var zone = (await services.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone;

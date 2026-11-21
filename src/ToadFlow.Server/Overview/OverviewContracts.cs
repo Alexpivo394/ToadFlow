@@ -32,6 +32,10 @@ public interface IOverviewSource
 
     /// <summary>Свои строки «Требует внимания».</summary>
     Task<IReadOnlyList<AttentionItem>> AttentionAsync(IServiceProvider services, CancellationToken ct) => Task.FromResult<IReadOnlyList<AttentionItem>>([]);
+
+    /// <summary>Строки «Для вас» — что ждёт именно этого человека.</summary>
+    Task<IReadOnlyList<PersonalItem>> PersonalAsync(IServiceProvider services, Guid userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<PersonalItem>>([]);
 }
 
 /// <summary>Рабочий процесс модуля вне сервера (например, движок коллизий): когда последний раз выходил на связь.</summary>
@@ -106,3 +110,17 @@ public static class OverviewDays
         return counts;
     }
 }
+
+/// <summary>Действие — ход за человеком (ответить, принять, взять); сведение — полезно знать.</summary>
+public enum PersonalTone
+{
+    Action,
+    Info
+}
+
+/// <summary>Строка «Для вас».</summary>
+/// <param name="Module">Модуль-источник; null — ядро.</param>
+/// <param name="Count">Сколько — крупно рядом с текстом.</param>
+public sealed record PersonalItem(string? Module, string Text, string Link, PersonalTone Tone, int Count);
+
+public sealed record PersonalView(IReadOnlyList<PersonalItem> Items);

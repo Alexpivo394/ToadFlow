@@ -75,6 +75,7 @@ public static class ServerSetup
         members.MapRegistration();
         members.MapProfile();
         members.MapNotifications();
+        members.MapPersonal();
         members.MapModuleList();
         members.MapModuleMemberEndpoints(app.Services);
 

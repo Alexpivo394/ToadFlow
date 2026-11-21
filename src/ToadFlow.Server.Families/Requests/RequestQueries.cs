@@ -66,7 +66,7 @@ internal static partial class RequestEndpoints
     ///     Мои направления (где я координатор) и общая очередь: без направления или в направлении без координаторов. Не координатор ни
     ///     одного направления видит всё.
     /// </summary>
-    private static async Task<IQueryable<FamilyRequest>> InMyDirectionsAsync(ToadFlowDb db, IQueryable<FamilyRequest> requests, Guid me, CancellationToken ct)
+    internal static async Task<IQueryable<FamilyRequest>> InMyDirectionsAsync(ToadFlowDb db, IQueryable<FamilyRequest> requests, Guid me, CancellationToken ct)
     {
         var directions = await db.Set<FamilyDirection>().AsNoTracking().Select(d => new { d.Id, d.Coordinators }).ToListAsync(ct);
         var mine = directions.Where(d => d.Coordinators.Contains(me)).Select(d => d.Id).ToList();

@@ -76,6 +76,9 @@ public class ClashMyCollisionsTests : ServerTest
         (notification.Kind, notification.Link).ShouldBe((ToadFlow.Server.Notifications.NotificationKinds.ClashNew, "/clash/my"));
         notification.Text.ShouldContain("2");
         (await ar.GetJsonAsync<List<ToadFlow.Server.Notifications.NotificationView>>("/api/notifications")).ShouldBeEmpty();
+        var today = await ovk.GetJsonAsync<ToadFlow.Server.Overview.PersonalView>("/api/me/today");
+        today.Items.Single(i => i.Link == "/clash/my?since=unseen").Count.ShouldBe(2);
+        (await ar.GetJsonAsync<ToadFlow.Server.Overview.PersonalView>("/api/me/today")).Items.ShouldBeEmpty();
     }
 
     /// <summary>ОВК × ОВК — для ОВК одна строка; «Беру» ставит «обе стороны».</summary>
