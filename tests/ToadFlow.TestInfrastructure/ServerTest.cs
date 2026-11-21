@@ -39,6 +39,9 @@ public abstract class ServerTest
     public async Task StopServerAsync()
     {
         await Server.DisposeAsync();
+        // TUnit хранит объекты тестов до конца сессии: без этого каждый остановленный сервер оставался бы в памяти целиком.
+        Server = null!;
+        PostgresFixture.ClosePool(_connectionString);
         Postgres.DropDatabaseLater(_connectionString);
     }
 

@@ -114,6 +114,16 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
         await command.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    ///     Закрывает соединения остановленного сервера с его базой. Пул соединений живёт в процессе тестов, а не в сервере: без этого
+    ///     соединения каждого теста висели бы до удаления его базы, и Postgres упирался бы в лимит подключений.
+    /// </summary>
+    public static void ClosePool(string connectionString)
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        NpgsqlConnection.ClearPool(connection);
+    }
+
     private readonly System.Collections.Concurrent.ConcurrentBag<Task> _drops = [];
     private readonly SemaphoreSlim _dropSlots = new(2, 2);
 
@@ -149,23 +159,56 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Данные прошлых прогонов удаляются при старте, а не при остановке: сразу после остановки Postgres ещё держит
-    ///     свои файлы. Скачанные бинарники (папка без GUID в имени) остаются, чтобы не качать их каждый раз.
+    ///     Данные прошлых прогонов удаляются при старте, а не при остановке: сразу после остановки Postgres ещё держит свои файлы.
+    ///     PostgresEmbed кладёт каждый запуск в <c>pg_embed/{guid}</c> — около 170 МБ; скачанный архив (<c>pg_embed/binaries</c>) остаётся,
+    ///     чтобы не качать его каждый раз. Папку работающего Postgres (идёт другой прогон тестов) трогать нельзя: он открывает файлы
+    ///     с разрешением на удаление, и удаление испортило бы чужой прогон.
     /// </summary>
     private static void RemoveLeftovers()
     {
-        if (!Directory.Exists(Root)) return;
+        var instances = Path.Combine(Root, "pg_embed");
+        if (Directory.Exists(instances))
+            foreach (var dir in Directory.GetDirectories(instances).Where(dir => Guid.TryParse(Path.GetFileName(dir), out _) && !IsRunning(dir)))
+                TryDelete(dir);
 
-        foreach (var dir in Directory.GetDirectories(Root).Where(dir => Guid.TryParse(Path.GetFileName(dir), out _)))
+        // Хранилища слепков серверов тестов, не убранные упавшим прогоном; свежие могут принадлежать идущему прогону.
+        var clash = Path.Combine(Path.GetTempPath(), "toadflow-clash-tests");
+        if (Directory.Exists(clash))
+            foreach (var dir in Directory.GetDirectories(clash).Where(dir => Directory.GetLastWriteTimeUtc(dir) < DateTime.UtcNow.AddDays(-1)))
+                TryDelete(dir);
+    }
+
+    /// <summary>Работает ли Postgres этой папки: при работе он держит <c>postmaster.pid</c> с номером своего процесса в первой строке.</summary>
+    private static bool IsRunning(string instance)
+    {
+        try
         {
-            try
-            {
-                Directory.Delete(dir, true);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // Занята другим прогоном тестов — оставляем.
-            }
+            var pidFile = Path.Combine(instance, "data", "postmaster.pid");
+            if (!File.Exists(pidFile)) return false;
+            using var reader = new StreamReader(new FileStream(pidFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            if (!int.TryParse(reader.ReadLine(), out var pid)) return true;
+            using var process = System.Diagnostics.Process.GetProcessById(Math.Abs(pid));
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false; // процесса с таким номером нет: Postgres был убит и файл остался
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return true; // не удалось понять — не трогаем
+        }
+    }
+
+    private static void TryDelete(string dir)
+    {
+        try
+        {
+            Directory.Delete(dir, true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Занята — уберёт следующий прогон.
         }
     }
 

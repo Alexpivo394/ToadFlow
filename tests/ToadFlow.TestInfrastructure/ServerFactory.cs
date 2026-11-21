@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 
 namespace ToadFlow.Server.Tests.Infrastructure;
 
@@ -40,5 +42,35 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         if (modules is not null) builder.UseSetting("Modules", modules);
         if (time is not null) builder.ConfigureServices(collection => collection.Replace(ServiceDescriptor.Singleton(time)));
         if (services is not null) builder.ConfigureServices(services);
+    }
+
+    private IHost? _host;
+
+    protected override IHost CreateHost(IHostBuilder builder) => _host = base.CreateHost(builder);
+
+    /// <summary>Останавливает сервер и гасит его ограничители частоты: сами они не освобождаются и держат сервер в памяти.</summary>
+    public override async ValueTask DisposeAsync()
+    {
+        IReadOnlyList<System.Threading.RateLimiting.PartitionedRateLimiter<Microsoft.AspNetCore.Http.HttpContext>> limiters = [];
+        try
+        {
+            if (_host is not null) limiters = RateLimiterCleanup.Find(_host.Services.GetRequiredService<IServer>());
+        }
+        catch (ObjectDisposedException)
+        {
+            // Сервер остановился сам (упала фоновая служба) и уже освободил свои службы.
+        }
+
+        _host = null;
+        await base.DisposeAsync();
+        foreach (var limiter in limiters) await limiter.DisposeAsync();
+        try
+        {
+            if (Directory.Exists(ClashStorageRoot)) Directory.Delete(ClashStorageRoot, true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Файл ещё занят — папку уберёт очистка при следующем прогоне.
+        }
     }
 }
