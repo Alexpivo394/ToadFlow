@@ -9,9 +9,12 @@ namespace ToadFlow.Agent.Server;
 /// </summary>
 public static class AgentModules
 {
-    public static readonly string[] All = [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract];
+    public static readonly string[] All =
+        [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead, ModuleKinds.FamiliesScan];
 
-    public static string[] For(bool addinOutdated) => addinOutdated ? All.Where(m => m != ModuleKinds.ClashExtract).ToArray() : All;
+    /// <summary>Старый аддин не знает выгрузку для коллизий и чтение семейств; обход библиотеки идёт без Revit и остаётся.</summary>
+    public static string[] For(bool addinOutdated) =>
+        addinOutdated ? All.Where(m => m is not (ModuleKinds.ClashExtract or ModuleKinds.FamiliesRead)).ToArray() : All;
 
     /// <summary>
     ///     Аддин другой версии, чем агент (сравниваются три числа: 2.0.0 и 2.0.0.0 — одна версия). Нечитаемая версия (сборка

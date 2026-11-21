@@ -22,6 +22,8 @@
 
     <ItemGroup>
         <None Include="Pipe\samples\*.json" CopyToOutputDirectory="PreserveNewest"/>
+        <!-- Маленькое семейство, сохранённое в Revit 2022: версию Revit обход библиотеки читает без Revit -->
+        <None Include="Families\samples\*.rfa" CopyToOutputDirectory="PreserveNewest"/>
     </ItemGroup>
 
 </Project>

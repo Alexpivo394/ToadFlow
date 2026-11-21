@@ -7,6 +7,8 @@
 
     <ItemGroup>
         <PackageReference Include="Polyfill" PrivateAssets="all"/>
+        <!-- FamilyContent — результат чтения семейства аддином -->
+        <PackageReference Include="Alexpivo394.Revit.Families.Files"/>
     </ItemGroup>
 
 </Project>

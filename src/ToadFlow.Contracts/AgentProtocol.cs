@@ -39,6 +39,12 @@ public interface IAgentClient
     Task CancelJob(Guid jobId);
 
     Task ApplySettings(AgentSettingsDto settings);
+
+    /// <summary>
+    ///     Начать обход библиотеки семейств в фоне и сразу ответить; false — прошлый обход ещё идёт. Отчёт агент отправляет по HTTP.
+    ///     Только агентам, сообщившим <see cref="ModuleKinds.FamiliesScan" />: у старых агентов такого метода нет.
+    /// </summary>
+    Task<bool> StartFamilyScan(Families.FamilyScanRequestDto request);
 }
 
 public sealed record InstalledRevitDto(int Year, bool HasNwcExporter);
@@ -113,4 +119,10 @@ public static class ModuleKinds
 
     /// <summary>Выгрузить геометрию и параметры модели для поиска коллизий и загрузить слепок на сервер.</summary>
     public const string ClashExtract = "clash-extract";
+
+    /// <summary>Прочитать в Revit содержимое и картинку одной версии семейства из библиотеки. Задание без модели и без расписания.</summary>
+    public const string FamiliesRead = "families-read";
+
+    /// <summary>Не вид задания, а возможность агента: обходить библиотеку семейств без Revit (<see cref="IAgentClient.StartFamilyScan" />).</summary>
+    public const string FamiliesScan = "families-scan";
 }

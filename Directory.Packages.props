@@ -22,6 +22,8 @@
         <PackageVersion Include="Alexpivo394.Revit.Clash.Rules" Version="1.3.0"/>
         <PackageVersion Include="Alexpivo394.Revit.Clash.Engine" Version="1.3.0"/>
         <PackageVersion Include="Alexpivo394.Revit.Clash.Render" Version="1.3.0"/>
+        <!-- Ядро семейств без Revit (хеш, обход библиотеки, правила обхода, содержимое семейства) -->
+        <PackageVersion Include="Alexpivo394.Revit.Families.Files" Version="0.1.0"/>
     </ItemGroup>
 
     <!-- PostgresEmbed тянет SharpCompress 0.34.2 (GHSA-6c8g-7p36-r338, zip slip при распаковке). Исправленные версии

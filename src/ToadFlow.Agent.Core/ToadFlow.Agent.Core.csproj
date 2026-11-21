@@ -10,6 +10,7 @@
 
     <ItemGroup>
         <PackageReference Include="Alexpivo394.Revit.Export.Sources"/>
+        <PackageReference Include="Alexpivo394.Revit.Families.Files"/>
         <PackageReference Include="Microsoft.Extensions.Hosting"/>
         <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
     </ItemGroup>

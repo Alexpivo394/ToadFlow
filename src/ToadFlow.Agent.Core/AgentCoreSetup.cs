@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ToadFlow.Agent.Config;
 using ToadFlow.Agent.Clash;
+using ToadFlow.Agent.Families;
 using ToadFlow.Agent.Instances;
 using ToadFlow.Agent.Jobs;
 using ToadFlow.Agent.Revit;
@@ -28,6 +29,8 @@ public static class AgentCoreSetup
         services.AddSingleton<JobRunner>();
         services.AddSingleton(provider => new ClashUploader(config, options, provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ClashUploader>>()));
         services.AddSingleton<SourceBrowser>();
+        services.AddSingleton(provider => new FamilyScanReporter(config, options, provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FamilyScanReporter>>()));
+        services.AddSingleton<FamilyLibraryScan>();
         services.AddSingleton<ServerConnection>();
         services.AddHostedService<AgentWorker>();
         return services;
