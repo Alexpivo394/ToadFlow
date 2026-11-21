@@ -48,6 +48,28 @@ internal static class CardEndpoints
         families.MapGet("/review", ReviewAsync);
         families.MapGet("/issues", IssuesAsync);
         families.MapPut("/{id:guid}/notes", NotesAsync).RequireAuthorization(Policies.Operator);
+        families.MapPost("/issues/{id:guid}/resolve", ResolveAsync).RequireAuthorization(Policies.Operator);
+    }
+
+    /// <summary>
+    ///     «Посмотрел» — закрыть случай «изменено без проверки». Остальные случаи закрываются сами, когда их причина ушла из библиотеки:
+    ///     закрыть их руками значило бы спрятать то, что в папке осталось.
+    /// </summary>
+    private static async Task<IResult> ResolveAsync(Guid id, ToadFlowDb db, TimeProvider time, HttpContext http, IDomainEvents events, CancellationToken ct)
+    {
+        var issue = await db.Set<FamilyIssue>().SingleOrDefaultAsync(i => i.Id == id, ct);
+        if (issue is null) return Results.NotFound();
+        if (issue.Kind != IssueKind.UnreviewedChange)
+            return Results.BadRequest(new { error = "Этот случай закроется сам, когда его причину исправят в папке библиотеки" });
+        if (issue.ResolvedAt is null)
+        {
+            issue.ResolvedAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            events.Publish(new CatalogChanged(http.User.Actor(), ScanApplier.UiEntity, issue.CardId ?? Guid.Empty,
+                $"Семейства: просмотрена правка без проверки «{issue.RelativePath}»"));
+        }
+
+        return Results.Ok();
     }
 
     private static async Task<IResult> CardAsync(Guid id, bool? unreviewed, ToadFlowDb db, FamiliesSettingsStore store, ClaimsPrincipal user, CancellationToken ct)

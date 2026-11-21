@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router';
-import { Alert, Badge, Stack, Text } from '@mantine/core';
-import { useApi } from '../../api/queries';
+import { Alert, Badge, Button, Stack, Text } from '@mantine/core';
+import { useApi, useApiMutation } from '../../api/queries';
 import { DataTable, type Column } from '../../components/DataTable';
 import { QueryError } from '../../components/QueryState';
 import { Empty } from '../../components/ui';
@@ -33,6 +33,7 @@ export function IssuesPage() {
       return next;
     }, { replace: true });
 
+  const resolve = useApiMutation<string>('POST', (id) => `/api/families/issues/${id}/resolve`, { invalidate: [familiesKey], json: () => undefined });
   const kinds = Object.keys(t.issueKind) as IssueKind[];
   const columns: Column<FamilyIssue>[] = [
     {
@@ -50,6 +51,17 @@ export function IssuesPage() {
     },
     { key: 'card', title: 'С чем связан', render: (issue) => issue.cardName ?? '—', sort: (issue) => issue.cardName },
     { key: 'created', title: 'Когда', width: 140, render: (issue) => dateTime(issue.createdAt), sort: (issue) => issue.createdAt },
+    {
+      key: 'action', title: '', width: 120, render: (issue) => issue.kind === 'UnreviewedChange' && (
+        <Button size="compact-xs" variant="default" loading={resolve.isPending && resolve.variables === issue.id}
+          onClick={(event) => {
+            event.stopPropagation();
+            resolve.mutate(issue.id);
+          }}>
+          {t.families.seen}
+        </Button>
+      ),
+    },
   ];
 
   return (

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { AuthProvider } from '../../auth/AuthContext';
 import { renderUi } from '../../test/renderApp';
@@ -55,6 +55,23 @@ describe('IssuesPage', () => {
     expect(screen.getAllByText('Изменено без проверки').length).toBeGreaterThan(0);
     expect(screen.getByText('Балка')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Удалить|Переложить|Утвердить/ })).toBeNull();
+  });
+
+  it('an unreviewed change is marked seen; other cases have no button', async () => {
+    const resolved: string[] = [];
+    renderUi(<AuthProvider><IssuesPage /></AuthProvider>, {
+      '/api/families/issues': issues,
+      'POST /api/families/issues/i3/resolve': () => {
+        resolved.push('i3');
+        return {};
+      },
+    });
+
+    const buttons = await screen.findAllByRole('button', { name: 'Посмотрел' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+
+    await waitFor(() => expect(resolved).toEqual(['i3']));
   });
 
   it('nothing to decide says so', async () => {

@@ -500,3 +500,27 @@ public class FamiliesAgentsTests : ServerTest
         agents.ShouldBe([new ToadFlow.Server.Families.Scan.LibraryAgent(library.Agent.Id, "BIM-LIB-01", true)]);
     }
 }
+
+public class FamiliesIssueResolveTests : ServerTest
+{
+    public FamiliesIssueResolveTests() => Services = WithoutScanLoop;
+
+    [Test]
+    public async Task UnreviewedChange_ResolvedByOperator_OthersStayOpen()
+    {
+        await using var library = await FamilyLibrary.StartAsync(Server, await AdminAsync());
+        await library.ScanAsync(File("ОВ/Клапан.rfa", "a"));
+        await library.ScanAsync(File("ОВ/Клапан.rfa", "b"), File("ВК/Клапан.rfa", "c"));
+        var issues = await DbAsync(db => db.Set<FamilyIssue>().AsNoTracking().ToListAsync());
+        var unreviewed = issues.Single(i => i.Kind == IssueKind.UnreviewedChange);
+        var conflict = issues.Single(i => i.Kind == IssueKind.NameConflict);
+        var operatorClient = await ClientAsync(UserRole.Operator);
+
+        (await (await ClientAsync(UserRole.Viewer)).PostAsync($"/api/families/issues/{unreviewed.Id}/resolve", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await operatorClient.PostAsync($"/api/families/issues/{unreviewed.Id}/resolve", null)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await operatorClient.PostAsync($"/api/families/issues/{conflict.Id}/resolve", null)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        var open = await operatorClient.GetJsonAsync<FamilyIssueView[]>("/api/families/issues?open=true");
+        open.Select(i => i.Kind).ShouldBe([IssueKind.NameConflict]);
+    }
+}
