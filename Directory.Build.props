@@ -7,4 +7,10 @@
         <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     </PropertyGroup>
 
+    <!-- Пакеты ядра семейств, собранные локально в соседнем репозитории ToadFamilyManager (build → output), — пока их нет на nuget.org.
+         Папки нет (CI, Docker) — пакеты берутся только с nuget.org. -->
+    <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)..\ToadFamilyManager\output')">
+        <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)..\ToadFamilyManager\output</RestoreAdditionalProjectSources>
+    </PropertyGroup>
+
 </Project>

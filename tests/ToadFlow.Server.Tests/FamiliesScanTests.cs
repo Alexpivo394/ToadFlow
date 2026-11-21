@@ -26,6 +26,9 @@ public class FamiliesScanTests : ServerTest
 
     private async Task<FamilyLibrary> LibraryAsync() => _library = await FamilyLibrary.StartAsync(Server, await AdminAsync());
 
+    private async Task OldAgentLibraryAsync() =>
+        _library = await FamilyLibrary.StartAsync(Server, await AdminAsync(), modules: [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.ClashExtract]);
+
     private Task<List<FamilyCard>> CardsAsync() => DbAsync(db => db.Set<FamilyCard>().AsNoTracking().OrderBy(c => c.CreatedAt).ToListAsync());
 
     private Task<List<FamilyVersion>> VersionsAsync(Guid cardId) =>
@@ -418,7 +421,7 @@ public class FamiliesScanTests : ServerTest
     public async Task NoAgentWithFamilies_StatusSaysAgentOffline()
     {
         // Агент прошлой версии: выгрузку, LOI и коллизии берёт, а обходить библиотеку не умеет
-        _library = await FamilyLibrary.StartAsync(Server, await AdminAsync(), modules: [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.ClashExtract]);
+        await OldAgentLibraryAsync();
 
         var status = await _library.Admin.GetJsonAsync<LibraryStatus>("/api/families/status");
         var scan = await _library.Admin.PostAsync("/api/families/scan", null);

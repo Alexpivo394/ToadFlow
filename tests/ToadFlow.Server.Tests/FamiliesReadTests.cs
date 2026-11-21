@@ -34,6 +34,9 @@ public class FamiliesReadTests : ServerTest
         foreach (var agent in _agents) await agent.DisposeAsync();
     }
 
+    /// <summary>Агент библиотеки умеет только обход: Revit на нём нет.</summary>
+    private async Task<FamilyLibrary> ScanOnlyLibraryAsync() => _library = await FamilyLibrary.StartAsync(Server, await AdminAsync(), modules: [ModuleKinds.FamiliesScan]);
+
     private async Task<FamilyLibrary> LibraryAsync(params InstalledRevitDto[] revits) => _library = await FamilyLibrary.StartAsync(Server, await AdminAsync(), revits: revits);
 
     private Task<List<Job>> ReadJobsAsync() => DbAsync(db => db.Jobs.AsNoTracking().Where(j => j.ModuleKind == ModuleKinds.FamiliesRead).OrderBy(j => j.CreatedAt).ToListAsync());
@@ -118,7 +121,7 @@ public class FamiliesReadTests : ServerTest
     public async Task NoAgentAtAll_StaysPending_AndIsEnqueuedWhenAgentAppears()
     {
         // Агент библиотеки умеет только обход: Revit на нём нет
-        _library = await FamilyLibrary.StartAsync(Server, await AdminAsync(), modules: [ModuleKinds.FamiliesScan]);
+        await ScanOnlyLibraryAsync();
         await _library.ScanAsync(File(@"ОВ\Клапан.rfa", "a"));
         (await ReadJobsAsync()).ShouldBeEmpty();
         await SweepAsync();
@@ -136,7 +139,7 @@ public class FamiliesReadTests : ServerTest
     [Test]
     public async Task OldAgents_NeverGetFamiliesRead()
     {
-        _library = await FamilyLibrary.StartAsync(Server, await AdminAsync(), modules: [ModuleKinds.FamiliesScan]);
+        await ScanOnlyLibraryAsync();
         var old = await FakeAgent.RegisterAsync(Server, _library.Admin, "OLD-1");
         var older = await FakeAgent.RegisterAsync(Server, _library.Admin, "OLD-2");
         _agents.AddRange([old, older]);

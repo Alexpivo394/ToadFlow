@@ -23,14 +23,16 @@ public class FamiliesCardTests : ServerTest
         if (_library is not null) await _library.DisposeAsync();
     }
 
+    private async Task StartLibraryAsync() => _library = await FamilyLibrary.StartAsync(Server, await AdminAsync());
+
     private async Task<Guid> CardIdAsync(string name) => await DbAsync(db => db.Set<FamilyCard>().Where(c => c.Name == name).Select(c => c.Id).SingleAsync());
 
     [Test]
     public async Task Card_HasFullPathAndVersions()
     {
-        _library = await FamilyLibrary.StartAsync(Server, await AdminAsync());
-        await _library.ScanAsync(File(@"ОВ\Клапаны\Клапан.rfa", "a"));
-        await _library.ScanAsync(File(@"ОВ\Клапаны\Клапан.rfa", "b", year: 2024));
+        await StartLibraryAsync();
+        await _library!.ScanAsync(File(@"ОВ\Клапаны\Клапан.rfa", "a"));
+        await _library!.ScanAsync(File(@"ОВ\Клапаны\Клапан.rfa", "b", year: 2024));
         var id = await CardIdAsync("Клапан");
 
         var card = await (await ClientAsync(UserRole.Designer)).GetJsonAsync<FamilyCardView>($"/api/families/{id}");
@@ -66,9 +68,9 @@ public class FamiliesCardTests : ServerTest
     [Test]
     public async Task Card_CandidateHiddenFromDesigner()
     {
-        _library = await FamilyLibrary.StartAsync(Server, await AdminAsync());
-        await _library.ScanAsync(File(@"ОВ\Клапан.rfa", "a"));
-        await _library.ScanAsync(File(@"ОВ\Клапан.rfa", "a"), File(@"_На проверке\Клапан.rfa", "b"));
+        await StartLibraryAsync();
+        await _library!.ScanAsync(File(@"ОВ\Клапан.rfa", "a"));
+        await _library!.ScanAsync(File(@"ОВ\Клапан.rfa", "a"), File(@"_На проверке\Клапан.rfa", "b"));
         var id = await CardIdAsync("Клапан");
 
         var designer = await (await ClientAsync(UserRole.Designer)).GetJsonAsync<FamilyCardView>($"/api/families/{id}");
