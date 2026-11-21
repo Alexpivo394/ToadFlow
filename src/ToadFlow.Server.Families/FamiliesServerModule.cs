@@ -119,7 +119,15 @@ public sealed class FamiliesServerModule : IServerModule
             request.HasIndex(r => r.Number).IsUnique();
             request.Property(r => r.Title).HasMaxLength(RequestEndpoints.MaxTitle);
             request.HasIndex(r => new { r.State, r.UpdatedAt });
+            request.HasIndex(r => r.DirectionId);
             request.Ignore(r => r.IsOpen);
+        });
+
+        model.Entity<FamilyDirection>(direction =>
+        {
+            direction.ToTable("family_directions");
+            direction.Property(d => d.Id).ValueGeneratedNever();
+            direction.Property(d => d.Name).HasMaxLength(60);
         });
 
         model.Entity<FamilyRequestMember>(member =>
@@ -172,6 +180,7 @@ public sealed class FamiliesServerModule : IServerModule
         families.MapFamiliesSearch();
         families.MapFamiliesPanel();
         families.MapFamilyRequests();
+        families.MapFamilyDirections();
         families.MapFamiliesCards();
     }
 

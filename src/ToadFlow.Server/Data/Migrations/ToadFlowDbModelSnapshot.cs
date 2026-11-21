@@ -2386,6 +2386,48 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("family_versions", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyDirection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.PrimitiveCollection<Guid[]>("Coordinators")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("coordinators");
+
+                    b.PrimitiveCollection<string[]>("Disciplines")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("disciplines");
+
+                    b.Property<string>("Hint")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("hint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order");
+
+                    b.PrimitiveCollection<string[]>("Sections")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("sections");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_directions");
+
+                    b.ToTable("family_directions", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Families.Requests.FamilyRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2411,6 +2453,10 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<Guid?>("DirectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("direction_id");
 
                     b.Property<int>("Number")
                         .ValueGeneratedOnAdd()
@@ -2467,6 +2513,9 @@ namespace ToadFlow.Server.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_family_requests");
+
+                    b.HasIndex("DirectionId")
+                        .HasDatabaseName("ix_family_requests_direction_id");
 
                     b.HasIndex("Number")
                         .IsUnique()

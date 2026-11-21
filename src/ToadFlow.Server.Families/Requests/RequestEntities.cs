@@ -48,6 +48,9 @@ public sealed class FamilyRequest
 
     public RequestState State { get; set; }
 
+    /// <summary>Направление BIM; null — общая очередь.</summary>
+    public Guid? DirectionId { get; set; }
+
     public Guid AuthorUserId { get; set; }
 
     public Guid? AssigneeUserId { get; set; }
