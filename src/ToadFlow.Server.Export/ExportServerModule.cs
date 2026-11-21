@@ -14,6 +14,12 @@ public sealed class ExportServerModule : IServerModule
 
     public string Title => "Выгрузка";
 
+    /// <summary>
+    ///     До 15 ошибок за сутки — норма: в расписаниях бывают ещё пустые модели, и они падают, пока их не наполнят. Сбоем
+    ///     считается то, что больше.
+    /// </summary>
+    public int FailedJobsAlarm => 16;
+
     public string Kind => ModuleKinds.Export;
 
     /// <summary>Пустой вид — задания выгрузки, созданные до появления видов.</summary>

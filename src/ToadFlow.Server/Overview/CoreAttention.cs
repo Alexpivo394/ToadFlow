@@ -52,7 +52,7 @@ public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, Module
             .GroupBy(j => j.ModuleKind).Select(g => new { Kind = g.Key, Count = g.Count() }).ToListAsync(ct);
         return modules.Enabled
             .Select(module => (Module: module, Count: byKind.Where(k => module.Kinds.Contains(k.Kind)).Sum(k => k.Count)))
-            .Where(m => m.Count > 0)
+            .Where(m => m.Count > 0 && m.Count >= m.Module.FailedJobsAlarm)
             .Select(m => new AttentionItem(AttentionLevel.Problem,
                 $"{m.Module.Title}: {m.Count} {Russian.Plural(m.Count, "модель", "модели", "моделей")} с ошибкой за сутки",
                 $"{m.Module.HistoryPath}?status=Failed", m.Module.Name));

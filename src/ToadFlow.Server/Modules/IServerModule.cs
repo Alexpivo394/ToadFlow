@@ -29,6 +29,9 @@ public interface IServerModule
     /// <summary>Адрес истории модуля в вебе — туда ведёт строка «модели с ошибкой за сутки».</summary>
     string HistoryPath => $"/{Name}/history";
 
+    /// <summary>С какого числа моделей с ошибкой за сутки строка попадает в «Требует внимания»; меньше — норма модуля.</summary>
+    int FailedJobsAlarm => 1;
+
     /// <summary>Задания пишут результат в папку результатов расписания; false — папка не нужна, её можно не указывать.</summary>
     bool UsesOutputFolder => true;
 

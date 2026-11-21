@@ -117,7 +117,7 @@ public class OverviewTests : ServerTest
     }
 
     [Test]
-    public async Task FailedJobs_GroupedByModule()
+    public async Task FailedJobs_GroupedByModule_ExportBelowAlarmIsQuiet()
     {
         await DbAsync(async db =>
         {
@@ -132,10 +132,29 @@ public class OverviewTests : ServerTest
         var overview = await (await AdminAsync()).GetJsonAsync<OverviewDto>("/api/overview");
 
         overview.Attention.Select(a => (a.Text, a.Link, a.Module)).ShouldBe([
-            ("Выгрузка: 2 модели с ошибкой за сутки", "/export/history?status=Failed", "export"),
             ("Проверка LOI: 1 модель с ошибкой за сутки", "/loi/history?status=Failed", "loi"),
             ("Коллизии: 1 модель с ошибкой за сутки", "/clash/setup/history?status=Failed", "clash")
         ]);
+    }
+
+    [Test]
+    public async Task FailedExports_AboveAlarm_Listed()
+    {
+        await DbAsync(async db =>
+        {
+            for (var i = 0; i < 15; i++) OverviewFakes.FailedJob(db, ModuleKinds.Export, _time.GetUtcNow().AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+        var admin = await AdminAsync();
+        (await admin.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldBeEmpty(); // 15 — ещё норма: пустые модели падают
+
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FailedJob(db, ModuleKinds.Export, _time.GetUtcNow().AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+        var item = (await admin.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
+        (item.Level, item.Text).ShouldBe((AttentionLevel.Problem, "Выгрузка: 16 моделей с ошибкой за сутки"));
     }
 
     [Test]
