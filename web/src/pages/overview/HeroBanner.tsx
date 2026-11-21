@@ -26,7 +26,7 @@ export function HeroBanner({ pulse, attention, tiles, userName }: { pulse: Overv
 
   return (
     <section className="ov-hero" aria-label="Сводка" data-tone={problems > 0 ? 'problem' : 'calm'}>
-      <svg className="ov-hero-frog" width="150" height="150" viewBox="0 0 100 100" aria-hidden>
+      <svg className="ov-hero-frog" width="120" height="120" viewBox="0 0 100 100" aria-hidden>
         <circle cx="30" cy="30" r="16" fill="#fff" />
         <circle cx="70" cy="30" r="16" fill="#fff" />
         <ellipse cx="50" cy="62" rx="44" ry="30" fill="#fff" />

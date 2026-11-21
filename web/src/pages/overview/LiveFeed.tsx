@@ -39,7 +39,7 @@ export function LiveFeed() {
       {feed.data && items.length === 0 ? (
         <Text c="dimmed" size="sm">Пока тихо</Text>
       ) : (
-        <Stack gap={2}>
+        <Stack gap={2} className="ov-feed-list">
           {items.map((item) => {
             const Icon = icons[item.tone] ?? IconPoint;
             return (

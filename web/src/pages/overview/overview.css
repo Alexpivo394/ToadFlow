@@ -15,7 +15,7 @@
     radial-gradient(1200px 300px at 85% -40%, rgba(255, 255, 255, 0.2), transparent 60%),
     linear-gradient(120deg, #a51d1d 0%, #e03131 50%, #f76707 100%);
 }
-.ov-hero-frog { position: absolute; right: 26px; top: 14px; opacity: 0.16; pointer-events: none; }
+.ov-hero-frog { position: absolute; right: 170px; top: 50%; transform: translateY(-50%); opacity: 0.14; pointer-events: none; }
 .ov-hero-title { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2; margin-right: 160px; }
 .ov-hero-sub { opacity: 0.92; margin-top: 6px; font-size: 15px; margin-right: 160px; }
 .ov-hero-kpis { display: flex; gap: 32px; margin-top: 22px; flex-wrap: wrap; }
@@ -88,3 +88,4 @@ a.ov-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0, 0,
 
 .ov-columns { display: grid; gap: var(--mantine-spacing-md); grid-template-columns: minmax(0, 1fr); align-items: start; }
 @media (min-width: 62em) { .ov-columns { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); } }
+.ov-feed-list { max-height: 440px; overflow-y: auto; }
