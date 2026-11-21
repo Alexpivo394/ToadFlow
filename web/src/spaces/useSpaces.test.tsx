@@ -52,6 +52,15 @@ describe('useSpaces', () => {
     expect(items.map((item) => item.textContent)).toContain('families: /families/catalog');
   });
 
+  it('families pages by role: coordinator reviews and decides, viewer only looks', async () => {
+    const withFamilies = [...modules(), { name: 'families', title: 'Семейства', enabled: true }];
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Operator'), '/api/modules': withFamilies });
+
+    const items = (await screen.findAllByRole('listitem')).map((item) => item.textContent);
+
+    expect(items).toContain('families: /families/catalog,/families/review,/families/issues,/families/settings');
+  });
+
   it('families space is absent while the module is not enabled', async () => {
     const spaces = await spacesOf('Admin');
 
