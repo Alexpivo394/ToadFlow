@@ -87,13 +87,13 @@ docker compose up -d --build
 **2. Агент.** Windows с Revit. В интерфейсе нажмите **Ферма → Агенты → Подключить агента** и получите код. Затем поставьте `ToadFlowAgent-*.msi` из [релизов](https://github.com/Alexpivo394/ToadFlow/releases/latest):
 
 ```powershell
-msiexec /i ToadFlowAgent-3.0.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
+msiexec /i ToadFlowAgent-3.0.1.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
 ```
 
 **3. Первое расписание.** Пользователи, источники моделей, пресеты и расписание — по странице [«Первый запуск»](https://github.com/Alexpivo394/ToadFlow/wiki/Getting-started).
 
 > [!NOTE]
-> Обновление с 2.4 на 3.0.0 добавляет модуль «Семейства»; править `.env` не нужно. Порядок — в вики: [С 2.4 на 3.0.0](https://github.com/Alexpivo394/ToadFlow/wiki/Server#с-24-на-300-семейства-и-новый-обзор).
+> Обновление с 2.4 на 3.0.1 добавляет модуль «Семейства»; править `.env` не нужно. Порядок — в вики: [С 2.4 на 3.0.1](https://github.com/Alexpivo394/ToadFlow/wiki/Server#с-24-на-301-семейства-и-новый-обзор).
 
 ## Документация
 
