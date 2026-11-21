@@ -79,6 +79,10 @@ public static class Russian
         return tens is >= 11 and <= 14 ? many : units == 1 ? one : units is >= 2 and <= 4 ? few : many;
     }
 
+    /// <summary>«выгружена 1 модель», «выгружено 3 модели»: глагол при «1» (21, 31…) — в роде слова, иначе — средний.</summary>
+    public static string Counted(int n, string verbOne, string verbMany, string one, string few, string many) =>
+        $"{(Plural(n, "1", "", "") == "1" ? verbOne : verbMany)} {n} {Plural(n, one, few, many)}";
+
     /// <summary>Сколько времени прошло, грубо: «25 мин», «3 ч», «2 д».</summary>
     public static string Duration(TimeSpan span) =>
         span.TotalMinutes < 60 ? $"{Math.Max(1, (int)span.TotalMinutes)} мин"

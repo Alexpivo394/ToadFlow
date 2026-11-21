@@ -150,6 +150,7 @@ public class OverviewClashTileTests : ServerTest
 
         (tile.Value, tile.Label, tile.Link).ShouldBe(("3", "открыто", "/clash/summary"));
         tile.Lines.ShouldBe(["новых за неделю: 3", "закрыто за неделю: 0"]);
+        (tile.Series!.Count, tile.Series[13], tile.Highlight).ShouldBe((14, 3, null));
     }
 }
 

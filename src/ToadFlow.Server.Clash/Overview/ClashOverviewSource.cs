@@ -7,7 +7,10 @@ using CoreOverview = ToadFlow.Server.Overview;
 
 namespace ToadFlow.Server.Clash.Overview;
 
-/// <summary>Плитка коллизий: открытые сейчас и новые и закрытые за неделю — тот же расчёт, что у сводки коллизий за 7 дней.</summary>
+/// <summary>
+///     Плитка коллизий: открытые сейчас и новые и закрытые за неделю — тот же расчёт, что у сводки коллизий за 7 дней. Ряд — открытые
+///     на конец каждого дня за две недели; фраза — сколько закрыто сегодня.
+/// </summary>
 internal sealed class ClashOverviewSource : CoreOverview.IOverviewSource
 {
     public string Module => "clash";
@@ -20,11 +23,17 @@ internal sealed class ClashOverviewSource : CoreOverview.IOverviewSource
             return new CoreOverview.OverviewTile(Module, "—", "данных пока нет", null, [], link);
 
         var general = services.GetRequiredService<ISettingsStore>();
+        var settings = services.GetRequiredService<ClashSettingsStore>();
         var time = services.GetRequiredService<TimeProvider>();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(time.GetUtcNow(), (await general.GetAsync(ct)).TimeZone).DateTime);
-        var week = await AnalyticsEndpoints.AnalyticsAsync(null, null, null, today.AddDays(-6), today, null, db, general,
-            services.GetRequiredService<ClashSettingsStore>(), time, ct);
+        var today = CoreOverview.OverviewDays.DayOf(time.GetUtcNow(), (await general.GetAsync(ct)).TimeZone);
+        Task<ClashAnalyticsView> AnalyticsAsync(DateOnly from) => AnalyticsEndpoints.AnalyticsAsync(null, null, null, from, today, null, db, general, settings, time, ct);
+
+        var week = await AnalyticsAsync(today.AddDays(-6));
+        var series = await AnalyticsAsync(today.AddDays(-(CoreOverview.OverviewDays.Count - 1)));
+        var fixedToday = (await AnalyticsAsync(today)).Period.Fixed;
         return new CoreOverview.OverviewTile(Module, week.Current.Open.ToString(), "открыто", null,
-            [$"новых за неделю: {week.Period.New}", $"закрыто за неделю: {week.Period.Fixed}"], link);
+            [$"новых за неделю: {week.Period.New}", $"закрыто за неделю: {week.Period.Fixed}"], link,
+            series.Series.Select(p => (double)p.Open).ToList(),
+            fixedToday == 0 ? null : CoreOverview.Russian.Counted(fixedToday, "закрыта", "закрыто", "коллизия", "коллизии", "коллизий"));
     }
 }

@@ -299,6 +299,22 @@ internal static class AnalyticsQueryEndpoints
         return (Ratio(latest.Sum(c => c.Filled), latest.Sum(c => c.Values)), latest.Select(c => c.Object).Where(o => o != null).Distinct().Count());
     }
 
+    /// <summary>
+    ///     Заполненность (0..100) на каждый из моментов <paramref name="ends" />: по последней проверке каждой модели до него, как
+    ///     <see cref="SummaryAsync" />. До первой проверки — 0. Проверки читаются одним запросом.
+    /// </summary>
+    internal static async Task<IReadOnlyList<double>> FillSeriesAsync(ToadFlowDb db, IReadOnlyList<DateTimeOffset> ends, CancellationToken ct)
+    {
+        var last = ends[^1].ToUniversalTime();
+        var checks = await db.Set<LoiCheck>().AsNoTracking().Where(c => c.CheckedAt < last)
+            .Select(c => new { c.ModelKey, c.CheckedAt, c.Filled, c.Values }).ToListAsync(ct);
+        return ends.Select(end =>
+        {
+            var latest = checks.Where(c => c.CheckedAt < end).GroupBy(c => c.ModelKey).Select(g => g.MaxBy(c => c.CheckedAt)!).ToList();
+            return Ratio(latest.Sum(c => c.Filled), latest.Sum(c => c.Values)) is { } rate ? Math.Round(rate * 100, 1) : 0;
+        }).ToList();
+    }
+
     /// <summary>Проценты с запятой — CSV через точку с запятой открывают в русском Excel.</summary>
     private static string Percent(double? share) =>
         share is { } value ? (value * 100).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',') : "";

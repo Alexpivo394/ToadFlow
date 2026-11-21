@@ -1,12 +1,16 @@
+using Microsoft.EntityFrameworkCore;
+using ToadFlow.Contracts;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Loi.Analytics;
 using ToadFlow.Server.Overview;
+using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Loi;
 
 /// <summary>
 ///     Плитка LOI: заполненность по последней проверке каждой модели — тот же расчёт, что у страницы аналитики, — изменение к
-///     состоянию неделю назад и число объектов.
+///     состоянию неделю назад и число объектов. Ряд — заполненность на конец каждого дня за две недели; фраза — сколько моделей
+///     проверила ферма за сутки.
 /// </summary>
 internal sealed class LoiOverview : IOverviewSource
 {
@@ -28,6 +32,12 @@ internal sealed class LoiOverview : IOverviewSource
             trend = change > 0 ? $"▲ {change}" : change < 0 ? $"▼ {-change}" : "0";
         }
 
-        return new OverviewTile(Module, $"{Math.Round(rate * 100, MidpointRounding.AwayFromZero):0} %", "заполнено", trend, [$"объектов: {current.Objects}"], link);
+        var zone = (await services.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone;
+        var series = await AnalyticsQueryEndpoints.FillSeriesAsync(db, OverviewDays.Of(now, zone).Ends, ct);
+        var dayAgo = now.AddDays(-1);
+        var checkedDay = await db.Jobs.AsNoTracking().CountAsync(j => j.ModuleKind == ModuleKinds.Loi && j.FinishedAt >= dayAgo &&
+            (j.Status == JobStatus.Succeeded || j.Status == JobStatus.Warning), ct);
+        return new OverviewTile(Module, $"{Math.Round(rate * 100, MidpointRounding.AwayFromZero):0} %", "заполнено", trend, [$"объектов: {current.Objects}"], link,
+            series, checkedDay == 0 ? null : Russian.Counted(checkedDay, "проверена", "проверено", "модель", "модели", "моделей"));
     }
 }

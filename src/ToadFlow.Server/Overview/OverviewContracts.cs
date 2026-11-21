@@ -16,7 +16,10 @@ public enum AttentionLevel
 public sealed record AttentionItem(AttentionLevel Level, string Text, string Link, string? Module, UserRole MinRole = UserRole.Viewer);
 
 /// <summary>Плитка модуля на «Обзоре»: главное число с подписью, изменение за период, до трёх строк пояснений.</summary>
-public sealed record OverviewTile(string Module, string Value, string Label, string? Trend, IReadOnlyList<string> Lines, string Link);
+/// <param name="Series">Ряд для графика: <see cref="OverviewDays.Count" /> значений по дням пояса из настроек, последний — сегодня; null — графика нет.</param>
+/// <param name="Highlight">Фраза для шапки о последних сутках («выгружено 48 моделей»), без заглавной и точки; null — сказать нечего.</param>
+public sealed record OverviewTile(string Module, string Value, string Label, string? Trend, IReadOnlyList<string> Lines, string Link,
+    IReadOnlyList<double>? Series = null, string? Highlight = null);
 
 /// <summary>Что модуль показывает на «Обзоре». Регистрируется в <c>AddServices</c> модуля — у выключенного модуля его нет.</summary>
 public interface IOverviewSource
@@ -67,3 +70,39 @@ public sealed record ServerStats(
     IReadOnlyList<WorkerStat> Workers);
 
 public sealed record OverviewView(IReadOnlyList<AttentionItem> Attention, IReadOnlyList<OverviewTile> Tiles, ServerStats Server, OverviewPulse Pulse);
+
+/// <summary>Дни графиков плиток: последние <see cref="Count" /> дней в поясе из настроек, последний — сегодня.</summary>
+public static class OverviewDays
+{
+    public const int Count = 14;
+
+    public static DateOnly DayOf(DateTimeOffset at, TimeZoneInfo zone) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(at, zone).DateTime);
+
+    /// <summary>Первый день ряда и момент конца каждого дня (UTC) — для «на конец дня».</summary>
+    public static (DateOnly First, DateTimeOffset[] Ends) Of(DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var first = DayOf(now, zone).AddDays(-(Count - 1));
+        return (first, Enumerable.Range(1, Count).Select(i => Start(first.AddDays(i), zone)).ToArray());
+    }
+
+    /// <summary>Начало дня в поясе — момент UTC.</summary>
+    public static DateTimeOffset Start(DateOnly day, TimeZoneInfo zone)
+    {
+        var local = day.ToDateTime(TimeOnly.MinValue);
+        return new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
+    }
+
+    /// <summary>Число по дням ряда: сколько моментов пришлось на каждый день.</summary>
+    public static IReadOnlyList<double> CountByDay(IEnumerable<DateTimeOffset> moments, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var first = Of(now, zone).First;
+        var counts = new double[Count];
+        foreach (var at in moments)
+        {
+            var index = DayOf(at, zone).DayNumber - first.DayNumber;
+            if (index is >= 0 and < Count) counts[index]++;
+        }
+
+        return counts;
+    }
+}

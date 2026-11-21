@@ -7,7 +7,7 @@ using ToadFlow.Server.Settings;
 
 namespace ToadFlow.Server.Export;
 
-/// <summary>Плитка выгрузки: сколько моделей выгружено за сутки, ошибки, ближайший запуск.</summary>
+/// <summary>Плитка выгрузки: сколько моделей выгружено за сутки, ошибки, ближайший запуск; ряд — выгруженные по дням за две недели.</summary>
 internal sealed class ExportOverview : IOverviewSource
 {
     public string Module => "export";
@@ -22,15 +22,22 @@ internal sealed class ExportOverview : IOverviewSource
         var jobs = db.Jobs.AsNoTracking().Where(j => kinds.Contains(j.ModuleKind));
         if (!await jobs.AnyAsync(ct)) return new OverviewTile(Module, "—", "данных пока нет", null, [], link);
 
-        var done = await jobs.CountAsync(j => (j.Status == JobStatus.Succeeded || j.Status == JobStatus.Warning) && j.FinishedAt >= dayAgo, ct);
-        var failed = await jobs.CountAsync(j => j.Status == JobStatus.Failed && j.FinishedAt >= dayAgo, ct);
+        var zone = (await services.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone;
+        var firstDay = OverviewDays.Start(OverviewDays.Of(now, zone).First, zone);
+        var from = firstDay < dayAgo ? firstDay : dayAgo;
+        var finished = await jobs.Where(j => j.FinishedAt >= from && (j.Status == JobStatus.Succeeded || j.Status == JobStatus.Warning || j.Status == JobStatus.Failed))
+            .Select(j => new { At = j.FinishedAt!.Value, j.Status }).ToListAsync(ct);
+        var done = finished.Where(j => j.Status != JobStatus.Failed).ToList();
+        var doneDay = done.Count(j => j.At >= dayAgo);
+        var failed = finished.Count(j => j.Status == JobStatus.Failed && j.At >= dayAgo);
         var next = await db.Schedules.AsNoTracking().Where(s => s.IsEnabled && s.NextRunAt != null && kinds.Contains(s.ModuleKind))
             .MinAsync(s => s.NextRunAt, ct);
-        var zone = (await services.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone;
-        return new OverviewTile(Module, done.ToString(), "за сутки", null,
+        return new OverviewTile(Module, doneDay.ToString(), "за сутки", null,
         [
             failed == 0 ? "без ошибок" : $"ошибок: {failed}",
             next is { } at ? $"следующий запуск {TimeZoneInfo.ConvertTime(at, zone):dd.MM HH:mm}" : "расписаний нет"
-        ], link);
+        ], link,
+            OverviewDays.CountByDay(done.Select(j => j.At), now, zone),
+            doneDay == 0 ? null : Russian.Counted(doneDay, "выгружена", "выгружено", "модель", "модели", "моделей"));
     }
 }

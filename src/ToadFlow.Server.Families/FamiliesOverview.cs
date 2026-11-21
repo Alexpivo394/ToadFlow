@@ -27,14 +27,23 @@ internal sealed class FamiliesOverview : IOverviewSource
 
         var db = services.GetRequiredService<ToadFlowDb>();
         var cards = db.Set<FamilyCard>().AsNoTracking();
-        var approved = await cards.CountAsync(c => c.State == CardState.Approved, ct);
+        var approvedAt = await cards.Where(c => c.State == CardState.Approved).Select(c => c.CreatedAt).ToListAsync(ct);
+        var approved = approvedAt.Count;
         var inReview = await db.Set<FamilyVersion>().AsNoTracking()
             .CountAsync(v => v.State == VersionState.InReview && cards.Any(c => c.Id == v.CardId && c.State != CardState.Archived), ct);
         var issues = await db.Set<FamilyIssue>().CountAsync(i => i.ResolvedAt == null, ct);
         var waiting = await db.Set<FamilyRequest>().CountAsync(r => r.State == RequestState.New || r.State == RequestState.InWork, ct);
         return new OverviewTile(Module, approved.ToString(), "в каталоге", null,
-            [$"заявок ждёт: {waiting}", $"на проверке: {inReview}", $"нужно решение: {issues}"], "/families/catalog");
+            [$"заявок ждёт: {waiting}", $"на проверке: {inReview}", $"нужно решение: {issues}"], "/families/catalog",
+            CatalogSeries(approvedAt, services.GetRequiredService<TimeProvider>().GetUtcNow(), (await services.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone));
     }
+
+    /// <summary>
+    ///     Одобренные семейства на конец каждого дня. Времени одобрения у карточки нет — берётся время её появления: ряд показывает рост
+    ///     нынешнего каталога, а не историю решений.
+    /// </summary>
+    private static IReadOnlyList<double> CatalogSeries(List<DateTimeOffset> created, DateTimeOffset now, TimeZoneInfo zone) =>
+        OverviewDays.Of(now, zone).Ends.Select(end => (double)created.Count(at => at < end)).ToList();
 
     public async Task<IReadOnlyList<AttentionItem>> AttentionAsync(IServiceProvider services, CancellationToken ct)
     {
