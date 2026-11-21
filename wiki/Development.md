@@ -27,7 +27,7 @@
 | `tests/` | Тесты сервера, агента и аддина |
 | `wiki/` | Эта вики; публикуется в GitHub Wiki при изменении в `main` |
 
-Ядро выгрузки — пакеты [ToadExport](https://github.com/Alexpivo394/ToadExport), ядро проверки LOI — пакеты [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck), ядро коллизий — пакеты [ToadClash](https://github.com/Alexpivo394/ToadClash), ядро семейств — пакеты [ToadFamilyManager](https://github.com/Alexpivo394/ToadFamilyManager) (`Alexpivo394.Revit.Families.*`) на nuget.org. Если рядом с ToadFlow лежит репозиторий `ToadFamilyManager` со собранными пакетами в `output`, сборка берёт их оттуда сама (`Directory.Build.props`). Чтобы собрать ToadFlow с пакетами, которых ещё нет на nuget.org, соберите их локально (`DOTNET_ENVIRONMENT=Development Publish__Version=X.Y.Z dotnet run -c Release -- pack` в `build/` репозитория пакета) и добавьте папку `output` как источник: `dotnet build -p:RestoreAdditionalProjectSources=<папка>`.
+Ядро выгрузки — пакеты [ToadExport](https://github.com/Alexpivo394/ToadExport), ядро проверки LOI — пакеты [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck), ядро коллизий — пакеты [ToadClash](https://github.com/Alexpivo394/ToadClash), ядро семейств — пакеты [ToadFamilyManager](https://github.com/Alexpivo394/ToadFamilyManager) (`Alexpivo394.Revit.Families.*`) на nuget.org. Чтобы собрать ToadFlow с пакетами, которых ещё нет на nuget.org, соберите их локально (`DOTNET_ENVIRONMENT=Development Publish__Version=X.Y.Z dotnet run -c Release -- pack` в `build/` репозитория пакета) и добавьте папку `output` как источник: `dotnet build -p:RestoreAdditionalProjectSources=<папка>`.
 
 ## Запуск локально
 
