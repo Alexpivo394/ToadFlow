@@ -123,6 +123,8 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
         }
 
         var published = await PublishAsync(ct);
+        // Заявки закрываются в той же транзакции: кто увидел новую карточку, видит и готовую заявку.
+        var closed = await Requests.Requests.CloseByPublicationsAsync(db, published, _cards, _versions, _now, ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
@@ -130,6 +132,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
         if (applied.Changed)
             events.Publish(new CatalogChanged(Actor.System, UiEntity, scanId,
                 $"Семейства: обход библиотеки — новых семейств {_newCards}, новых версий {_newVersions}, перенесено {_moved}, в архив {_archived}, новых случаев {_newIssues}"));
+        foreach (var (id, text) in closed) events.Publish(new CatalogChanged(Actor.System, Requests.Requests.UiEntity, id, text));
         return applied;
     }
 

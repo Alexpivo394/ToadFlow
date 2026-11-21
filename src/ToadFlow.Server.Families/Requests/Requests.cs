@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Data;
-using ToadFlow.Server.Events;
 using ToadFlow.Server.Families.Data;
 
 namespace ToadFlow.Server.Families.Requests;
@@ -14,23 +13,21 @@ public static class Requests
         db.Set<FamilyRequest>().AnyAsync(r => r.Id == id && (r.State == RequestState.New || r.State == RequestState.InWork), ct);
 
     /// <summary>
-    ///     Публикация с заявкой увидена обходом: заявка «готова» со ссылкой на карточку. Уже закрытую заявку публикация не трогает.
-    ///     Сохраняет изменения сама.
+    ///     Публикации с заявкой, которые обход привязал к версиям: заявка «готова» со ссылкой на карточку. Уже закрытую заявку публикация не
+    ///     трогает. Изменения сохраняет вызывающий — в транзакции обхода.
     /// </summary>
-    public static async Task CloseByPublicationsAsync(ToadFlowDb db, IEnumerable<FamilyPublication> published, TimeProvider time, IDomainEvents events,
-        CancellationToken ct)
+    /// <param name="cards">Карточки обхода по id: у привязанной версии карточка всегда среди них.</param>
+    /// <param name="versions">Версии обхода по id.</param>
+    /// <returns>Закрытые заявки и строки для журнала действий.</returns>
+    public static async Task<List<(Guid Id, string Text)>> CloseByPublicationsAsync(ToadFlowDb db, IEnumerable<FamilyPublication> published,
+        IReadOnlyDictionary<Guid, FamilyCard> cards, IReadOnlyDictionary<Guid, FamilyVersion> versions, DateTimeOffset now, CancellationToken ct)
     {
-        var withRequest = published.Where(p => p is { RequestId: not null, VersionId: not null }).ToList();
-        if (withRequest.Count == 0) return;
-
-        var now = time.GetUtcNow();
-        foreach (var publication in withRequest)
+        var closed = new List<(Guid, string)>();
+        foreach (var publication in published.Where(p => p is { RequestId: not null, VersionId: not null }))
         {
+            if (!versions.TryGetValue(publication.VersionId!.Value, out var version) || !cards.TryGetValue(version.CardId, out var card)) continue;
             var request = await db.Set<FamilyRequest>().SingleOrDefaultAsync(r => r.Id == publication.RequestId, ct);
             if (request is not { IsOpen: true }) continue;
-            var card = await db.Set<FamilyVersion>().Where(v => v.Id == publication.VersionId)
-                .Join(db.Set<FamilyCard>(), v => v.CardId, c => c.Id, (v, c) => new { c.Id, c.Name }).SingleOrDefaultAsync(ct);
-            if (card is null) continue;
 
             request.State = RequestState.Done;
             request.CardId = card.Id;
@@ -46,8 +43,9 @@ public static class Requests
                 IsEvent = true,
                 At = now
             });
-            await db.SaveChangesAsync(ct);
-            events.Publish(new CatalogChanged(Actor.System, UiEntity, request.Id, $"Семейства: заявка № {request.Number} готова — «{card.Name}»"));
+            closed.Add((request.Id, $"Семейства: заявка № {request.Number} готова — «{card.Name}»"));
         }
+
+        return closed;
     }
 }

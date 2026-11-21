@@ -10,10 +10,15 @@ using ToadFlow.Server.Tests.Infrastructure;
 
 namespace ToadFlow.Agent.Tests.Families;
 
-/// <summary>Настоящий агент на связи с сервером: сообщает о семействах и начинает обход по вызову сервера.</summary>
+/// <summary>Настоящий агент на связи с сервером: сообщает о семействах и начинает обход по вызову сервера. Данные агента — во временной папке.</summary>
+[NotInParallel(nameof(AgentPaths))]
 public class FamilyScanHubTests : ServerTest
 {
     private readonly FakeLauncher _launcher = new();
+    private readonly Config.AgentConfigStoreTests.TempRoot _root = new();
+
+    [After(Test)]
+    public void Cleanup() => _root.Dispose();
 
     [Test]
     public async Task Hello_ModulesReachServer_AndServerStartsScan()

@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts.Families;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
-using ToadFlow.Server.Events;
 using ToadFlow.Server.Families.Cards;
 using ToadFlow.Server.Families.Data;
 using ToadFlow.Server.Families.Read;
@@ -37,17 +36,11 @@ internal static class ScanEndpoints
     /// <summary><c>POST /api/agent/families/scans/{scanId}</c> — отчёт обхода от агента, тело сжато gzip.</summary>
     public static void MapFamiliesAgent(this RouteGroupBuilder agentApi) =>
         agentApi.MapPost("/families/scans/{scanId:guid}", async (Guid scanId, FamilyScanReportDto report, HttpContext http, ScanApplier applier, FamilyReadJobs reads,
-            ToadFlowDb db, TimeProvider time, IDomainEvents events, ILogger<ScanApplier> logger, CancellationToken ct) =>
+            ILogger<ScanApplier> logger, CancellationToken ct) =>
         {
             var applied = await applier.ApplyAsync(scanId, http.User.AgentId(), report, ct);
-            if (applied is null)
-            {
-                logger.LogInformation("Отчёт обхода {Scan} не применён: обход неизвестен или уже завершён", scanId);
-                return Results.Ok();
-            }
-
-            await reads.EnqueueAsync(applied.VersionsToRead, ct);
-            await Requests.Requests.CloseByPublicationsAsync(db, applied.Published, time, events, ct);
+            if (applied is null) logger.LogInformation("Отчёт обхода {Scan} не применён: обход неизвестен или уже завершён", scanId);
+            else await reads.EnqueueAsync(applied.VersionsToRead, ct);
             return Results.Ok();
         });
 

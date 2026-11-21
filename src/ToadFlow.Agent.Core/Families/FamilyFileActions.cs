@@ -109,9 +109,17 @@ public sealed class FamilyFileActions(ILogger<FamilyFileActions> logger)
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.Copy(copy, target, overwrite: true);
+        if (FamilyHash.OfFile(target) != action.Hash) return "копия в истории повреждена — файл положен, но его содержимое другое; проверьте его в проводнике";
+        // Файл дописан агентом и проверен: время записи копии (давнее) — чтобы обход, начатый сразу, взял его, а не ждал, пока он «уляжется».
+        File.SetLastWriteTimeUtc(target, File.GetLastWriteTimeUtc(copy));
         var catalog = Path.ChangeExtension(target, LibraryPaths.CatalogExtension);
-        if (catalogCopy is not null) File.Copy(catalogCopy, catalog, overwrite: true);
+        if (catalogCopy is not null)
+        {
+            File.Copy(catalogCopy, catalog, overwrite: true);
+            File.SetLastWriteTimeUtc(catalog, File.GetLastWriteTimeUtc(catalogCopy));
+        }
         else if (File.Exists(catalog)) File.Delete(catalog);
+
         return null;
     }
 

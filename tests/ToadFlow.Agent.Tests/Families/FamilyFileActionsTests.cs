@@ -140,11 +140,14 @@ public class FamilyFileActionsTests
         var hash = Put(@"ОВ\Клапан.rfa", "v1");
         var catalog = Put(@"ОВ\Клапан.txt", "types");
         (await RunAsync(FamilyFileActionKind.Delete, @"ОВ\Клапан.rfa", null, hash)).Error.ShouldBeNull();
+        File.SetLastWriteTimeUtc(HistoryStore.PathOf(_root, hash, ".rfa"), DateTime.UtcNow.AddDays(-3));
 
         var result = await RunAsync(FamilyFileActionKind.Restore, @"ОВ\Клапан.rfa", null, hash, catalog);
 
         result.Error.ShouldBeNull();
         (Read(@"ОВ\Клапан.rfa"), Read(@"ОВ\Клапан.txt")).ShouldBe(("v1", "types"));
+        // Время записи — копии из истории: обход возьмёт файл сразу, не дожидаясь, пока он «уляжется».
+        File.GetLastWriteTimeUtc(Path.Combine(_root, @"ОВ\Клапан.rfa")).ShouldBe(File.GetLastWriteTimeUtc(HistoryStore.PathOf(_root, hash, ".rfa")));
     }
 
     [Test]
