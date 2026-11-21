@@ -208,4 +208,147 @@ public class FamiliesRequestTests : ServerTest
         (await download.Content.ReadAsByteArrayAsync()).ShouldBe("каталог"u8.ToArray());
         download.Content.Headers.ContentDisposition!.DispositionType.ShouldBe("attachment");
     }
+
+    private sealed record Me(Guid Id);
+
+    private static async Task<Guid> IdAsync(HttpClient client) => (await client.GetJsonAsync<Me>("/api/profile")).Id;
+
+    private async Task<List<DirectionView>> DirectionsAsync(params DirectionInput[] directions)
+    {
+        var response = await (await AdminAsync()).PutJsonAsync("/api/families/directions", directions);
+        response.EnsureSuccessStatusCode();
+        return await response.ReadJsonAsync<List<DirectionView>>();
+    }
+
+    private static async Task<Created> CreateFullAsync(HttpClient client, NewRequest body)
+    {
+        var response = await client.PostJsonAsync("/api/families/requests", body);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        return await response.ReadJsonAsync<Created>();
+    }
+
+    private static NewRequest Body(string title, string? section = null, DateOnly? neededBy = null, bool? blocks = null, string? project = null) =>
+        new(title, null, section, null, project, NeededBy: neededBy, BlocksIssue: blocks);
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+
+    [Test]
+    public async Task Create_ResolvesDirectionAndKeepsLegacyUrgency()
+    {
+        await DirectionsAsync(new DirectionInput("ОВ/ВК", ["ОВ"], [], [], null));
+        var designer = await ClientAsync(UserRole.Designer);
+
+        var created = await CreateAsync(designer, urgency: RequestUrgency.Urgent);
+
+        var view = await ViewAsync(designer, created.Id);
+        (view.Request.DirectionName, view.Request.BlocksIssue, view.Request.Urgency, view.Request.Kind, view.Request.Turn)
+            .ShouldBe(("ОВ/ВК", true, RequestUrgency.Urgent, RequestKind.New, "staff"));
+    }
+
+    [Test]
+    public async Task Create_Fix_RequiresTargetCard()
+    {
+        var directions = await DirectionsAsync(new DirectionInput("АР/КР", ["Двери"], [], [], null));
+        var card = await DbAsync(async db =>
+        {
+            var id = await SeedCardAsync(db, "Дверь ДГ", @"Двери\Дверь ДГ.rfa", CardState.Approved, null, DateTimeOffset.UtcNow);
+            await db.Set<FamilyCard>().Where(c => c.Id == id).ExecuteUpdateAsync(c => c.SetProperty(x => x.Section, "Двери"));
+            return id;
+        });
+        var designer = await ClientAsync(UserRole.Designer);
+
+        (await designer.PostJsonAsync("/api/families/requests", new NewRequest("Не тот уровень", null, null, null, null, RequestKind.Fix)))
+            .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var created = await CreateFullAsync(designer, new NewRequest("Не тот уровень", null, null, null, null, RequestKind.Fix, TargetCardId: card));
+
+        var view = await ViewAsync(designer, created.Id);
+        (view.Request.Kind, view.Request.TargetCardId, view.Request.TargetCardName, view.Request.Section, view.Request.DirectionId)
+            .ShouldBe((RequestKind.Fix, (Guid?)card, "Дверь ДГ", "Двери", (Guid?)directions[0].Id));
+    }
+
+    [Test]
+    public async Task List_Scopes()
+    {
+        var ovClient = await ClientAsync(UserRole.Operator);
+        var arClient = await ClientAsync(UserRole.Operator);
+        await DirectionsAsync(new DirectionInput("ОВ/ВК", ["ОВ"], [], [await IdAsync(ovClient)], null),
+            new DirectionInput("АР/КР", ["АР"], [], [await IdAsync(arClient)], null));
+        var designer = await ClientAsync(UserRole.Designer);
+        var ov = await CreateFullAsync(designer, Body("Клапан", "ОВ"));
+        var ar = await CreateFullAsync(designer, Body("Дверь", "АР"));
+        var common = await CreateFullAsync(designer, Body("Что-то"));
+
+        async Task<List<Guid>> ScopeAsync(HttpClient client, string scope) =>
+            (await client.GetJsonAsync<Page<RequestListItem>>($"/api/families/requests?scope={scope}")).Items.Select(r => r.Id).ToList();
+
+        (await ScopeAsync(ovClient, "direction")).ShouldBe([ov.Id, common.Id], ignoreOrder: true);
+        (await ScopeAsync(arClient, "direction")).ShouldBe([ar.Id, common.Id], ignoreOrder: true);
+        (await ovClient.PostAsync($"/api/families/requests/{ov.Id}/take", null)).EnsureSuccessStatusCode();
+        (await ScopeAsync(ovClient, "assigned")).ShouldBe([ov.Id]);
+        (await ScopeAsync(arClient, "unassigned")).ShouldBe([ar.Id, common.Id], ignoreOrder: true);
+        (await ScopeAsync(designer, "mine")).Count.ShouldBe(3);
+    }
+
+    [Test]
+    public async Task List_Order_BlocksThenOverdueThenDeadline()
+    {
+        var designer = await ClientAsync(UserRole.Designer);
+        var plain = await CreateFullAsync(designer, Body("без срока"));
+        var later = await CreateFullAsync(designer, Body("через 10 дней", neededBy: Today.AddDays(10)));
+        var soon = await CreateFullAsync(designer, Body("через 2 дня", neededBy: Today.AddDays(2)));
+        var blocks = await CreateFullAsync(designer, Body("блокирует", blocks: true));
+        var overdue = await CreateFullAsync(designer, Body("просрочена", neededBy: Today.AddDays(-1)));
+        var coordinator = await ClientAsync(UserRole.Operator);
+
+        var list = (await coordinator.GetJsonAsync<Page<RequestListItem>>("/api/families/requests?scope=all")).Items;
+
+        list.Select(r => r.Id).ShouldBe([blocks.Id, overdue.Id, soon.Id, later.Id, plain.Id]);
+        list.Single(r => r.Id == overdue.Id).Overdue.ShouldBeTrue();
+        list.Single(r => r.Id == soon.Id).Overdue.ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task Edit_AuthorWhileOpen_OthersForbidden()
+    {
+        var author = await ClientAsync(UserRole.Designer);
+        var created = await CreateAsync(author);
+
+        (await author.PutJsonAsync($"/api/families/requests/{created.Id}",
+            new RequestEdit("Клапан обратный DN65", "уточнил", "ОВ", "ЖК Север", Today.AddDays(5), true, 2024))).EnsureSuccessStatusCode();
+        (await (await ClientAsync(UserRole.Designer)).PutJsonAsync($"/api/families/requests/{created.Id}",
+            new RequestEdit("x", null, null, null, null, false, null))).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var view = await ViewAsync(author, created.Id);
+        (view.Request.Title, view.Text, view.Request.Project, view.Request.NeededBy, view.Request.BlocksIssue, view.Request.RevitYear)
+            .ShouldBe(("Клапан обратный DN65", "уточнил", "ЖК Север", (DateOnly?)Today.AddDays(5), true, (int?)2024));
+        view.Messages.Last().Text.ShouldBe("изменил описание");
+    }
+
+    [Test]
+    public async Task Stats_Counts()
+    {
+        var designer = await ClientAsync(UserRole.Designer);
+        var coordinator = await ClientAsync(UserRole.Operator);
+        var taken = await CreateFullAsync(designer, Body("взятая"));
+        await CreateFullAsync(designer, Body("просроченная", neededBy: Today.AddDays(-3)));
+        await CreateFullAsync(designer, Body("обычная"));
+        (await coordinator.PostAsync($"/api/families/requests/{taken.Id}/take", null)).EnsureSuccessStatusCode();
+
+        var stats = await coordinator.GetJsonAsync<RequestStats>("/api/families/requests/stats");
+
+        (stats.Open, stats.Overdue, stats.Unassigned, stats.MineDirection).ShouldBe((3, 1, 2, 3));
+        (await designer.GetAsync("/api/families/requests/stats")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Test]
+    public async Task Projects_Suggest()
+    {
+        var designer = await ClientAsync(UserRole.Designer);
+        await CreateFullAsync(designer, Body("а", project: "ЖК Север"));
+        await CreateFullAsync(designer, Body("б", project: "ЖК Север"));
+        await CreateFullAsync(designer, Body("в", project: "Дом на Набережной"));
+
+        (await designer.GetJsonAsync<List<string>>("/api/families/requests/projects?q=сев")).ShouldBe(["ЖК Север"]);
+        (await designer.GetJsonAsync<List<string>>("/api/families/requests/projects")).ShouldBe(["ЖК Север", "Дом на Набережной"]);
+    }
 }

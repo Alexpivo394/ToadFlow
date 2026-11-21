@@ -11,9 +11,10 @@ namespace ToadFlow.Server.Families;
 /// <param name="Root">Корень библиотеки — путь UNC или с буквой диска, как его видит агент библиотеки; пусто — библиотека не задана.</param>
 /// <param name="ReviewFolder">Имя папки проверки в корне.</param>
 /// <param name="ScanIntervalMinutes">Как часто обходить библиотеку.</param>
+/// <param name="AutoAcceptDays">Через сколько дней на приёмке заявка принимается сама, если автор молчит.</param>
 /// <param name="LibraryAgentId">Агент, который обходит библиотеку; null — любой в сети, умеющий обход.</param>
 public sealed partial record FamiliesSettings(string Root = "", string ReviewFolder = FamiliesSettings.DefaultReviewFolder, int ScanIntervalMinutes = 10,
-    Guid? LibraryAgentId = null)
+    Guid? LibraryAgentId = null, int AutoAcceptDays = 5)
 {
     public const string DefaultReviewFolder = "_На проверке";
 
@@ -29,6 +30,7 @@ public sealed partial record FamiliesSettings(string Root = "", string ReviewFol
             || ReviewFolder.Equals(LibraryPaths.ServiceFolder, StringComparison.OrdinalIgnoreCase))
             errors.Add(@"Папка проверки — одно имя папки в корне библиотеки, без \ и /");
         if (ScanIntervalMinutes is < 1 or > 1440) errors.Add("Интервал обхода — от 1 до 1440 минут");
+        if (AutoAcceptDays is < 1 or > 60) errors.Add("Автоприёмка — от 1 до 60 дней");
         return errors;
     }
 

@@ -10,7 +10,7 @@ public static class Requests
     public const string UiEntity = "family-requests";
 
     public static Task<bool> IsOpenAsync(ToadFlowDb db, Guid id, CancellationToken ct) =>
-        db.Set<FamilyRequest>().AnyAsync(r => r.Id == id && (r.State == RequestState.New || r.State == RequestState.InWork), ct);
+        db.Set<FamilyRequest>().AnyAsync(r => r.Id == id && FamilyRequest.OpenStates.Contains(r.State), ct);
 
     /// <summary>
     ///     Публикации с заявкой, которые обход привязал к версиям: заявка «готова» со ссылкой на карточку. Уже закрытую заявку публикация не

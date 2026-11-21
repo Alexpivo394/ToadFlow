@@ -2442,6 +2442,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("author_user_id");
 
+                    b.Property<bool>("BlocksIssue")
+                        .HasColumnType("boolean")
+                        .HasColumnName("blocks_issue");
+
                     b.Property<Guid?>("CardId")
                         .HasColumnType("uuid")
                         .HasColumnName("card_id");
@@ -2454,9 +2458,23 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("DeclineCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("decline_count");
+
                     b.Property<Guid?>("DirectionId")
                         .HasColumnType("uuid")
                         .HasColumnName("direction_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateOnly?>("NeededBy")
+                        .HasColumnType("date")
+                        .HasColumnName("needed_by");
 
                     b.Property<int>("Number")
                         .ValueGeneratedOnAdd()
@@ -2465,14 +2483,39 @@ namespace ToadFlow.Server.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Number"));
 
+                    b.Property<bool>("OverdueNotified")
+                        .HasColumnType("boolean")
+                        .HasColumnName("overdue_notified");
+
                     b.Property<string>("Project")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("project");
 
+                    b.Property<DateOnly?>("PromisedBy")
+                        .HasColumnType("date")
+                        .HasColumnName("promised_by");
+
                     b.Property<string>("Reason")
                         .HasColumnType("text")
                         .HasColumnName("reason");
+
+                    b.Property<bool>("ReminderSent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reminder_sent");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("resolution");
+
+                    b.Property<DateTimeOffset?>("ReviewSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("review_since");
+
+                    b.Property<int?>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
 
                     b.Property<string>("SearchText")
                         .IsRequired()
@@ -2490,6 +2533,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("state");
 
+                    b.Property<Guid?>("TargetCardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_card_id");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasColumnType("text")
@@ -2504,12 +2551,6 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
-
-                    b.Property<string>("Urgency")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("urgency");
 
                     b.HasKey("Id")
                         .HasName("pk_family_requests");
@@ -2547,7 +2588,11 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("file_name");
 
-                    b.Property<Guid>("RequestId")
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<Guid?>("RequestId")
                         .HasColumnType("uuid")
                         .HasColumnName("request_id");
 
@@ -3211,7 +3256,6 @@ namespace ToadFlow.Server.Data.Migrations
                         .WithMany()
                         .HasForeignKey("RequestId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
                         .HasConstraintName("fk_family_request_files_family_requests_request_id");
                 });
 

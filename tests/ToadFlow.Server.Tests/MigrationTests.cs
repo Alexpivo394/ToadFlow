@@ -205,4 +205,30 @@ public class MigrationTests
         db.Database.HasPendingModelChanges().ShouldBeFalse();
         Postgres.DropDatabaseLater(connection);
     }
+
+    /// <summary>Выпуск 3.0: заявки без направлений; «срочно» становится «блокирует выдачу».</summary>
+    [Test]
+    public async Task Migration_RequestUrgencyBecomesBlocksIssue()
+    {
+        var connection = await Postgres.CreateEmptyDatabaseAsync();
+        await using var server = new ServerFactory(connection + ";Pooling=false", services: NoHostedServices);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToadFlowDb>();
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261121150830_FamiliesPanelAndRequests");
+        var (urgent, normal, author) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        foreach (var (id, urgency) in new[] { (urgent, "Urgent"), (normal, "Normal") })
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO family_requests (id, title, text, section, urgency, project, state, author_user_id, created_at, updated_at, search_text)
+                VALUES ({id}, 'Клапан', '', 'ОВ', {urgency}, '', 'New', {author}, now(), now(), 'клапан')
+                """);
+
+        await migrator.MigrateAsync();
+
+        var requests = await db.Set<ToadFlow.Server.Families.Requests.FamilyRequest>().AsNoTracking().ToDictionaryAsync(r => r.Id);
+        (requests[urgent].BlocksIssue, requests[normal].BlocksIssue).ShouldBe((true, false));
+        requests[urgent].Kind.ShouldBe(ToadFlow.Server.Families.Requests.RequestKind.New);
+        requests[urgent].DirectionId.ShouldBeNull();
+        Postgres.DropDatabaseLater(connection);
+    }
 }
