@@ -40,6 +40,12 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         builder.UseSetting("Auth:Limits:LoginPerMinute", "100000");
         builder.UseSetting("Auth:Limits:RegisterPer10Minutes", "100000");
         if (modules is not null) builder.UseSetting("Modules", modules);
+        // Кеш политик доступа ASP.NET при старте строит все маршруты, и маршрутизация потом строит их второй раз: компиляция
+        // обработчиков — главная цена старта сервера. Без кеша политика считается на каждый запрос — результат тот же.
+        builder.ConfigureServices(collection =>
+        {
+            foreach (var cache in collection.Where(s => s.ServiceType.Name == "AuthorizationPolicyCache").ToList()) collection.Remove(cache);
+        });
         if (time is not null) builder.ConfigureServices(collection => collection.Replace(ServiceDescriptor.Singleton(time)));
         if (services is not null) builder.ConfigureServices(services);
     }

@@ -110,6 +110,10 @@ public class EventFilterTests : ServerTest
 
     private static readonly DateTimeOffset Day = new(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>События теста — с давней датой: очистка старых записей, идущая в фоне после старта сервера, могла бы стереть их до проверки.</summary>
+    public EventFilterTests() => Services = services => services.Remove(services.Single(d =>
+        d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService) && d.ImplementationType == typeof(ToadFlow.Server.Maintenance.RetentionCleaner)));
+
     private Task SeedAsync() => DbAsync(async db =>
     {
         void Add(string actor, string kind, DateTimeOffset at, string text) =>

@@ -9,7 +9,10 @@ using TUnit.Core.Interfaces;
 
 namespace ToadFlow.Server.Tests.Infrastructure;
 
-/// <summary>Один встроенный Postgres на тестовую сессию; каждому тесту — своя чистая база.</summary>
+/// <summary>
+///     Один встроенный Postgres на тестовую сессию; каждому тесту — своя чистая база. Базы не удаляются после теста, а очищаются
+///     и выдаются следующим: создание и удаление базы в Postgres идут почти по одному и не дают тестам работать параллельно.
+/// </summary>
 public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
 {
     private PgServer? _server;
@@ -71,6 +74,7 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
             await ExecuteAsync($"drop database if exists {Template} with (force)");
             await ExecuteAsync($"create database {Template}");
             await using (var server = new ServerFactory(ConnectionString(Template) + ";Pooling=false", services: OnlyMigrations)) _ = server.Server;
+            _reusable = await ScalarAsync(ConnectionString(Template) + ";Pooling=false", NonEmptyTables) is null or "";
             Volatile.Write(ref _templateReady, true);
         }
         finally
@@ -91,6 +95,86 @@ public sealed class PostgresFixture : IAsyncInitializer, IAsyncDisposable
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(sql, connection);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentBag<string> _clean = [];
+    private bool _reusable;
+
+    /// <summary>Таблицы с данными, через запятую; журнал миграций не считается.</summary>
+    private const string NonEmptyTables = """
+        create or replace function pg_temp.non_empty_tables() returns text language plpgsql as $$
+        declare
+            names text := '';
+            item record;
+            filled boolean;
+        begin
+            for item in select format('%I.%I', schemaname, tablename) as name from pg_tables
+                        where schemaname not in ('pg_catalog', 'information_schema') and tablename <> '__EFMigrationsHistory' loop
+                execute 'select exists(select 1 from ' || item.name || ')' into filled;
+                if filled then names := names || case when names = '' then '' else ', ' end || item.name; end if;
+            end loop;
+            return names;
+        end $$;
+        select pg_temp.non_empty_tables();
+        """;
+
+    /// <summary>
+    ///     Возвращает базу в состояние шаблона: закрывает оставшиеся подключения, очищает таблицы с данными и сбрасывает счётчики.
+    ///     Трогаются только непустые таблицы — очистка всех подряд на каждый тест заметно дороже.
+    /// </summary>
+    private const string Clean = """
+        select pg_terminate_backend(pid) from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid();
+        set lock_timeout = '10s';
+        do $$
+        declare
+            names text;
+            item record;
+        begin
+            names := pg_temp.non_empty_tables();
+            if names <> '' then execute 'truncate table ' || names || ' restart identity cascade'; end if;
+            for item in select format('%I.%I', schemaname, sequencename) as name from pg_sequences where last_value is not null loop
+                execute 'alter sequence ' || item.name || ' restart';
+            end loop;
+        end $$;
+        """;
+
+    /// <summary>Чистая база для теста: очищенная после прошлого теста или, если таких нет, новая копия шаблона.</summary>
+    public async Task<string> RentDatabaseAsync()
+    {
+        await EnsureTemplateAsync();
+        return _clean.TryTake(out var connectionString) ? connectionString : await CreateDatabaseAsync();
+    }
+
+    /// <summary>
+    ///     Принимает базу после теста: в фоне очищает её и отдаёт следующим тестам. Если очистить не вышло или в шаблоне есть
+    ///     данные (их очистка стёрла бы), база удаляется, как раньше.
+    /// </summary>
+    public void ReturnDatabaseLater(string connectionString) => _drops.Add(Task.Run(async () =>
+    {
+        if (_reusable)
+        {
+            try
+            {
+                var command = NonEmptyTables.Replace("select pg_temp.non_empty_tables();", "") + Clean;
+                await ScalarAsync(connectionString + ";Pooling=false", command);
+                _clean.Add(connectionString);
+                return;
+            }
+            catch (Exception exception) when (exception is NpgsqlException or TimeoutException or IOException)
+            {
+                // Не очистилась — удаляем, тест получит новую.
+            }
+        }
+
+        await DropDatabaseAsync(connectionString);
+    }));
+
+    private static async Task<object?> ScalarAsync(string connectionString, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        return await command.ExecuteScalarAsync();
     }
 
     /// <summary>Пустая база без миграций — для проверки обновления схемы со старой версии.</summary>

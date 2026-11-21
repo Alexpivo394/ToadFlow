@@ -30,7 +30,7 @@ public abstract class ServerTest
     [Before(Test)]
     public async Task StartServerAsync()
     {
-        _connectionString = await Postgres.CreateDatabaseAsync();
+        _connectionString = await Postgres.RentDatabaseAsync();
         Server = new ServerFactory(_connectionString, Time, Services, Modules);
         _ = Server.Server; // старт хоста и миграции — до первого запроса
     }
@@ -38,11 +38,12 @@ public abstract class ServerTest
     [After(Test)]
     public async Task StopServerAsync()
     {
-        await Server.DisposeAsync();
+        if (_connectionString == "") return; // базу получить не удалось — останавливать нечего
+        if (Server is not null) await Server.DisposeAsync();
         // TUnit хранит объекты тестов до конца сессии: без этого каждый остановленный сервер оставался бы в памяти целиком.
         Server = null!;
         PostgresFixture.ClosePool(_connectionString);
-        Postgres.DropDatabaseLater(_connectionString);
+        Postgres.ReturnDatabaseLater(_connectionString);
     }
 
     private string _connectionString = "";
