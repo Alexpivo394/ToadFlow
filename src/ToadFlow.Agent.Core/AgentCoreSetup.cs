@@ -31,6 +31,7 @@ public static class AgentCoreSetup
         services.AddSingleton<SourceBrowser>();
         services.AddSingleton(provider => new FamilyScanReporter(config, options, provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FamilyScanReporter>>()));
         services.AddSingleton<FamilyLibraryScan>();
+        services.AddSingleton<FamilyFileActions>();
         services.AddSingleton<ServerConnection>();
         services.AddHostedService<AgentWorker>();
         return services;

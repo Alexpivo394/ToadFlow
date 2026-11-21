@@ -32,4 +32,20 @@ public class FamilyScanHubTests : ServerTest
 
         started.ShouldBeTrue();
     }
+
+    [Test]
+    public async Task FileAction_ServerCallsAgent_AgentAnswers()
+    {
+        var admin = await AdminAsync();
+        await using var agent = await AgentHarness.StartAsync(Server, admin, _launcher);
+        var registry = Server.Services.GetRequiredService<AgentRegistry>();
+        await EventuallyAsync(() => Task.FromResult(agent.Connection.IsConnected));
+
+        var modules = await DbAsync(db => db.Agents.Where(a => a.Id == agent.Config.AgentId).Select(a => a.Modules).SingleAsync());
+        modules.ShouldNotBeNull().ShouldContain(ModuleKinds.FamiliesFiles);
+        var result = await registry.Client(agent.Config.AgentId)!.FamilyFileAction(new FamilyFileActionDto(FamilyFileActionKind.Delete,
+            Path.Combine(Path.GetTempPath(), "нет-библиотеки-" + Guid.NewGuid().ToString("N")), @"ОВ\Клапан.rfa", null, new string('a', 64), null, null));
+
+        result.Error.ShouldNotBeNull().ShouldContain("не видит");
+    }
 }

@@ -38,6 +38,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
     private readonly ILogger<ServerConnection> _logger;
 
     public ServerConnection(AgentConfig config, AgentOptions options, SourceBrowser browser, InstanceManager instances, JobRunner runner, FamilyLibraryScan familyScan,
+        FamilyFileActions familyFiles,
         ILogger<ServerConnection> logger, ILoggerFactory loggers)
     {
         _instances = instances;
@@ -67,6 +68,7 @@ public sealed class ServerConnection : IJobReporter, IAsyncDisposable
         _hub.On<Guid>(nameof(IAgentClient.CancelJob), runner.Cancel);
         _hub.On<AgentSettingsDto>(nameof(IAgentClient.ApplySettings), settings => Settings = settings);
         _hub.On<FamilyScanRequestDto, bool>(nameof(IAgentClient.StartFamilyScan), request => Task.FromResult(familyScan.Start(request)));
+        _hub.On<FamilyFileActionDto, FamilyFileActionResult>(nameof(IAgentClient.FamilyFileAction), familyFiles.RunAsync);
         _hub.Reconnecting += exception =>
         {
             _logger.LogWarning("Связь с сервером потеряна ({Error}) — переподключаюсь", exception?.Message ?? "соединение закрыто");

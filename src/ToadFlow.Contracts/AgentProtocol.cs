@@ -45,6 +45,12 @@ public interface IAgentClient
     ///     Только агентам, сообщившим <see cref="ModuleKinds.FamiliesScan" />: у старых агентов такого метода нет.
     /// </summary>
     Task<bool> StartFamilyScan(Families.FamilyScanRequestDto request);
+
+    /// <summary>
+    ///     Действие с файлом библиотеки по кнопке в вебе: переложить, убрать, вернуть из истории. Только агентам, сообщившим
+    ///     <see cref="ModuleKinds.FamiliesFiles" />.
+    /// </summary>
+    Task<Families.FamilyFileActionResult> FamilyFileAction(Families.FamilyFileActionDto action);
 }
 
 public sealed record InstalledRevitDto(int Year, bool HasNwcExporter);
@@ -125,4 +131,7 @@ public static class ModuleKinds
 
     /// <summary>Не вид задания, а возможность агента: обходить библиотеку семейств без Revit (<see cref="IAgentClient.StartFamilyScan" />).</summary>
     public const string FamiliesScan = "families-scan";
+
+    /// <summary>Не вид задания, а возможность агента: действия с файлами библиотеки (<see cref="IAgentClient.FamilyFileAction" />).</summary>
+    public const string FamiliesFiles = "families-files";
 }

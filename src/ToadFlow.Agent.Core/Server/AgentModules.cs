@@ -10,7 +10,7 @@ namespace ToadFlow.Agent.Server;
 public static class AgentModules
 {
     public static readonly string[] All =
-        [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead, ModuleKinds.FamiliesScan];
+        [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead, ModuleKinds.FamiliesScan, ModuleKinds.FamiliesFiles];
 
     /// <summary>Старый аддин не знает выгрузку для коллизий и чтение семейств; обход библиотеки идёт без Revit и остаётся.</summary>
     public static string[] For(bool addinOutdated) =>

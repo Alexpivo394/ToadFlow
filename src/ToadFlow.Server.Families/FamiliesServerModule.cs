@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data.Entities;
+using ToadFlow.Server.Families.Actions;
 using ToadFlow.Server.Families.Cards;
 using ToadFlow.Server.Families.Data;
 using ToadFlow.Server.Families.Panel;
@@ -49,6 +50,7 @@ public sealed class FamiliesServerModule : IServerModule
         services.AddSingleton<LibraryScanGate>();
         services.AddScoped<LibraryScanner>();
         services.AddScoped<ScanApplier>();
+        services.AddScoped<LibraryFiles>();
         services.AddHostedService<LibraryScanLoop>();
         services.AddSingleton<ToadFlow.Server.Overview.IOverviewSource, FamiliesOverview>();
         services.AddSingleton<PreviewStore>();
@@ -160,6 +162,7 @@ public sealed class FamiliesServerModule : IServerModule
         families.MapFamiliesScan();
         families.MapFamiliesReview();
         families.MapFamiliesVersions();
+        families.MapFamiliesActions();
     }
 
     /// <summary>Поиск, карточка, панель Revit и заявки — и проектировщику.</summary>

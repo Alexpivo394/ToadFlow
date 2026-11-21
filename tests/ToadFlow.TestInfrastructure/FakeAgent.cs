@@ -31,6 +31,11 @@ public sealed class FakeAgent : IAsyncDisposable
             ScanRequests.Enqueue(request);
             return Task.FromResult(StartFamilyScan(request));
         });
+        Hub.On<FamilyFileActionDto, FamilyFileActionResult>(nameof(IAgentClient.FamilyFileAction), action =>
+        {
+            FileActions.Enqueue(action);
+            return Task.FromResult(FileAction(action));
+        });
     }
 
     public Guid Id { get; }
@@ -48,6 +53,11 @@ public sealed class FakeAgent : IAsyncDisposable
     public Func<FamilyScanRequestDto, bool> StartFamilyScan { get; set; } = _ => true;
 
     public ConcurrentQueue<FamilyScanRequestDto> ScanRequests { get; } = new();
+
+    /// <summary>Ответ на действие с файлом библиотеки; по умолчанию — «сделано».</summary>
+    public Func<FamilyFileActionDto, FamilyFileActionResult> FileAction { get; set; } = _ => new FamilyFileActionResult(null);
+
+    public ConcurrentQueue<FamilyFileActionDto> FileActions { get; } = new();
 
     /// <summary>Регистрирует нового агента через одноразовый код, выданный администратором.</summary>
     public static async Task<FakeAgent> RegisterAsync(ServerFactory server, HttpClient admin, string machineName = "BIM-FARM-01")

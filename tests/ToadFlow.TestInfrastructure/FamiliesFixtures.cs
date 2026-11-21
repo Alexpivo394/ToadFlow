@@ -22,7 +22,7 @@ public static class FamiliesFixtures
 
     /// <summary>Виды и возможности агента новой версии.</summary>
     public static readonly string[] AgentModules =
-        [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead, ModuleKinds.FamiliesScan];
+        [ModuleKinds.Export, ModuleKinds.Loi, ModuleKinds.LoiCatalog, ModuleKinds.ClashExtract, ModuleKinds.FamiliesRead, ModuleKinds.FamiliesScan, ModuleKinds.FamiliesFiles];
 
     /// <summary>Без фонового обхода по интервалу: тест сам решает, когда обходить.</summary>
     public static void WithoutScanLoop(IServiceCollection services)

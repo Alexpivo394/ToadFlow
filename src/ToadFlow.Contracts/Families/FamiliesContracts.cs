@@ -40,3 +40,41 @@ public sealed record FamilyReadPayload(Guid VersionId, string Path, string Hash,
 /// <summary>Итог задания чтения.</summary>
 /// <param name="PreviewPngBase64">Картинка семейства в PNG; null — снять не удалось.</param>
 public sealed record FamilyReadResult(FamilyContent Content, string? PreviewPngBase64);
+
+/// <summary>Что сделать с файлом библиотеки по кнопке в вебе.</summary>
+public enum FamilyFileActionKind
+{
+    /// <summary>Переложить <c>RelativePath</c> в <c>TargetPath</c> вместе с каталогом типоразмеров.</summary>
+    Move,
+
+    /// <summary>Убрать файл и его каталог из библиотеки; содержимое остаётся в <c>.toadflow\history</c>.</summary>
+    Delete,
+
+    /// <summary>Положить содержимое из <c>.toadflow\history</c> по хешу на <c>RelativePath</c>.</summary>
+    Restore
+}
+
+/// <summary>
+///     Действие с файлом библиотеки. Агент библиотеки проверяет хеши до любого изменения: файл, который успели поменять, не трогается.
+///     Всё, что убирается или перезаписывается, сначала сохраняется в <c>.toadflow\history</c>.
+/// </summary>
+/// <param name="Root">Корень библиотеки.</param>
+/// <param name="RelativePath">Файл, с которым действие; для <see cref="FamilyFileActionKind.Restore" /> — куда положить.</param>
+/// <param name="TargetPath">Для <see cref="FamilyFileActionKind.Move" /> — куда переложить.</param>
+/// <param name="Hash">
+///     Хеш <c>.rfa</c>: для <see cref="FamilyFileActionKind.Move" /> и <see cref="FamilyFileActionKind.Delete" /> — какой файл ожидается на
+///     месте; для <see cref="FamilyFileActionKind.Restore" /> — какое содержимое взять из истории.
+/// </param>
+/// <param name="CatalogHash">Каталог типоразмеров этого содержимого; null — каталога нет.</param>
+/// <param name="ReplaceHash">Цель уже занята файлом с этим хешем, и его можно заменить; null — цель должна быть свободна.</param>
+public sealed record FamilyFileActionDto(
+    FamilyFileActionKind Kind,
+    string Root,
+    string RelativePath,
+    string? TargetPath,
+    string Hash,
+    string? CatalogHash,
+    string? ReplaceHash);
+
+/// <param name="Error">Почему не сделано; null — сделано.</param>
+public sealed record FamilyFileActionResult(string? Error);
