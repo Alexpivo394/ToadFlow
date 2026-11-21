@@ -1979,6 +1979,285 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("export_presets", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("category");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CurrentVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_version_id");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Manufacturer")
+                        .HasColumnType("text")
+                        .HasColumnName("manufacturer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NameKey")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("name_key");
+
+                    b.Property<string>("Placement")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("placement");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("relative_path");
+
+                    b.Property<int?>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("search_text");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("section");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("state");
+
+                    b.PrimitiveCollection<string[]>("Tags")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("tags")
+                        .HasDefaultValueSql("'{}'::text[]");
+
+                    b.Property<int>("TypeCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("type_count");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_cards");
+
+                    b.HasIndex("NameKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_family_cards_name_key")
+                        .HasFilter("state <> 'Archived'");
+
+                    b.HasIndex("State", "UpdatedAt")
+                        .HasDatabaseName("ix_family_cards_state_updated_at");
+
+                    b.ToTable("family_cards", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyIssue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("card_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Hash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("relative_path");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_issues");
+
+                    b.HasIndex("ResolvedAt")
+                        .HasDatabaseName("ix_family_issues_resolved_at");
+
+                    b.ToTable("family_issues", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyScan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_id");
+
+                    b.Property<bool?>("Complete")
+                        .HasColumnType("boolean")
+                        .HasColumnName("complete");
+
+                    b.PrimitiveCollection<string[]>("Errors")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("errors")
+                        .HasDefaultValueSql("'{}'::text[]");
+
+                    b.Property<int>("Files")
+                        .HasColumnType("integer")
+                        .HasColumnName("files");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_scans");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("ix_family_scans_started_at");
+
+                    b.ToTable("family_scans", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AuthorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_user_id");
+
+                    b.Property<Guid>("CardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("card_id");
+
+                    b.Property<string>("CatalogHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("catalog_hash");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<string>("ContentJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("content_json");
+
+                    b.Property<bool>("HasPreview")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_preview");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<string>("ReadError")
+                        .HasColumnType("text")
+                        .HasColumnName("read_error");
+
+                    b.Property<string>("ReadState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("read_state");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("relative_path");
+
+                    b.Property<int?>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<DateTimeOffset>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_versions");
+
+                    b.HasIndex("Hash")
+                        .HasDatabaseName("ix_family_versions_hash");
+
+                    b.HasIndex("CardId", "SeenAt")
+                        .HasDatabaseName("ix_family_versions_card_id_seen_at");
+
+                    b.ToTable("family_versions", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheck", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2531,6 +2810,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_schedule_changes_schedules_schedule_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyVersion", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Families.Data.FamilyCard", null)
+                        .WithMany()
+                        .HasForeignKey("CardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_family_versions_family_cards_card_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Loi.Analytics.LoiCheckParameter", b =>

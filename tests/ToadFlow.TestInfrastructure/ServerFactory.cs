@@ -23,6 +23,9 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
     /// <summary>Своё хранилище слепков коллизий у каждого сервера тестов.</summary>
     public string ClashStorageRoot { get; } = Path.Combine(Path.GetTempPath(), "toadflow-clash-tests", Guid.NewGuid().ToString("N"));
 
+    /// <summary>Своё хранилище модуля семейств (картинки) у каждого сервера тестов.</summary>
+    public string FamiliesStorageRoot { get; } = Path.Combine(Path.GetTempPath(), "toadflow-families-tests", Guid.NewGuid().ToString("N"));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -35,6 +38,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         builder.UseSetting("Admin:Login", AdminLogin);
         builder.UseSetting("Admin:Password", AdminPassword);
         builder.UseSetting("Clash:StorageRoot", ClashStorageRoot);
+        builder.UseSetting("Families:StorageRoot", FamiliesStorageRoot);
         builder.UseSetting("Clash:EngineKey", EngineKey);
         // Тесты входят часто и с одного адреса: лимиты частоты проверяет свой тест (RateLimitTests).
         builder.UseSetting("Auth:Limits:LoginPerMinute", "100000");
@@ -73,6 +77,7 @@ public sealed class ServerFactory(string connectionString, TimeProvider? time = 
         try
         {
             if (Directory.Exists(ClashStorageRoot)) Directory.Delete(ClashStorageRoot, true);
+            if (Directory.Exists(FamiliesStorageRoot)) Directory.Delete(FamiliesStorageRoot, true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

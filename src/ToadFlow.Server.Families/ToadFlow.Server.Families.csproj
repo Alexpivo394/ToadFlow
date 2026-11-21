@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <!-- Модуль «Семейства» на сервере: карточки и версии семейств библиотеки, обходы папки агентом, поиск, задания чтения ферме -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Library</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Alexpivo394.Revit.Families.Files"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ToadFlow.Server\ToadFlow.Server.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ToadFlow.Server.Tests"/>
+        <InternalsVisibleTo Include="ToadFlow.TestInfrastructure"/>
+    </ItemGroup>
+
+</Project>

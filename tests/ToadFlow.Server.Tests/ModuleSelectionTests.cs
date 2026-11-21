@@ -16,8 +16,8 @@ public class ModuleSelectionTests : ServerTest
     {
         var modules = await (await ClientAsync(UserRole.Viewer)).GetJsonAsync<ModuleView[]>("/api/modules");
 
-        modules.Select(m => (m.Name, m.Enabled)).ShouldBe([("export", true), ("loi", true), ("clash", true)]);
-        modules.Select(m => m.Title).ShouldBe(["Выгрузка", "Проверка LOI", "Коллизии"]);
+        modules.Select(m => (m.Name, m.Enabled)).ShouldBe([("export", true), ("loi", true), ("clash", true), ("families", true)]);
+        modules.Select(m => m.Title).ShouldBe(["Выгрузка", "Проверка LOI", "Коллизии", "Семейства"]);
     }
 
     [Test]
@@ -33,7 +33,7 @@ public class ModuleSelectionTests : ServerTest
     {
         var body = JsonDocument.Parse(await Server.CreateClient().GetStringAsync("/api/health")).RootElement;
 
-        body.GetProperty("modules").EnumerateArray().Select(m => m.GetString()).ShouldBe(["export", "loi", "clash"]);
+        body.GetProperty("modules").EnumerateArray().Select(m => m.GetString()).ShouldBe(["export", "loi", "clash", "families"]);
     }
 }
 
@@ -63,7 +63,7 @@ public class ModuleSelectionDisabledTests : ServerTest
     {
         var modules = await (await AdminAsync()).GetJsonAsync<ModuleView[]>("/api/modules");
 
-        modules.Select(m => (m.Name, m.Enabled)).ShouldBe([("export", true), ("loi", true), ("clash", false)]);
+        modules.Select(m => (m.Name, m.Enabled)).ShouldBe([("export", true), ("loi", true), ("clash", false), ("families", false)]);
     }
 
     [Test]

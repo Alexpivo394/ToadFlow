@@ -8,6 +8,7 @@ COPY src/ToadFlow.Server/ToadFlow.Server.csproj src/ToadFlow.Server/
 COPY src/ToadFlow.Server.Export/ToadFlow.Server.Export.csproj src/ToadFlow.Server.Export/
 COPY src/ToadFlow.Server.Loi/ToadFlow.Server.Loi.csproj src/ToadFlow.Server.Loi/
 COPY src/ToadFlow.Server.Clash/ToadFlow.Server.Clash.csproj src/ToadFlow.Server.Clash/
+COPY src/ToadFlow.Server.Families/ToadFlow.Server.Families.csproj src/ToadFlow.Server.Families/
 COPY src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj src/ToadFlow.Server.Host/
 RUN dotnet restore src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj
 
@@ -20,7 +21,7 @@ COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
-# Хранилище выгрузок для коллизий (том clash в docker compose): создаётся заранее, чтобы том унаследовал владельца app.
-RUN mkdir -p /data/clash && chown app /data/clash
+# Хранилища коллизий и семейств (тома clash и families в docker compose): создаются заранее, чтобы тома унаследовали владельца app.
+RUN mkdir -p /data/clash /data/families && chown app /data/clash /data/families
 USER app
 ENTRYPOINT ["dotnet", "ToadFlow.Server.Host.dll"]

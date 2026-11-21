@@ -1,6 +1,7 @@
 using ToadFlow.Server;
 using ToadFlow.Server.Clash;
 using ToadFlow.Server.Export;
+using ToadFlow.Server.Families;
 using ToadFlow.Server.Health;
 using ToadFlow.Server.Loi;
 using ToadFlow.Server.Modules;
@@ -13,6 +14,7 @@ builder.AddToadFlowServer();
 builder.AddServerModule<ExportServerModule>();
 builder.AddServerModule<LoiServerModule>();
 builder.AddServerModule<ClashServerModule>();
+builder.AddServerModule<FamiliesServerModule>();
 
 var app = builder.Build();
 app.UseToadFlowServer();

@@ -39,7 +39,8 @@ services:
       Admin__Login: ${ADMIN_LOGIN:-admin}
       Admin__Password: ${ADMIN_PASSWORD:?задайте ADMIN_PASSWORD в .env}
       Clash__StorageRoot: /data/clash
-      # Какие модули включены: export, loi, clash. Пусто — все
+      Families__StorageRoot: /data/families
+      # Какие модули включены: export, loi, clash, families. Пусто — все
       Modules: ${MODULES:-}
       # Общий ключ сервера и движка коллизий; при включённых коллизиях без него сервер не стартует
       Clash__EngineKey: ${CLASH_ENGINE_KEY:-}
@@ -52,6 +53,8 @@ services:
     volumes:
       # Выгрузки геометрии для коллизий: последние N на модель (Настройки → Коллизии)
       - clash:/data/clash
+      # Картинки семейств, снятые фермой; сами файлы семейств лежат в сетевой папке библиотеки
+      - families:/data/families
     # В образе aspnet нет curl: сервер сам запрашивает свой /api/health (503, если нет базы)
     healthcheck:
       test: ["CMD", "dotnet", "ToadFlow.Server.Host.dll", "--healthcheck"]
@@ -95,4 +98,5 @@ services:
 volumes:
   postgres:
   clash:
+  families:
   clash-engine-cache:
