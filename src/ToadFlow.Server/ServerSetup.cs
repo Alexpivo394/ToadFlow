@@ -48,6 +48,7 @@ public static class ServerSetup
         builder.Services.AddSingleton<ServerStart>();
         builder.Services.AddScoped<ServerStatsReader>();
         builder.Services.AddScoped<CoreAttention>();
+        builder.Services.AddScoped<OverviewPulseReader>();
         builder.Services.AddSingleton<IDataVolume>(new PathVolume("Сервер", () => AppContext.BaseDirectory));
         builder.Services.AddHostedService<RetentionCleaner>();
         builder.Services.AddRequestDecompression(); // агенты сжимают части загрузок (Content-Encoding: gzip)

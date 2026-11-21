@@ -66,4 +66,4 @@ public sealed record ServerStats(
     long ProcessMemoryBytes,
     IReadOnlyList<WorkerStat> Workers);
 
-public sealed record OverviewView(IReadOnlyList<AttentionItem> Attention, IReadOnlyList<OverviewTile> Tiles, ServerStats Server);
+public sealed record OverviewView(IReadOnlyList<AttentionItem> Attention, IReadOnlyList<OverviewTile> Tiles, ServerStats Server, OverviewPulse Pulse);

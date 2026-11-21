@@ -16,7 +16,7 @@ public static class OverviewEndpoints
         api.MapGet("/server", (ServerStatsReader stats, CancellationToken ct) => stats.ReadAsync(ct));
     }
 
-    private static async Task<OverviewView> OverviewAsync(CoreAttention core, ServerStatsReader stats, ModuleSet modules,
+    private static async Task<OverviewView> OverviewAsync(CoreAttention core, ServerStatsReader stats, OverviewPulseReader pulse, ModuleSet modules,
         IEnumerable<IOverviewSource> sources, IServiceProvider services, HttpContext http, ILoggerFactory loggers, CancellationToken ct)
     {
         var logger = loggers.CreateLogger(typeof(OverviewEndpoints));
@@ -49,7 +49,8 @@ public static class OverviewEndpoints
         }
 
         var rank = Rank(http.User);
-        return new OverviewView(attention.Where(a => rank >= Rank(a.MinRole)).ToList(), tiles, await stats.ReadAsync(ct));
+        return new OverviewView(attention.Where(a => rank >= Rank(a.MinRole)).ToList(), tiles, await stats.ReadAsync(ct),
+            await pulse.ReadAsync(ct));
     }
 
     /// <summary>Старшинство для строк внимания: Наблюдатель &lt; Координатор &lt; Администратор; проектировщик «Обзор» не видит.</summary>
