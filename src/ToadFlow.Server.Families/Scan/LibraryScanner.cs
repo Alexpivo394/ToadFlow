@@ -15,7 +15,7 @@ public enum ScanStart
     /// <summary>Корень библиотеки не задан.</summary>
     NotConfigured,
 
-    /// <summary>Обход уже идёт: отчёт ещё не пришёл, а с начала не прошло <see cref="LibraryScanner.LostAfter" />.</summary>
+    /// <summary>Обход уже идёт: отчёт ещё не пришёл, а с начала не прошло <see cref="LibraryScanner.LostAfter" /> или агент ещё занят им.</summary>
     Running,
 
     /// <summary>Нет агента в сети, который умеет обходить библиотеку.</summary>
@@ -40,8 +40,8 @@ public sealed class LibraryScanGate
 }
 
 /// <summary>
-///     Просит агента библиотеки обойти её. Обход идёт у агента в фоне, отчёт приходит отдельным запросом; обход без отчёта дольше
-///     <see cref="LostAfter" /> считается потерянным — его отчёт, если всё же придёт, не применяется.
+///     Просит агента библиотеки обойти её. Обход идёт у агента в фоне, отчёт приходит отдельным запросом. Обход без отчёта дольше
+///     <see cref="LostAfter" /> считается потерянным, только когда агент взял новый (значит, прежний он уже не делает); его отчёт тогда не применяется.
 /// </summary>
 public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settingsStore, AgentRegistry registry, LibraryScanGate gate, TimeProvider time,
     ILogger<LibraryScanner> logger)
@@ -100,17 +100,9 @@ public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settings
         var now = time.GetUtcNow();
         var unfinished = await db.Set<FamilyScan>().Where(s => s.FinishedAt == null).ToListAsync(ct);
         if (unfinished.Any(s => now - s.StartedAt < LostAfter)) return new ScanStartResult(ScanStart.Running);
-        foreach (var lost in unfinished)
-        {
-            lost.FinishedAt = now;
-            lost.Errors = ["агент не прислал отчёт обхода"];
-        }
 
         if (await AgentAsync(settings, ct) is not { Online: true } agent || registry.Client(agent.Id) is not { } client)
-        {
-            await db.SaveChangesAsync(ct);
             return new ScanStartResult(ScanStart.NoAgent);
-        }
 
         var scan = new FamilyScan { Id = Guid.CreateVersion7(), AgentId = agent.Id, StartedAt = now };
         db.Set<FamilyScan>().Add(scan);
@@ -119,10 +111,23 @@ public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settings
         try
         {
             var started = await client.StartFamilyScan(new FamilyScanRequestDto(scan.Id, settings.Root, settings.ReviewFolder)).WaitAsync(CallTimeout, ct);
-            if (started) return new ScanStartResult(ScanStart.Started, scan.Id);
-            db.Set<FamilyScan>().Remove(scan);
+            if (!started)
+            {
+                // Агент ещё занят прошлым обходом (большая библиотека, первый обход с копиями версий): его отчёт ждём и применим.
+                db.Set<FamilyScan>().Remove(scan);
+                await db.SaveChangesAsync(ct);
+                return new ScanStartResult(unfinished.Count > 0 ? ScanStart.Running : ScanStart.AgentBusy);
+            }
+
+            // Агент взял новый обход — прежние без отчёта потеряны (агент перезапускали); их отчёт, если всё же придёт, не применится.
+            foreach (var lost in unfinished)
+            {
+                lost.FinishedAt = time.GetUtcNow();
+                lost.Errors = ["агент не прислал отчёт обхода"];
+            }
+
             await db.SaveChangesAsync(ct);
-            return new ScanStartResult(ScanStart.AgentBusy);
+            return new ScanStartResult(ScanStart.Started, scan.Id);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
         {

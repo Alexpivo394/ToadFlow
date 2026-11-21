@@ -386,6 +386,24 @@ public class FamiliesScanTests : ServerTest
     }
 
     [Test]
+    public async Task LongScan_AgentStillBusy_LateReportApplied()
+    {
+        var library = await LibraryAsync();
+        var slow = await library.RequestScanAsync();
+        // Первый обход большой библиотеки идёт дольше получаса: агент ещё копирует версии
+        await DbAsync(db => db.Set<FamilyScan>().Where(s => s.Id == slow)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.StartedAt, DateTimeOffset.UtcNow.AddHours(-1))));
+        library.Agent.StartFamilyScan = _ => false;
+
+        var again = await library.Admin.PostAsync("/api/families/scan", null);
+        await library.ReportAsync(new FamilyScanReportDto(slow, true, [File(@"ОВ\Клапан.rfa", "a")], [], []));
+
+        again.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await CardsAsync()).ShouldHaveSingleItem().Name.ShouldBe("Клапан");
+        (await DbAsync(db => db.Set<FamilyScan>().CountAsync())).ShouldBe(1);
+    }
+
+    [Test]
     public async Task ScanNow_WhileScanRunning_409()
     {
         var library = await LibraryAsync();
