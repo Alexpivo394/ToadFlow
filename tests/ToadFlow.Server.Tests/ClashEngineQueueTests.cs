@@ -98,6 +98,27 @@ public class ClashEngineQueueTests : ServerTest
         (await admin.GetJsonAsync<DraftRunSummary>($"/api/clash/parts/{partId}/draft/run")).RunId.ShouldBe(second.RunId);
     }
 
+    /// <summary>
+    ///     Два прогона с одним временем создания: последний — тот, что создан позже, а не тот, что Postgres вернул первым.
+    ///     Обновление строки первого прогона переносит её в конец таблицы — порядок строк больше не совпадает с порядком создания.
+    /// </summary>
+    [Test]
+    public async Task LastDraftRun_SameCreatedAt_IsTheLaterOne()
+    {
+        var (admin, agent) = await SetupAsync();
+        await using var _ = agent;
+        var partId = await PartAsync(Server, admin, agent, "POL_K1_AR.rvt", "POL_K1_OV.rvt");
+        var first = await StartAsync(admin, partId);
+        var second = await StartAsync(admin, partId);
+        await using (var scope = Server.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ToadFlow.Server.Data.ToadFlowDb>();
+            await db.Database.ExecuteSqlAsync($"UPDATE clash_engine_runs SET created_at = created_at WHERE id = {first.RunId}");
+        }
+
+        (await admin.GetJsonAsync<DraftRunSummary>($"/api/clash/parts/{partId}/draft/run")).RunId.ShouldBe(second.RunId);
+    }
+
     [Test]
     public async Task Claim_OneRunAtATime()
     {

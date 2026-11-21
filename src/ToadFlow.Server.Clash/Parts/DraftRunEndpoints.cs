@@ -24,7 +24,7 @@ public static class DraftRunEndpoints
     private static async Task<IResult> LastAsync(Guid id, ToadFlowDb db, CancellationToken ct)
     {
         var run = await db.Set<EngineRun>().AsNoTracking().Where(r => r.PartId == id && r.Kind == EngineRunKind.Draft)
-            .OrderByDescending(r => r.CreatedAt).FirstOrDefaultAsync(ct);
+            .OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id).FirstOrDefaultAsync(ct);
         return run is null ? Results.NoContent() : Results.Ok(await DraftRunSummary.DescribeAsync(run, db, ct));
     }
 

@@ -159,7 +159,7 @@ public static class CollisionEndpoints
     private static async Task<IResult> RunAsync(Guid id, ToadFlowDb db, CancellationToken ct)
     {
         var run = await db.Set<EngineRun>().AsNoTracking().Where(r => r.PartId == id && r.Kind == EngineRunKind.Approved)
-            .OrderByDescending(r => r.CreatedAt).FirstOrDefaultAsync(ct);
+            .OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id).FirstOrDefaultAsync(ct);
         return run is null ? Results.NoContent() : Results.Ok(new ApprovedRunView(await DraftRunSummary.DescribeAsync(run, db, ct), run.Version, run.Summary));
     }
 
