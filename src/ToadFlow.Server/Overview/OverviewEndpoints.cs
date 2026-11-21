@@ -14,6 +14,7 @@ public static class OverviewEndpoints
     {
         api.MapGet("/overview", OverviewAsync);
         api.MapGet("/server", (ServerStatsReader stats, CancellationToken ct) => stats.ReadAsync(ct));
+        api.MapOverviewFeed();
     }
 
     private static async Task<OverviewView> OverviewAsync(CoreAttention core, ServerStatsReader stats, OverviewPulseReader pulse, ModuleSet modules,
