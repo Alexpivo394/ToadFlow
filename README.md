@@ -86,7 +86,7 @@ docker compose up -d --build
 **2. Агент.** Windows с Revit. В интерфейсе нажмите **Ферма → Агенты → Подключить агента** и получите код. Затем поставьте `ToadFlowAgent-*.msi` из [релизов](https://github.com/Alexpivo394/ToadFlow/releases/latest):
 
 ```powershell
-msiexec /i ToadFlowAgent-2.3.3.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
+msiexec /i ToadFlowAgent-2.4.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
 ```
 
 **3. Первое расписание.** Пользователи, источники моделей, пресеты и расписание — по странице [«Первый запуск»](https://github.com/Alexpivo394/ToadFlow/wiki/Getting-started).
