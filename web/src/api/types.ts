@@ -331,6 +331,10 @@ export interface OverviewTile {
   trend: string | null;
   lines: string[];
   link: string;
+  /** 14 значений по дням, последний — сегодня; нет — графика нет. */
+  series?: number[] | null;
+  /** Фраза для шапки о сутках («выгружено 48 моделей»). */
+  highlight?: string | null;
 }
 
 export interface ServerStats {
@@ -346,6 +350,7 @@ export interface OverviewView {
   attention: AttentionItem[];
   tiles: OverviewTile[];
   server: ServerStats;
+  pulse: OverviewPulse;
 }
 
 // ── Проверка LOI ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -1516,4 +1521,32 @@ export interface ModuleView {
   name: string;
   title: string;
   enabled: boolean;
+}
+
+// ── «Обзор»: пульс и лента ────────────────────────────────────────────────────────────────────────────────────
+
+/** Час графика «Задания за сутки»: начало часа и сколько заданий закончилось в нём. */
+export interface HourPoint {
+  hour: string;
+  succeeded: number;
+  warning: number;
+  failed: number;
+}
+
+/** Пульс системы: работа за сутки, очередь, занятые Revit, 24 часа по часам. */
+export interface OverviewPulse {
+  doneDay: number;
+  failedDay: number;
+  queued: number;
+  revitBusy: number;
+  revitTotal: number;
+  hourly: HourPoint[];
+}
+
+/** Строка ленты «Что происходит». */
+export interface FeedItem {
+  at: string;
+  module: string | null;
+  text: string;
+  tone: 'ok' | 'warn' | 'fail' | 'info';
 }

@@ -7,8 +7,8 @@ const clashLists = ['clash-list', 'clash-collisions', 'clash-my', 'clash-checks'
 
 /** Какие запросы устаревают при изменении сущности на сервере; <c>id</c> — id сущности из события. */
 const affected: Record<string, (id: string) => QueryKey[]> = {
-  jobs: () => [['jobs'], ['runs'], ['overview'], ['farm-summary']],
-  runs: () => [['runs'], ['jobs'], ['overview'], ['farm-summary'], ['schedules']],
+  jobs: () => [['jobs'], ['runs'], ['overview'], ['overview-feed'], ['farm-summary']],
+  runs: () => [['runs'], ['jobs'], ['overview'], ['overview-feed'], ['farm-summary'], ['schedules']],
   agents: () => [['agents'], ['overview'], ['farm-summary']],
   schedules: () => [['schedules'], ['overview'], ['farm-summary']],
   // Черновик части и итог его прогона.
@@ -16,9 +16,11 @@ const affected: Record<string, (id: string) => QueryKey[]> = {
   // Ход прогона части — раз в несколько секунд: только состояние прогона, без списков.
   'clash-run-progress': (partId) => [['clash-parts', partId, 'run'], ['clash-collisions', partId, 'runs']],
   // Коллизии изменились (прогон, переходы, правки): все списки и счётчики коллизий.
-  'clash-collisions': () => clashLists.map((key) => [key]),
+  'clash-collisions': () => [...clashLists.map((key) => [key]), ['overview-feed']],
   // Библиотека семейств и заявки: свои списки и плитка «Обзора».
-  families: () => [['families'], ['overview']],
+  families: () => [['families'], ['overview'], ['overview-feed']],
+  // Журнал действий: новая строка может попасть в ленту «Обзора».
+  events: () => [['events'], ['overview-feed']],
   'family-requests': () => [['family-requests'], ['overview']],
 };
 

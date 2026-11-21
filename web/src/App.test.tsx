@@ -27,7 +27,7 @@ const scene = { runId: 'r1', number: 1, x: 0, y: 0, z: 0, radiusMm: 5000, depthM
 
 const responses = {
   ...partResponses,
-  '/api/overview': { attention: [], tiles: [], server: { version: '3.0.0', startedAt: '2026-11-01T00:00:00Z', databaseBytes: 0, volumes: [], processMemoryBytes: 0, workers: [] } },
+  '/api/overview': { attention: [], tiles: [], server: { version: '3.0.0', startedAt: '2026-11-01T00:00:00Z', databaseBytes: 0, volumes: [], processMemoryBytes: 0, workers: [] }, pulse: { doneDay: 0, failedDay: 0, queued: 0, revitBusy: 0, revitTotal: 0, hourly: [] } },
   '/api/agents': [],
   '/api/settings': { silenceTimeoutMinutes: 10 },
   '/api/clash/overview': { notUploaded: [], runFailed: [], noRecentRun: [], unchecked: [], spike: [], stuck: [], noSchedule: [], agentsOffline: null, checks: 3 },
