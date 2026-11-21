@@ -12,7 +12,9 @@ import { requestsKey, type RequestListItem, type RequestState } from './api';
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU');
 
-export const requestStateColor: Record<RequestState, string> = { New: 'blue', InWork: 'orange', Done: 'teal', Exists: 'teal', Rejected: 'gray' };
+export const requestStateColor: Record<RequestState, string> = {
+  New: 'blue', InWork: 'orange', NeedInfo: 'yellow', Review: 'violet', Done: 'teal', Exists: 'teal', Rejected: 'gray', Withdrawn: 'gray',
+};
 
 export function RequestStateBadge({ state }: { state: RequestState }) {
   return <Badge variant="light" color={requestStateColor[state]}>{t.requestState[state]}</Badge>;

@@ -15,7 +15,7 @@ const card = (patch: Partial<FamilyCardView> = {}): FamilyCardView => ({
   id: 'c1', name: 'Клапан обратный', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', fullPath: '\\nas\Families\ОВ\Клапаны\Клапан обратный.rfa',
   section: 'ОВ', state: 'Approved', category: 'Арматура трубопроводов', placement: 'OneLevelBased', revitYear: 2022, typeCount: 2,
   description: null, tags: [], manufacturer: null, createdAt: '2026-11-19T10:00:00Z', updatedAt: '2026-11-20T10:00:00Z', archivedAt: null,
-  currentVersionId: 'v2', currentReadState: 'Done', currentReadError: null, hasPreview: false,
+  currentVersionId: 'v2', currentReadState: 'Done', currentReadError: null, hasPreview: false, openFixRequests: [], loadedProjects: [],
   content: {
     category: 'Арматура трубопроводов', placement: 'OneLevelBased', revitYear: 2022, typesFromCatalog: true,
     types: [{ name: 'КЛАБ-40-20', values: { 'Диаметр условный': '40 мм' } }, { name: 'КЛАБ-50-20', values: { 'Диаметр условный': '50 мм' } }],

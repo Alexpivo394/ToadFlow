@@ -102,6 +102,8 @@ export interface FamilyCardView {
   versions: FamilyVersionView[];
   loadCount: number;
   lastLoadedAt: string | null;
+  openFixRequests: { id: string; number: number; title: string }[];
+  loadedProjects: string[];
 }
 
 export interface FamilyNotes {
@@ -180,8 +182,12 @@ export interface FileActionsState {
 
 export type IssueAnswer = 'delete' | 'keep' | 'rename' | 'same' | 'other' | 'retry';
 
-export type RequestState = 'New' | 'InWork' | 'Done' | 'Exists' | 'Rejected';
+export type RequestState = 'New' | 'InWork' | 'NeedInfo' | 'Review' | 'Done' | 'Exists' | 'Rejected' | 'Withdrawn';
 export type RequestUrgency = 'Normal' | 'Urgent';
+export type RequestKind = 'New' | 'Fix';
+export type RequestResolution = 'Made' | 'Existed';
+/** Чей ход: координатора или автора и участников; null — заявка закрыта. */
+export type RequestTurn = 'staff' | 'author' | null;
 
 export interface RequestListItem {
   id: string;
@@ -204,6 +210,21 @@ export interface RequestListItem {
   unread: boolean;
   createdAt: string;
   updatedAt: string;
+  kind: RequestKind;
+  directionId: string | null;
+  directionName: string | null;
+  neededBy: string | null;
+  promisedBy: string | null;
+  blocksIssue: boolean;
+  overdue: boolean;
+  turn: RequestTurn;
+  waitingDays: number;
+  thumbnailFileId: string | null;
+  revitYear: number | null;
+  targetCardId: string | null;
+  targetCardName: string | null;
+  resolution: RequestResolution | null;
+  reviewSince: string | null;
 }
 
 export interface RequestMessage {
@@ -213,6 +234,7 @@ export interface RequestMessage {
   text: string;
   isEvent: boolean;
   at: string;
+  fileIds: string[];
 }
 
 export interface RequestFile {
@@ -222,6 +244,9 @@ export interface RequestFile {
   contentType: string;
   uploadedByName: string;
   at: string;
+  messageId: string | null;
+  uploadedBy: string;
+  inline: boolean;
 }
 
 export interface RequestView {
@@ -231,14 +256,31 @@ export interface RequestView {
   members: { userId: string; name: string }[];
   messages: RequestMessage[];
   files: RequestFile[];
+  autoAcceptAt: string | null;
 }
 
 export interface NewRequest {
   title: string;
   text: string;
   section: string;
-  urgency: RequestUrgency;
   project: string;
+  kind: RequestKind;
+  directionId: string | null;
+  neededBy: string | null;
+  blocksIssue: boolean;
+  revitYear: number | null;
+  targetCardId: string | null;
+  fileIds: string[];
+}
+
+export interface RequestEdit {
+  title: string;
+  text: string;
+  section: string;
+  project: string;
+  neededBy: string | null;
+  blocksIssue: boolean;
+  revitYear: number | null;
 }
 
 export interface SimilarResult {
@@ -246,7 +288,28 @@ export interface SimilarResult {
   requests: RequestListItem[];
 }
 
+export interface Direction {
+  id: string;
+  name: string;
+  sections: string[];
+  disciplines: string[];
+  coordinators: { id: string; name: string }[];
+  hint: string;
+}
+
+export interface RequestStats {
+  open: number;
+  overdue: number;
+  unassigned: number;
+  medianCloseHours: number | null;
+  mineDirection: number;
+}
+
 /** Ключ живых обновлений заявок: сервер шлёт их событиями с сущностью «family-requests». */
 export const requestsKey = 'family-requests';
 
-export const openRequest = (state: RequestState) => state === 'New' || state === 'InWork';
+export const openRequest = (state: RequestState) => state === 'New' || state === 'InWork' || state === 'NeedInfo' || state === 'Review';
+
+/** Адрес файла заявки: <c>inline</c> — для показа в браузере. */
+export const requestFilePath = (requestId: string, fileId: string, inline = false) =>
+  `/api/families/requests/${requestId}/files/${fileId}${inline ? '?inline=1' : ''}`;
