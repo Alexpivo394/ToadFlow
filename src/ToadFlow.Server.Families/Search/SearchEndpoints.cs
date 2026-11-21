@@ -18,7 +18,8 @@ public sealed record FamilyHit(
     int TypeCount,
     CardState State,
     bool HasPreview,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? PreviewHash);
 
 public sealed record FacetValue(string Value, int Count);
 
@@ -73,7 +74,8 @@ internal static class SearchEndpoints
         var versions = db.Set<FamilyVersion>();
         var items = await ordered.ThenBy(c => c.Name).ThenBy(c => c.Id).Skip((number - 1) * size).Take(size)
             .Select(c => new FamilyHit(c.Id, c.Name, c.Section, c.RelativePath, c.Category, c.RevitYear, c.TypeCount, c.State,
-                versions.Any(v => v.Id == c.CurrentVersionId && v.HasPreview), c.UpdatedAt))
+                versions.Any(v => v.Id == c.CurrentVersionId && v.HasPreview), c.UpdatedAt,
+                versions.Where(v => v.Id == c.CurrentVersionId && v.HasPreview).Select(v => v.Hash).FirstOrDefault()))
             .ToListAsync(ct);
         return new Page<FamilyHit>(items, total);
     }

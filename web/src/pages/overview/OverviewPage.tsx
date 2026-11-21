@@ -4,6 +4,7 @@ import type { OverviewView } from '../../api/types';
 import { PageTitle } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import { moduleInfo, type ModuleName } from '../../spaces/modules';
+import { useModules } from '../../spaces/useSpaces';
 import { FarmAgents } from '../farm/AgentsPanel';
 import { AttentionBlock } from './AttentionBlock';
 import { ModuleTile } from './ModuleTile';
@@ -16,6 +17,8 @@ import { ServerBlock } from './ServerBlock';
 export function OverviewPage() {
   const overview = useApi<OverviewView>(['overview'], '/api/overview', { refetchInterval: 60_000 });
   const data = overview.data;
+  const modules = useModules();
+  const titleOf = (module: string) => moduleInfo[module as ModuleName]?.title ?? modules.find((m) => m.name === module)?.title ?? module;
 
   return (
     <>
@@ -25,7 +28,7 @@ export function OverviewPage() {
         {data && data.tiles.length > 0 && (
           <SimpleGrid cols={{ base: 1, sm: 2, md: Math.min(data.tiles.length, 4) }}>
             {data.tiles.map((tile) => (
-              <ModuleTile key={tile.module} tile={tile} title={moduleInfo[tile.module as ModuleName]?.title ?? tile.module} />
+              <ModuleTile key={tile.module} tile={tile} title={titleOf(tile.module)} />
             ))}
           </SimpleGrid>
         )}

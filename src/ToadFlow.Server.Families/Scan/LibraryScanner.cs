@@ -73,6 +73,14 @@ public sealed class LibraryScanner(ToadFlowDb db, FamiliesSettingsStore settings
         }
     }
 
+    /// <summary>Агенты, которые умеют обходить библиотеку, — из них администратор выбирает агента библиотеки.</summary>
+    public async Task<List<LibraryAgent>> AgentsAsync(CancellationToken ct) =>
+        (await db.Agents.AsNoTracking().Where(a => a.State != AgentState.Disabled).Select(a => new { a.Id, a.MachineName, a.Modules }).ToListAsync(ct))
+        .Where(a => a.Modules?.Contains(ModuleKinds.FamiliesScan) == true)
+        .OrderBy(a => a.MachineName)
+        .Select(a => new LibraryAgent(a.Id, a.MachineName, registry.IsConnected(a.Id)))
+        .ToList();
+
     /// <summary>Агент библиотеки сейчас; null — назначенного нет и в сети нет никого, кто умеет обход.</summary>
     public async Task<LibraryAgent?> AgentAsync(FamiliesSettings settings, CancellationToken ct)
     {

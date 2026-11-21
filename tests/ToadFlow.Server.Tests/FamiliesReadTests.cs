@@ -163,7 +163,7 @@ public class FamiliesReadTests : ServerTest
         var version = (await VersionsAsync(card.Id)).ShouldHaveSingleItem();
         (version.ReadState, version.HasPreview, version.ReadError).ShouldBe((ReadState.Done, true, null));
         var page = await (await ClientAsync(UserRole.Designer)).GetJsonAsync<Page<FamilyHit>>("/api/families/search?q=клаб-50");
-        page.Items.ShouldHaveSingleItem().HasPreview.ShouldBeTrue();
+        page.Items.ShouldHaveSingleItem().PreviewHash.ShouldBe(Hash("a"));
         var view = await library.Admin.GetJsonAsync<FamilyCardView>($"/api/families/{card.Id}");
         view.Content.ShouldNotBeNull().Types.Select(t => t.Name).ShouldBe(["КЛАБ-40-20", "КЛАБ-50-20"]);
         // Картинка лежит в хранилище, в итоге задания её больше нет

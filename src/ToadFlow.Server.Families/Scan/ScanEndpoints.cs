@@ -30,6 +30,7 @@ internal static class ScanEndpoints
         }).RequireAuthorization(Policies.Operator);
 
         families.MapGet("/status", StatusAsync);
+        families.MapGet("/agents", async (LibraryScanner scanner, CancellationToken ct) => await scanner.AgentsAsync(ct));
     }
 
     /// <summary><c>POST /api/agent/families/scans/{scanId}</c> — отчёт обхода от агента, тело сжато gzip.</summary>

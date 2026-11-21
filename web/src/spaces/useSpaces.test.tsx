@@ -44,6 +44,20 @@ describe('useSpaces', () => {
     expect(spaces.admin).toEqual(['/admin/users', '/admin/modules', '/admin/server', '/admin/events']);
   });
 
+  it('families space appears when the module is enabled and is visible to a designer', async () => {
+    const withFamilies = [...modules(), { name: 'families', title: 'Семейства', enabled: true }];
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Designer'), '/api/modules': withFamilies });
+    const items = await screen.findAllByRole('listitem');
+
+    expect(items.map((item) => item.textContent)).toContain('families: /families/catalog');
+  });
+
+  it('families space is absent while the module is not enabled', async () => {
+    const spaces = await spacesOf('Admin');
+
+    expect(Object.keys(spaces)).not.toContain('families');
+  });
+
   it('a disabled module has no space', async () => {
     const spaces = await spacesOf('Admin', { disabled: ['clash'] });
 

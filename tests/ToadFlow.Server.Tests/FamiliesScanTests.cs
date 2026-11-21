@@ -482,3 +482,21 @@ public class FamiliesScanTests : ServerTest
         (issue.Kind, issue.CardName, issue.RelativePath).ShouldBe((IssueKind.NameConflict, "Клапан", @"ВК\Клапан.rfa"));
     }
 }
+
+public class FamiliesAgentsTests : ServerTest
+{
+    public FamiliesAgentsTests() => Services = WithoutScanLoop;
+
+    [Test]
+    public async Task Agents_ListOnlyThoseThatCanScan()
+    {
+        var admin = await AdminAsync();
+        await using var library = await FamilyLibrary.StartAsync(Server, admin);
+        await using var old = await FakeAgent.RegisterAsync(Server, admin, "OLD-AGENT");
+        await old.ConnectAsync("2.4.0", [ModuleKinds.Export], new InstalledRevitDto(2022, true));
+
+        var agents = await (await ClientAsync(UserRole.Viewer)).GetJsonAsync<ToadFlow.Server.Families.Scan.LibraryAgent[]>("/api/families/agents");
+
+        agents.ShouldBe([new ToadFlow.Server.Families.Scan.LibraryAgent(library.Agent.Id, "BIM-LIB-01", true)]);
+    }
+}
