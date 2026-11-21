@@ -119,7 +119,7 @@ public class AuthorizationMatrixTests : ServerTest
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
                                && !route.EndsWith(" /api/modules") && !families.Contains(route)
-                               && !route.Contains(" /api/profile") && !route.EndsWith("/card") && !route.Contains(" /api/notifications") && !route.EndsWith(" /api/me/today"))
+                               && !route.Contains(" /api/profile") && !route.EndsWith("/card") && !route.Contains(" /api/notifications") && !route.EndsWith(" /api/me/today") && !route.EndsWith(" /api/search"))
             .ShouldBeEmpty();
 
         var wrong = new List<string>();

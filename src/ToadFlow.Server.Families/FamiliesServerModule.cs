@@ -56,6 +56,7 @@ public sealed class FamiliesServerModule : IServerModule
         services.AddScoped<LibraryFiles>();
         services.AddHostedService<LibraryScanLoop>();
         services.AddSingleton<ToadFlow.Server.Overview.IOverviewSource, FamiliesOverview>();
+        services.AddSingleton<ToadFlow.Server.Search.ISearchSource, Search.FamiliesSearchSource>();
         services.AddSingleton<PreviewStore>();
         services.AddScoped<FamilyReadJobs>();
         services.AddHostedService<FamilyReadLoop>();

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Agents;
 using ToadFlow.Server.Auth;
 using ToadFlow.Server.Overview;
+using ToadFlow.Server.Search;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Maintenance;
 using ToadFlow.Server.Events;
@@ -39,6 +40,7 @@ public static class ServerSetup
         builder.AddToadFlowAuth();
         builder.Services.AddDomainEvents();
         builder.Services.AddNotifications();
+        builder.Services.AddGlobalSearch();
         builder.Services.AddScoped<ISettingsStore, SettingsStore>();
         builder.Services.AddScoped<NamingStore>();
         builder.Services.AddAgents();
@@ -76,6 +78,7 @@ public static class ServerSetup
         members.MapProfile();
         members.MapNotifications();
         members.MapPersonal();
+        members.MapGlobalSearch();
         members.MapModuleList();
         members.MapModuleMemberEndpoints(app.Services);
 

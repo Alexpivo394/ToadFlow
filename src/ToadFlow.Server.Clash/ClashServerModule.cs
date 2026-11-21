@@ -79,6 +79,7 @@ public sealed class ClashServerModule : IServerModule
         services.AddSingleton<ToadFlow.Server.Health.IHealthProbe, ClashVolumeProbe>();
         services.AddSingleton<ToadFlow.Server.Overview.IWorkerProbe, EngineWorkerProbe>();
         services.AddSingleton<ToadFlow.Server.Overview.IOverviewSource, Overview.ClashOverviewSource>();
+        services.AddSingleton<ToadFlow.Server.Search.ISearchSource, Overview.ClashSearchSource>();
         services.AddSingleton<ToadFlow.Server.Overview.IDataVolume>(provider => new ToadFlow.Server.Overview.PathVolume("Слепки коллизий",
             () => provider.GetRequiredService<IOptions<ClashStorageOptions>>().Value.Root));
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, EngineAuthHandler>(EngineAuthHandler.SchemeName, null);
