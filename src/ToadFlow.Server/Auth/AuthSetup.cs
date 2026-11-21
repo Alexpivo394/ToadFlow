@@ -37,7 +37,8 @@ public static class AuthSetup
                     OnMessageReceived = context =>
                     {
                         var token = context.Request.Query["access_token"];
-                        if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments("/hubs/ui"))
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(token) && (path.StartsWithSegments("/hubs/ui") || path.StartsWithSegments("/hubs/me")))
                             context.Token = token;
                         return Task.CompletedTask;
                     },

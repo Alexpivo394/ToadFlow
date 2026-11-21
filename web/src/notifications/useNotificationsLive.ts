@@ -17,7 +17,10 @@ export function useNotificationsLive(enabled: boolean): void {
       .withAutomaticReconnect()
       .configureLogging(LogLevel.Warning)
       .build();
-    connection.on('notification', () => void queryClient.invalidateQueries({ queryKey: [notificationsKey] }));
+    // Уведомление — повод перечитать и то, о чём оно: у проектировщика нет общего хаба событий.
+    connection.on('notification', () => {
+      for (const key of [notificationsKey, 'family-requests', 'me-today']) void queryClient.invalidateQueries({ queryKey: [key] });
+    });
     connection.onreconnected(() => void queryClient.invalidateQueries({ queryKey: [notificationsKey] }));
     const start = (attempt: number) => {
       connection.start().catch(() => {

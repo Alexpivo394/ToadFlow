@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -108,6 +109,50 @@ public class NotificationTests : ServerTest
 
         first.Select(n => n.Text).ShouldBe(["№4", "№3"]);
         next.Select(n => n.Text).ShouldBe(["№2", "№1"]);
+    }
+
+    /// <summary>Браузер по WebSocket передаёт токен в строке адреса: личный хаб должен его принять — и у проектировщика.</summary>
+    [Test]
+    public async Task MeHub_AcceptsTokenInQuery_ForDesigner()
+    {
+        var login = $"des-{Guid.NewGuid():N}"[..16];
+        await DbAsync(async db =>
+        {
+            var user = ToadFlow.Server.Data.Entities.User.Create(login, "Проектировщик", UserRole.Designer, "", DateTimeOffset.UtcNow);
+            user.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<ToadFlow.Server.Data.Entities.User>().HashPassword(user, UserPassword);
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        });
+        var token = await TokenAsync(login, UserPassword);
+
+        var response = await Server.CreateClient().PostAsync($"/hubs/me/negotiate?negotiateVersion=1&access_token={token}", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Test]
+    public async Task MeHub_DeliversToRecipientOnly()
+    {
+        var reader = await ClientAsync(UserRole.Designer);
+        var id = await IdAsync(reader);
+        var token = reader.DefaultRequestHeaders.Authorization!.Parameter!;
+        await using var hub = new HubConnectionBuilder()
+            .WithUrl(new Uri(Server.Server.BaseAddress, "/hubs/me"), options =>
+            {
+                options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
+                options.HttpMessageHandlerFactory = _ => Server.Server.CreateHandler();
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
+            .Build();
+        var received = new TaskCompletionSource();
+        hub.On("notification", () => received.TrySetResult());
+        await hub.StartAsync();
+
+        await EventuallyAsync(async () =>
+        {
+            await NotifyAsync([id], NotificationKinds.RequestNew, "новая");
+            return await Task.WhenAny(received.Task, Task.Delay(500)) == received.Task;
+        });
     }
 
     [Test]
