@@ -24,7 +24,8 @@ public sealed record ScanApplied(int NewCards, int NewVersions, int Moved, int A
 ///     версии и случаи «Нужно решение» — всё в одной транзакции. Отчёт применяется один раз: обход помечается завершённым в той же
 ///     транзакции, и второй такой же отчёт (или отчёт обхода, который сервер уже счёл потерянным) ничего не меняет.
 /// </summary>
-public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsStore, TimeProvider time, IDomainEvents events, ILogger<ScanApplier> logger)
+public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsStore, TimeProvider time, IDomainEvents events, ILogger<ScanApplier> logger,
+    Requests.RequestNotices notices)
 {
     public const string CatalogNote = "изменён каталог типоразмеров";
     public const string UnreviewedNote = "изменено без проверки";
@@ -133,6 +134,9 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             events.Publish(new CatalogChanged(Actor.System, UiEntity, scanId,
                 $"Семейства: обход библиотеки — новых семейств {_newCards}, новых версий {_newVersions}, перенесено {_moved}, в архив {_archived}, новых случаев {_newIssues}"));
         foreach (var (id, text) in closed) events.Publish(new CatalogChanged(Actor.System, Requests.Requests.UiEntity, id, text));
+        foreach (var request in await db.Set<Requests.FamilyRequest>().AsNoTracking().Where(r => closed.Select(c => c.Id).Contains(r.Id)).ToListAsync(ct))
+            await notices.MembersAsync(request, Notifications.NotificationKinds.RequestReview,
+                $"«{request.Title}»: опубликовано семейство — проверьте, подходит ли", request.AssigneeUserId, ct);
         return applied;
     }
 

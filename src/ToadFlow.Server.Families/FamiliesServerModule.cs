@@ -47,6 +47,7 @@ public sealed class FamiliesServerModule : IServerModule
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ToadFlow", "families")
                     : "/data/families");
         services.AddScoped<FamiliesSettingsStore>();
+        services.AddScoped<Requests.RequestNotices>();
         services.AddSingleton<LibraryScanGate>();
         services.AddScoped<LibraryScanner>();
         services.AddScoped<ScanApplier>();

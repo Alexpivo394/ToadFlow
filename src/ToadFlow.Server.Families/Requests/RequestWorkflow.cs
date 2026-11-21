@@ -6,6 +6,7 @@ using ToadFlow.Server.Auth;
 using ToadFlow.Server.Data;
 using ToadFlow.Server.Events;
 using ToadFlow.Server.Families.Data;
+using ToadFlow.Server.Notifications;
 
 namespace ToadFlow.Server.Families.Requests;
 
@@ -16,7 +17,7 @@ internal static partial class RequestEndpoints
     private const int MaxRevitYear = 2040;
 
     private static async Task<IResult> CreateAsync(NewRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
-        IOptions<FamiliesStorageOptions> storage, CancellationToken ct)
+        IOptions<FamiliesStorageOptions> storage, RequestNotices notices, CancellationToken ct)
     {
         var title = body.Title?.Trim() ?? "";
         var text = body.Text?.Trim() ?? "";
@@ -73,6 +74,7 @@ internal static partial class RequestEndpoints
         if (await AttachAsync(db, storage.Value.Root, request.Id, null, body.FileIds, me, ct) is { } fileRefusal) return Results.BadRequest(new { error = fileRefusal });
         await db.SaveChangesAsync(ct);
         events.Publish(new CatalogChanged(user.Actor(), Requests.UiEntity, request.Id, $"Семейства: новая заявка № {request.Number} «{title}»"));
+        await notices.NewAsync(request, me, ct);
         return Results.Ok(new { request.Id, request.Number });
     }
 
@@ -115,14 +117,14 @@ internal static partial class RequestEndpoints
         }, "изменил описание");
     }
 
-    private static Task<IResult> JoinAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
+    private static Task<IResult> JoinAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, RequestNotices notices, CancellationToken ct) =>
         ChangeAsync(id, db, user, time, events, ct, async (request, me, now) =>
         {
             if (!request.IsOpen) return "Заявка уже закрыта";
             if (await db.Set<FamilyRequestMember>().AnyAsync(m => m.RequestId == id && m.UserId == me, ct)) return null;
             db.Set<FamilyRequestMember>().Add(new FamilyRequestMember { RequestId = id, UserId = me, JoinedAt = now, SeenAt = now });
             return null;
-        }, "присоединился к заявке", touch: false);
+        }, "присоединился к заявке", (r, me) => notices.AssigneeAsync(r, NotificationKinds.RequestJoined, $"{Who(user)} тоже ждёт «{r.Title}»", me, ct), touch: false);
 
     private static Task<IResult> LeaveAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
         ChangeAsync(id, db, user, time, events, ct, async (request, me, _) =>
@@ -134,7 +136,7 @@ internal static partial class RequestEndpoints
 
     private static async Task<IResult> MessageAsync(Guid id, RequestMessageRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
         IOptions<FamiliesStorageOptions> storage,
-        CancellationToken ct)
+        RequestNotices notices, CancellationToken ct)
     {
         var text = body.Text?.Trim() ?? "";
         if ((text.Length == 0 && body.FileIds is not { Length: > 0 }) || text.Length > MaxText)
@@ -146,7 +148,8 @@ internal static partial class RequestEndpoints
             if (await AddMessageAsync(db, storage.Value.Root, id, me, text, body.FileIds, now, ct) is { } refused) return refused;
             answered = await AnswerAsync(db, request, me, ct);
             return null;
-        }, () => answered ? "автор ответил" : null);
+        }, () => answered ? "автор ответил" : null,
+            (r, me) => notices.PeopleAsync(r, NotificationKinds.RequestMessage, $"{Who(user)}: {(text.Length > 0 ? Short(text) : "приложил файлы")}", me, ct));
     }
 
     /// <summary>Ответ автора или участника на вопрос исполнителя: заявка снова у исполнителя.</summary>
@@ -172,7 +175,7 @@ internal static partial class RequestEndpoints
     }
 
     private static async Task<IResult> AssignAsync(Guid id, RequestAssign body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
-        CancellationToken ct)
+        RequestNotices notices, CancellationToken ct)
     {
         var assignee = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == body.UserId && !u.IsDisabled, ct);
         if (assignee is null || assignee.Role is not (UserRole.Operator or UserRole.Admin))
@@ -184,17 +187,18 @@ internal static partial class RequestEndpoints
             if (request.State is RequestState.New) request.State = RequestState.InWork;
             if (body.PromisedBy is { } promised) request.PromisedBy = promised;
             return Task.FromResult<string?>(null);
-        }, $"передал заявку: {assignee.DisplayName}");
+        }, $"передал заявку: {assignee.DisplayName}",
+            (r, me) => notices.AssigneeAsync(r, NotificationKinds.RequestAssigned, $"«{r.Title}» — передал {Who(user)}", me, ct));
     }
 
-    private static Task<IResult> DoneAsync(Guid id, RequestCard body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
-        CloseWithCardAsync(id, body.CardId, RequestState.Done, "готова", db, user, time, events, ct);
+    private static Task<IResult> DoneAsync(Guid id, RequestCard body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, RequestNotices notices, CancellationToken ct) =>
+        CloseWithCardAsync(id, body.CardId, RequestState.Done, "готово", db, user, time, events, notices, ct);
 
-    private static Task<IResult> ExistsAsync(Guid id, RequestCard body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
-        CloseWithCardAsync(id, body.CardId, RequestState.Exists, "такое семейство уже есть", db, user, time, events, ct);
+    private static Task<IResult> ExistsAsync(Guid id, RequestCard body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, RequestNotices notices, CancellationToken ct) =>
+        CloseWithCardAsync(id, body.CardId, RequestState.Exists, "такое семейство уже есть", db, user, time, events, notices, ct);
 
     private static async Task<IResult> CloseWithCardAsync(Guid id, Guid cardId, RequestState state, string what, ToadFlowDb db, ClaimsPrincipal user,
-        TimeProvider time, IDomainEvents events, CancellationToken ct)
+        TimeProvider time, IDomainEvents events, RequestNotices notices, CancellationToken ct)
     {
         var card = await db.Set<FamilyCard>().AsNoTracking().SingleOrDefaultAsync(c => c.Id == cardId && c.State != CardState.Archived, ct);
         if (card is null) return Results.BadRequest(new { error = "Семейство не найдено в каталоге" });
@@ -204,7 +208,8 @@ internal static partial class RequestEndpoints
                 return Task.FromResult<string?>("Заявка закрыта — сначала верните её в работу");
             ToReview(request, card.Id, state == RequestState.Exists ? RequestResolution.Existed : RequestResolution.Made, me, now);
             return Task.FromResult<string?>(null);
-        }, $"{what}: «{card.Name}» — на приёмке у автора");
+        }, $"{what}: «{card.Name}» — на приёмке у автора",
+            (r, me) => notices.MembersAsync(r, NotificationKinds.RequestReview, $"«{r.Title}»: {what} — «{card.Name}». Проверьте, подходит ли", me, ct));
     }
 
     /// <summary>Сделано или найдено — на приёмку автору; от <paramref name="now" /> считается автоприёмка.</summary>
@@ -239,7 +244,7 @@ internal static partial class RequestEndpoints
     /// <summary>Вопрос автору: сообщение и ход переходит к автору («ждёт автора»).</summary>
     private static async Task<IResult> AskAsync(Guid id, RequestMessageRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
         IOptions<FamiliesStorageOptions> storage,
-        CancellationToken ct)
+        RequestNotices notices, CancellationToken ct)
     {
         var text = body.Text?.Trim() ?? "";
         if (text.Length == 0 || text.Length > MaxText) return Results.BadRequest(new { error = $"Напишите вопрос — до {MaxText} знаков" });
@@ -249,7 +254,7 @@ internal static partial class RequestEndpoints
             request.State = RequestState.NeedInfo;
             request.AssigneeUserId ??= me;
             return await AddMessageAsync(db, storage.Value.Root, id, me, text, body.FileIds, now, ct);
-        }, "ждёт ответа автора");
+        }, "ждёт ответа автора", (r, me) => notices.MembersAsync(r, NotificationKinds.RequestAsk, $"{Who(user)}: {Short(text)}", me, ct));
     }
 
     /// <summary>Сообщение человека с вложениями (свои «ничейные» загрузки).</summary>
@@ -263,19 +268,19 @@ internal static partial class RequestEndpoints
     }
 
     /// <summary>«Подходит» — автор или присоединившийся принимает работу.</summary>
-    private static Task<IResult> AcceptAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
+    private static Task<IResult> AcceptAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, RequestNotices notices, CancellationToken ct) =>
         ChangeAsync(id, db, user, time, events, ct, async (request, me, now) =>
         {
             if (request.State != RequestState.Review) return "Заявка не на приёмке";
             if (!await IsMemberAsync(db, id, me, ct)) return "Принять может автор заявки или присоединившийся";
             Accept(request, now);
             return null;
-        }, "принял: подходит");
+        }, "принял: подходит", (r, me) => notices.PeopleAsync(r, NotificationKinds.RequestClosed, $"«{r.Title}» принята", me, ct));
 
     /// <summary>«Не то» — с объяснением; заявка возвращается тому же исполнителю.</summary>
     private static async Task<IResult> DeclineAsync(Guid id, RequestMessageRequest body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time,
         IOptions<FamiliesStorageOptions> storage,
-        IDomainEvents events, CancellationToken ct)
+        IDomainEvents events, RequestNotices notices, CancellationToken ct)
     {
         var text = body.Text?.Trim() ?? "";
         if (text.Length == 0 || text.Length > MaxText) return Results.BadRequest(new { error = "Напишите, что не так" });
@@ -289,10 +294,10 @@ internal static partial class RequestEndpoints
             request.DeclineCount++;
             if (await AddMessageAsync(db, storage.Value.Root, id, me, text, body.FileIds, now, ct) is { } refused) return refused;
             return null;
-        }, "не то — вернул в работу");
+        }, "не то — вернул в работу", (r, me) => notices.AssigneeAsync(r, NotificationKinds.RequestDeclined, $"«{r.Title}»: не то — {Short(text)}", me, ct));
     }
 
-    private static Task<IResult> WithdrawAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
+    private static Task<IResult> WithdrawAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, RequestNotices notices, CancellationToken ct) =>
         ChangeAsync(id, db, user, time, events, ct, (request, me, now) =>
         {
             if (request.AuthorUserId != me) return Task.FromResult<string?>("Отозвать может только автор");
@@ -300,10 +305,10 @@ internal static partial class RequestEndpoints
             request.State = RequestState.Withdrawn;
             request.ClosedAt = now;
             return Task.FromResult<string?>(null);
-        }, "отозвал заявку");
+        }, "отозвал заявку", (r, me) => notices.AssigneeAsync(r, NotificationKinds.RequestClosed, $"«{r.Title}» отозвана автором", me, ct));
 
     private static async Task<IResult> DirectionAsync(Guid id, RequestDirection body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
-        CancellationToken ct)
+        RequestNotices notices, CancellationToken ct)
     {
         string? name = null;
         if (body.DirectionId is { } directionId)
@@ -316,14 +321,20 @@ internal static partial class RequestEndpoints
         {
             request.DirectionId = body.DirectionId;
             return Task.FromResult<string?>(null);
-        }, name is null ? "передал в общую очередь" : $"передал в направление «{name}»");
+        }, name is null ? "передал в общую очередь" : $"передал в направление «{name}»", (r, me) => notices.NewAsync(r, me, ct));
     }
+
+    /// <summary>Имя того, кто действует, — для текста уведомления.</summary>
+    private static string Who(ClaimsPrincipal user) => user.Identity?.Name ?? "Кто-то";
+
+    /// <summary>Начало текста для уведомления.</summary>
+    private static string Short(string text) => text.Length > 140 ? text[..140] + "…" : text;
 
     private static Task<bool> IsMemberAsync(ToadFlowDb db, Guid id, Guid user, CancellationToken ct) =>
         db.Set<FamilyRequestMember>().AnyAsync(m => m.RequestId == id && m.UserId == user, ct);
 
     private static async Task<IResult> RejectAsync(Guid id, RequestReject body, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events,
-        CancellationToken ct)
+        RequestNotices notices, CancellationToken ct)
     {
         var reason = body.Reason?.Trim() ?? "";
         if (reason.Length == 0 || reason.Length > MaxText) return Results.BadRequest(new { error = "Напишите причину отклонения" });
@@ -336,7 +347,7 @@ internal static partial class RequestEndpoints
             request.AssigneeUserId ??= me;
             request.ClosedAt = now;
             return Task.FromResult<string?>(null);
-        }, $"отклонил: {reason}");
+        }, $"отклонил: {reason}", (r, me) => notices.PeopleAsync(r, NotificationKinds.RequestClosed, $"«{r.Title}» отклонена: {reason}", me, ct));
     }
 
     private static Task<IResult> ReopenAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct) =>
@@ -356,12 +367,12 @@ internal static partial class RequestEndpoints
     ///     («Иванов: взял в работу»). Тот, кто изменил, своё изменение уже видел.
     /// </summary>
     private static Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct,
-        Func<FamilyRequest, Guid, DateTimeOffset, Task<string?>> change, string? eventText, bool touch = true) =>
-        ChangeAsync(id, db, user, time, events, ct, change, () => eventText, touch);
+        Func<FamilyRequest, Guid, DateTimeOffset, Task<string?>> change, string? eventText, Func<FamilyRequest, Guid, Task>? after = null, bool touch = true) =>
+        ChangeAsync(id, db, user, time, events, ct, change, () => eventText, after, touch);
 
     /// <param name="eventText">Строка о событии — вычисляется после изменения (например, «автор ответил» только если ответ сменил состояние).</param>
     private static async Task<IResult> ChangeAsync(Guid id, ToadFlowDb db, ClaimsPrincipal user, TimeProvider time, IDomainEvents events, CancellationToken ct,
-        Func<FamilyRequest, Guid, DateTimeOffset, Task<string?>> change, Func<string?> eventText, bool touch = true)
+        Func<FamilyRequest, Guid, DateTimeOffset, Task<string?>> change, Func<string?> eventText, Func<FamilyRequest, Guid, Task>? after = null, bool touch = true)
     {
         var request = await db.Set<FamilyRequest>().SingleOrDefaultAsync(r => r.Id == id, ct);
         if (request is null) return Results.NotFound();
@@ -377,6 +388,7 @@ internal static partial class RequestEndpoints
         await db.SaveChangesAsync(ct);
         await db.Set<FamilyRequestMember>().Where(m => m.RequestId == id && m.UserId == me).ExecuteUpdateAsync(m => m.SetProperty(x => x.SeenAt, now), ct);
         events.Publish(new CatalogChanged(user.Actor(), Requests.UiEntity, id, $"Семейства: заявка № {request.Number} — {text ?? "сообщение"}"));
+        if (after is not null) await after(request, me);
         return Results.Ok();
     }
 
