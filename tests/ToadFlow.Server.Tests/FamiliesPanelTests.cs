@@ -119,6 +119,22 @@ public class FamiliesPanelTests : ServerTest
     }
 
     [Test]
+    public async Task Publish_OverApprovedFile_StaysUnreviewedChange()
+    {
+        await StartLibraryAsync();
+        await _library.ScanAsync(File(@"ОВ\Клапан.rfa", "a"));
+        var id = await CardIdAsync("Клапан");
+        var coordinator = await ClientAsync(UserRole.Operator);
+
+        (await coordinator.PostJsonAsync("/api/families/publications", Publication(@"ОВ\Клапан.rfa", "b", id, "мимо проверки"))).EnsureSuccessStatusCode();
+        await _library.ReportLastAsync(File(@"ОВ\Клапан.rfa", "b"));
+
+        var current = (await coordinator.GetJsonAsync<FamilyCardView>($"/api/families/{id}")).Versions.Single(v => v.IsCurrent);
+        (current.Note, current.Comment).ShouldBe(("изменено без проверки", "мимо проверки"));
+        (await DbAsync(db => db.Set<FamilyIssue>().CountAsync(i => i.Kind == IssueKind.UnreviewedChange && i.ResolvedAt == null))).ShouldBe(1);
+    }
+
+    [Test]
     public async Task Publish_Designer_Forbidden()
     {
         await StartLibraryAsync();

@@ -159,10 +159,15 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             match.AppliedAt = _now;
             version.AuthorUserId = match.AuthorUserId ?? version.AuthorUserId;
             version.Comment = match.Comment ?? version.Comment;
-            // Действие координатора (возврат версии из веба) — не «правка мимо проверки».
-            if (version.Note == UnreviewedNote || match.Note.Length > 0) version.Note = match.Note;
-            foreach (var issue in _openIssues.Where(i => i.Kind == IssueKind.UnreviewedChange && i.ResolvedAt == null && i.Hash == version.Hash && i.CardId == version.CardId))
-                issue.ResolvedAt = _now;
+            // Возврат версии кнопкой веба (у него своя пометка) — не «правка мимо проверки». Публикация поверх утверждённого файла остаётся ею:
+            // описание и автор у версии есть, но посмотреть её всё равно нужно.
+            if (match.Note.Length > 0)
+            {
+                version.Note = match.Note;
+                foreach (var issue in _openIssues.Where(i => i.Kind == IssueKind.UnreviewedChange && i.ResolvedAt == null && i.Hash == version.Hash && i.CardId == version.CardId))
+                    issue.ResolvedAt = _now;
+            }
+
             published.Add(match);
         }
 
