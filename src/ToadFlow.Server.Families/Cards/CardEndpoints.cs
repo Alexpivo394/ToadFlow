@@ -72,7 +72,8 @@ internal static class CardEndpoints
         return Results.Ok();
     }
 
-    private static async Task<IResult> CardAsync(Guid id, bool? unreviewed, ToadFlowDb db, FamiliesSettingsStore store, ClaimsPrincipal user, CancellationToken ct)
+    private static async Task<IResult> CardAsync(Guid id, bool? unreviewed, ToadFlowDb db, FamiliesSettingsStore store, ClaimsPrincipal user, TimeProvider time,
+        CancellationToken ct)
     {
         var card = await db.Set<FamilyCard>().AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct);
         if (card is null || !user.CanSee(card, unreviewed == true)) return Results.NotFound();
@@ -87,12 +88,19 @@ internal static class CardEndpoints
         var root = (await store.GetAsync(ct)).Root;
         var authorIds = versions.Select(v => v.AuthorUserId).OfType<Guid>().Distinct().ToList();
         var authors = await db.Users.AsNoTracking().Where(u => authorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+        var open = Requests.FamilyRequest.OpenStates;
+        var fixes = await db.Set<Requests.FamilyRequest>().AsNoTracking()
+            .Where(r => r.TargetCardId == id && r.Kind == Requests.RequestKind.Fix && open.Contains(r.State)).OrderBy(r => r.Number)
+            .Select(r => new CardRequestLink(r.Id, r.Number, r.Title)).ToListAsync(ct);
+        var loadsSince = time.GetUtcNow().AddDays(-180);
+        var projects = await db.Set<FamilyLoad>().AsNoTracking().Where(l => l.CardId == id && l.At >= loadsSince && l.Project != "")
+            .GroupBy(l => l.Project).OrderByDescending(g => g.Max(l => l.At)).Select(g => g.Key).Take(20).ToListAsync(ct);
         return Results.Ok(new FamilyCardView(card.Id, card.Name, card.RelativePath, FullPath(root, card.RelativePath), card.Section, card.State, card.Category,
             card.Placement, card.RevitYear, card.TypeCount, card.Description, card.Tags, card.Manufacturer, card.CreatedAt, card.UpdatedAt, card.ArchivedAt,
             card.CurrentVersionId, current?.ReadState, current?.ReadError, current?.HasPreview == true, SearchText.ContentOf(current),
             versions.Select(v => new FamilyVersionView(v.Id, v.Hash, v.RevitYear, v.State, v.Note, v.RelativePath, v.SeenAt, v.ReadState, v.ReadError, v.HasPreview,
                 v.Id == card.CurrentVersionId, v.AuthorUserId is { } author ? authors.GetValueOrDefault(author) : null, v.Comment)).ToList(),
-            card.LoadCount, card.LastLoadedAt));
+            card.LoadCount, card.LastLoadedAt, fixes, projects));
     }
 
     public static string FullPath(string root, string relativePath) =>

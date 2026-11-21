@@ -46,7 +46,12 @@ public sealed record FamilyCardView(
     FamilyContent? Content,
     IReadOnlyList<FamilyVersionView> Versions,
     int LoadCount,
-    DateTimeOffset? LastLoadedAt);
+    DateTimeOffset? LastLoadedAt,
+    IReadOnlyList<CardRequestLink> OpenFixRequests,
+    IReadOnlyList<string> LoadedProjects);
+
+/// <summary>Открытая заявка «исправить» на это семейство — известная проблема.</summary>
+public sealed record CardRequestLink(Guid Id, int Number, string Title);
 
 /// <summary>Что лежит в папке проверки: новое семейство или версия-кандидат утверждённого.</summary>
 public sealed record FamilyReviewItem(Guid CardId, Guid VersionId, string Name, string RelativePath, bool IsNew, int? RevitYear, DateTimeOffset SeenAt);

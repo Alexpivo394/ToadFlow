@@ -5,6 +5,7 @@ using ToadFlow.Contracts;
 using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Families.Actions;
 using ToadFlow.Server.Families.Cards;
+using ToadFlow.Server.Families.Analytics;
 using ToadFlow.Server.Families.Data;
 using ToadFlow.Server.Families.Panel;
 using ToadFlow.Server.Families.Read;
@@ -184,6 +185,7 @@ public sealed class FamiliesServerModule : IServerModule
         families.MapFamiliesReview();
         families.MapFamiliesVersions();
         families.MapFamiliesActions();
+        families.MapFamiliesAnalytics();
     }
 
     /// <summary>Поиск, карточка, панель Revit и заявки — и проектировщику.</summary>
