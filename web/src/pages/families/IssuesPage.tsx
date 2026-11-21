@@ -1,12 +1,13 @@
 import { useSearchParams } from 'react-router';
-import { Alert, Badge, Button, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Group, Stack, Text } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import { DataTable, type Column } from '../../components/DataTable';
 import { QueryError } from '../../components/QueryState';
 import { Empty } from '../../components/ui';
 import { t } from '../../i18n/ru';
-import { familiesKey, type FamilyIssue, type IssueKind } from './api';
+import { familiesKey, type FamilyIssue, type IssueAnswer, type IssueKind } from './api';
 import { FamilyCardDrawer } from './FamilyCardDrawer';
+import { FileActionButton, RenameButton, useIssueAnswer } from './FileActions';
 
 const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -18,9 +19,48 @@ const kindColor: Record<IssueKind, string> = {
   UnreviewedChange: 'yellow',
 };
 
+/** Ответы на случай: файлы трогает агент библиотеки, остальное — сервер. Проводником по-прежнему можно, случай закроется сам. */
+function IssueActions({ issue }: { issue: FamilyIssue }) {
+  const answer = useIssueAnswer();
+  const busy = answer.isPending && answer.variables?.id === issue.id;
+  const run = (value: IssueAnswer) => answer.mutate({ id: issue.id, answer: value });
+  const name = issue.relativePath.split('\\').pop()?.replace(/\.rfa$/i, '') ?? '';
+  switch (issue.kind) {
+    case 'Duplicate':
+      return (
+        <Group gap={6} wrap="nowrap">
+          <FileActionButton color="red" loading={busy} question={t.families.deleteCopyQuestion(issue.relativePath)} onRun={() => run('delete')}>
+            {t.families.deleteCopy}
+          </FileActionButton>
+          <Button size="compact-xs" variant="default" loading={busy} onClick={(e) => { e.stopPropagation(); run('keep'); }}>{t.families.keepBoth}</Button>
+        </Group>
+      );
+    case 'NameConflict':
+      return (
+        <Group gap={6} wrap="nowrap">
+          <RenameButton issueId={issue.id} current={name} />
+          <FileActionButton color="red" loading={busy} question={t.families.deleteFileQuestion(issue.relativePath)} onRun={() => run('delete')}>
+            {t.families.deleteFile}
+          </FileActionButton>
+        </Group>
+      );
+    case 'Ambiguous':
+      return (
+        <Group gap={6} wrap="nowrap">
+          <Button size="compact-xs" variant="default" loading={busy} onClick={(e) => { e.stopPropagation(); run('same'); }}>{t.families.sameFamily}</Button>
+          <Button size="compact-xs" variant="default" loading={busy} onClick={(e) => { e.stopPropagation(); run('other'); }}>{t.families.otherFamily}</Button>
+        </Group>
+      );
+    case 'Unreadable':
+      return <Button size="compact-xs" variant="default" loading={busy} onClick={(e) => { e.stopPropagation(); run('retry'); }}>{t.families.readAgain}</Button>;
+    default:
+      return null;
+  }
+}
+
 /**
- * «Нужно решение»: что система не может решить сама. Текст случая говорит, что сделать в проводнике; случай закрывается сам,
- * когда причина исчезла. Действий с файлами здесь нет — они появятся на этапе 4.
+ * «Нужно решение»: что система не может решить сама. У каждого случая — ответы кнопками; исправить можно и в проводнике — тогда случай
+ * закроется сам, когда причина исчезнет.
  */
 export function IssuesPage() {
   const issues = useApi<FamilyIssue[]>([familiesKey, 'issues'], '/api/families/issues?open=true');
@@ -52,7 +92,7 @@ export function IssuesPage() {
     { key: 'card', title: 'С чем связан', render: (issue) => issue.cardName ?? '—', sort: (issue) => issue.cardName },
     { key: 'created', title: 'Когда', width: 140, render: (issue) => dateTime(issue.createdAt), sort: (issue) => issue.createdAt },
     {
-      key: 'action', title: '', width: 120, render: (issue) => issue.kind === 'UnreviewedChange' && (
+      key: 'action', title: '', width: 300, render: (issue) => issue.kind === 'UnreviewedChange' ? (
         <Button size="compact-xs" variant="default" loading={resolve.isPending && resolve.variables === issue.id}
           onClick={(event) => {
             event.stopPropagation();
@@ -60,7 +100,7 @@ export function IssuesPage() {
           }}>
           {t.families.seen}
         </Button>
-      ),
+      ) : <IssueActions issue={issue} />,
     },
   ];
 

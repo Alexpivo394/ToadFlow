@@ -49,7 +49,7 @@ describe('useSpaces', () => {
     renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Designer'), '/api/modules': withFamilies });
     const items = await screen.findAllByRole('listitem');
 
-    expect(items.map((item) => item.textContent)).toContain('families: /families/catalog');
+    expect(items.map((item) => item.textContent)).toContain('families: /families/catalog,/families/requests');
   });
 
   it('families pages by role: coordinator reviews and decides, viewer only looks', async () => {
@@ -58,7 +58,7 @@ describe('useSpaces', () => {
 
     const items = (await screen.findAllByRole('listitem')).map((item) => item.textContent);
 
-    expect(items).toContain('families: /families/catalog,/families/review,/families/issues,/families/settings');
+    expect(items).toContain('families: /families/catalog,/families/requests,/families/review,/families/issues,/families/settings');
   });
 
   it('families space is absent while the module is not enabled', async () => {

@@ -11,8 +11,11 @@ import { CatalogPage } from '../pages/families/CatalogPage';
 const ReviewPage = lazy(() => import('../pages/families/ReviewPage').then((m) => ({ default: m.ReviewPage })));
 const IssuesPage = lazy(() => import('../pages/families/IssuesPage').then((m) => ({ default: m.IssuesPage })));
 const SettingsPage = lazy(() => import('../pages/families/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const RequestsPage = lazy(() => import('../pages/families/RequestsPage').then((m) => ({ default: m.RequestsPage })));
+const RequestNewPage = lazy(() => import('../pages/families/RequestNewPage').then((m) => ({ default: m.RequestNewPage })));
+const RequestPage = lazy(() => import('../pages/families/RequestPage').then((m) => ({ default: m.RequestPage })));
 
-/** Библиотека семейств Revit: каталог для всех, проверка и спорные случаи — координатору, параметры — администратору. */
+/** Библиотека семейств Revit: каталог и заявки для всех, проверка и спорные случаи — координатору, параметры — администратору. */
 export const familiesSpace: Space = {
   id: 'families',
   module: 'families',
@@ -21,6 +24,7 @@ export const familiesSpace: Space = {
   icon: IconBooks,
   pages: [
     { to: '/families/catalog', label: t.nav.familiesCatalog, designer: true, section: 'work' },
+    { to: '/families/requests', label: t.nav.familiesRequests, designer: true, section: 'work' },
     { to: '/families/review', label: t.nav.familiesReview, role: 'Operator', section: 'work' },
     { to: '/families/issues', label: t.nav.familiesIssues, role: 'Operator', section: 'work' },
     { to: '/families/settings', label: t.nav.familiesSettings, section: 'setup' },
@@ -29,6 +33,9 @@ export const familiesSpace: Space = {
     <>
       <Route index element={<Navigate to="/families/catalog" replace />} />
       <Route path="catalog" element={<Titled title={t.nav.families}><CatalogPage /></Titled>} />
+      <Route path="requests" element={<Titled title={t.requests.title}><RequestsPage /></Titled>} />
+      <Route path="requests/new" element={<Titled title={t.requests.new}><RequestNewPage /></Titled>} />
+      <Route path="requests/:id" element={<Titled title={t.requests.title}><RequestPage /></Titled>} />
       <Route path="review" element={<RoleOnly role="Operator"><Titled title={t.nav.familiesReview}><ReviewPage /></Titled></RoleOnly>} />
       <Route path="issues" element={<RoleOnly role="Operator"><Titled title={t.nav.familiesIssues}><IssuesPage /></Titled></RoleOnly>} />
       <Route path="settings" element={<RoleOnly role="Viewer"><Titled title={t.nav.familiesSettings}><SettingsPage /></Titled></RoleOnly>} />

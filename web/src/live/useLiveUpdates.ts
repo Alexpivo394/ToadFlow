@@ -17,6 +17,9 @@ const affected: Record<string, (id: string) => QueryKey[]> = {
   'clash-run-progress': (partId) => [['clash-parts', partId, 'run'], ['clash-collisions', partId, 'runs']],
   // Коллизии изменились (прогон, переходы, правки): все списки и счётчики коллизий.
   'clash-collisions': () => clashLists.map((key) => [key]),
+  // Библиотека семейств и заявки: свои списки и плитка «Обзора».
+  families: () => [['families'], ['overview']],
+  'family-requests': () => [['family-requests'], ['overview']],
 };
 
 /** Паузы повторов первого подключения: потом — автоматическое переподключение SignalR. */

@@ -10,7 +10,7 @@ const designer = { id: 'u2', login: 'ivanov', displayName: 'Иванов', role:
 
 const hit = (patch: Partial<FamilyHit> = {}): FamilyHit => ({
   id: 'c1', name: 'Клапан обратный', section: 'ОВ', relativePath: 'ОВ\Клапан обратный.rfa', category: 'Арматура трубопроводов', revitYear: 2022,
-  typeCount: 14, state: 'Approved', hasPreview: false, updatedAt: '2026-11-20T10:00:00Z', previewHash: null, ...patch,
+  typeCount: 14, state: 'Approved', hasPreview: false, updatedAt: '2026-11-20T10:00:00Z', previewHash: null, loadCount: 0, ...patch,
 });
 
 const facets: FamilyFacets = {

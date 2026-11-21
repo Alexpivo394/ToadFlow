@@ -18,6 +18,8 @@ export interface FamilyHit {
   updatedAt: string;
   /** Хеш действующей версии, если у неё есть картинка: входит в адрес картинки, поэтому её можно кешировать навсегда. */
   previewHash: string | null;
+  /** Сколько раз загружали в проекты из панели Revit. */
+  loadCount: number;
 }
 
 export type FamilyPage = Page<FamilyHit>;
@@ -69,6 +71,10 @@ export interface FamilyVersionView {
   readError: string | null;
   hasPreview: boolean;
   isCurrent: boolean;
+  /** Кто опубликовал версию из Revit или дописал к ней описание. */
+  authorName: string | null;
+  /** Что изменилось — словами автора. */
+  comment: string | null;
 }
 
 export interface FamilyCardView {
@@ -94,6 +100,8 @@ export interface FamilyCardView {
   hasPreview: boolean;
   content: FamilyContent | null;
   versions: FamilyVersionView[];
+  loadCount: number;
+  lastLoadedAt: string | null;
 }
 
 export interface FamilyNotes {
@@ -163,3 +171,82 @@ export function typesLabel(n: number): string {
   const word = mod10 === 1 && mod100 !== 11 ? 'типоразмер' : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'типоразмера' : 'типоразмеров';
   return `${n} ${word}`;
 }
+
+/** Могут ли кнопки веба менять файлы библиотеки (агент библиотеки новой версии в сети); если нет — почему. */
+export interface FileActionsState {
+  available: boolean;
+  reason: string | null;
+}
+
+export type IssueAnswer = 'delete' | 'keep' | 'rename' | 'same' | 'other' | 'retry';
+
+export type RequestState = 'New' | 'InWork' | 'Done' | 'Exists' | 'Rejected';
+export type RequestUrgency = 'Normal' | 'Urgent';
+
+export interface RequestListItem {
+  id: string;
+  number: number;
+  title: string;
+  section: string;
+  urgency: RequestUrgency;
+  project: string;
+  state: RequestState;
+  authorId: string;
+  authorName: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  cardId: string | null;
+  cardName: string | null;
+  members: number;
+  /** Текущий пользователь — автор или присоединился. */
+  isMember: boolean;
+  /** Есть изменения, которых текущий участник не видел. */
+  unread: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestMessage {
+  id: string;
+  authorId: string | null;
+  authorName: string | null;
+  text: string;
+  isEvent: boolean;
+  at: string;
+}
+
+export interface RequestFile {
+  id: string;
+  fileName: string;
+  size: number;
+  contentType: string;
+  uploadedByName: string;
+  at: string;
+}
+
+export interface RequestView {
+  request: RequestListItem;
+  text: string;
+  reason: string | null;
+  members: { userId: string; name: string }[];
+  messages: RequestMessage[];
+  files: RequestFile[];
+}
+
+export interface NewRequest {
+  title: string;
+  text: string;
+  section: string;
+  urgency: RequestUrgency;
+  project: string;
+}
+
+export interface SimilarResult {
+  families: FamilyHit[];
+  requests: RequestListItem[];
+}
+
+/** Ключ живых обновлений заявок: сервер шлёт их событиями с сущностью «family-requests». */
+export const requestsKey = 'family-requests';
+
+export const openRequest = (state: RequestState) => state === 'New' || state === 'InWork';

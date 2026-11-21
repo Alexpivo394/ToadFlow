@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Code, Drawer, Group, ScrollArea, Stack, Table, Tabs, TagsInput, Text, Textarea, TextInput, Title } from '@mantine/core';
+import { Alert, Badge, Button, Checkbox, Code, Drawer, Group, Modal, ScrollArea, Stack, Table, Tabs, TagsInput, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { useApi, useApiMutation } from '../../api/queries';
 import { useAuth } from '../../auth/AuthContext';
 import { DataTable, type Column } from '../../components/DataTable';
 import { QueryError } from '../../components/QueryState';
 import { CopyTextButton, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
-import { familiesKey, typesLabel, type FamilyCardView, type FamilyContent, type FamilyNotes, type FamilyParameterInfo, type FamilyTypeInfo } from './api';
+import {
+  familiesKey, typesLabel, type FamilyCardView, type FamilyContent, type FamilyNotes, type FamilyParameterInfo, type FamilyTypeInfo, type FamilyVersionView,
+} from './api';
 import { FamilyPreview } from './FamilyTile';
+import { ApproveNewButton, FileActionButton, RejectButton, useFamilyAction } from './FileActions';
 
 const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -34,9 +37,11 @@ export function FamilyCardDrawer({ cardId, unreviewed, onClose }: { cardId: stri
               </Group>
               <Text size="sm">{[view.category, view.placement ? t.placement[view.placement] ?? view.placement : '', view.section].filter(Boolean).join(' · ')}</Text>
               {view.typeCount > 0 && <Text size="sm" c="dimmed">{typesLabel(view.typeCount)}</Text>}
+              <Text size="sm" c="dimmed">{view.loadCount > 0 && view.lastLoadedAt ? t.families.loaded(view.loadCount, dateTime(view.lastLoadedAt)) : t.families.neverLoaded}</Text>
               <Code block style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{view.fullPath}</Code>
-              <Group>
+              <Group gap={6}>
                 <CopyTextButton value={view.fullPath} label={t.families.copyPath} copiedLabel={t.families.pathCopied} />
+                {auth.isStaff && auth.can('Operator') && <CardActions view={view} />}
               </Group>
               {view.description && <Text size="sm">{view.description}</Text>}
               {(view.tags.length > 0 || view.manufacturer) && (
@@ -65,7 +70,7 @@ export function FamilyCardDrawer({ cardId, unreviewed, onClose }: { cardId: stri
               </Tabs.Panel>
             )}
             <Tabs.Panel value="versions" pt="sm">
-              <VersionsTable view={view} />
+              <VersionsTable view={view} staff={auth.isStaff && auth.can('Operator')} />
             </Tabs.Panel>
           </Tabs>
           {auth.can('Operator') && auth.isStaff && <NotesEditor view={view} />}
@@ -111,7 +116,28 @@ function ParametersTable({ parameters }: { parameters: FamilyParameterInfo[] }) 
   return <DataTable rows={parameters} columns={columns} rowKey={(p) => p.name + (p.sharedGuid ?? '')} urlKey="fp" search={(p) => `${p.name} ${p.group}`} />;
 }
 
-function VersionsTable({ view }: { view: FamilyCardView }) {
+/** Кнопки координатора для всей карточки: утвердить новое, убрать в архив, вернуть из архива. */
+function CardActions({ view }: { view: FamilyCardView }) {
+  const archive = useFamilyAction(() => `/api/families/${view.id}/archive`, t.families.archivedDone);
+  const restore = useFamilyAction(() => `/api/families/${view.id}/restore`, t.families.restoredDone);
+  return (
+    <>
+      {view.state === 'InReview' && <ApproveNewButton cardId={view.id} name={view.name} />}
+      {view.state !== 'Archived' && (
+        <FileActionButton color="red" question={t.families.archiveQuestion(view.name)} loading={archive.isPending} onRun={() => archive.mutate()}>
+          {t.families.archive}
+        </FileActionButton>
+      )}
+      {view.state === 'Archived' && (
+        <FileActionButton question={t.families.restoreQuestion(view.name, view.relativePath)} loading={restore.isPending} onRun={() => restore.mutate()}>
+          {t.families.restore}
+        </FileActionButton>
+      )}
+    </>
+  );
+}
+
+function VersionsTable({ view, staff }: { view: FamilyCardView; staff: boolean }) {
   return (
     <Table striped>
       <Table.Thead>
@@ -120,6 +146,7 @@ function VersionsTable({ view }: { view: FamilyCardView }) {
           <Table.Th>{t.families.versionNote}</Table.Th>
           <Table.Th>{t.families.versionState}</Table.Th>
           <Table.Th>{t.families.versionRead}</Table.Th>
+          {staff && <Table.Th />}
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -127,18 +154,74 @@ function VersionsTable({ view }: { view: FamilyCardView }) {
           <Table.Tr key={version.id}>
             <Table.Td>{dateTime(version.seenAt)}</Table.Td>
             <Table.Td>
-              {version.note || '—'}
+              {version.note || (version.comment ? '' : '—')}
               {version.isCurrent && <Badge ml={6} size="xs" variant="light">{t.families.current}</Badge>}
+              {version.comment && <Text size="sm">{version.comment}</Text>}
+              <Text size="xs" c="dimmed">{version.authorName ?? t.families.authorUnknown}</Text>
             </Table.Td>
             <Table.Td>{t.versionState[version.state]}</Table.Td>
             <Table.Td>
               {t.readState[version.readState]}
               {version.readError && <Text size="xs" c="dimmed">{version.readError}</Text>}
             </Table.Td>
+            {staff && (
+              <Table.Td>
+                <VersionActions view={view} version={version} />
+              </Table.Td>
+            )}
           </Table.Tr>
         ))}
       </Table.Tbody>
     </Table>
+  );
+}
+
+/** Что координатор может сделать с версией: утвердить или отклонить кандидата, вернуть прошлую, дописать описание. */
+function VersionActions({ view, version }: { view: FamilyCardView; version: FamilyVersionView }) {
+  const approve = useFamilyAction(() => `/api/families/versions/${version.id}/approve`, t.families.approved);
+  const revert = useFamilyAction(() => `/api/families/versions/${version.id}/revert`, t.families.reverted);
+  const candidate = view.state === 'Approved' && version.state === 'InReview' && !version.isCurrent;
+  const newInReview = view.state === 'InReview' && version.isCurrent && version.state === 'InReview';
+  const previous = view.state === 'Approved' && !version.isCurrent && version.state === 'Approved';
+  return (
+    <Group gap={4} wrap="nowrap">
+      {candidate && (
+        <FileActionButton color="teal" question={t.families.approveCandidateQuestion(view.name)} loading={approve.isPending} onRun={() => approve.mutate()}>
+          {t.families.approve}
+        </FileActionButton>
+      )}
+      {(candidate || newInReview) && <RejectButton versionId={version.id} name={view.name} />}
+      {previous && (
+        <FileActionButton question={t.families.revertQuestion(dateTime(version.seenAt))} loading={revert.isPending} onRun={() => revert.mutate()}>
+          {t.families.revert}
+        </FileActionButton>
+      )}
+      <CommentButton version={version} />
+    </Group>
+  );
+}
+
+/** Описание версии задним числом — например, к правке, сделанной проводником; «автор — я» по желанию. */
+function CommentButton({ version }: { version: FamilyVersionView }) {
+  const [opened, setOpened] = useState(false);
+  const [comment, setComment] = useState(version.comment ?? '');
+  const [mine, setMine] = useState(version.authorName === null);
+  const save = useApiMutation<{ comment: string; mine: boolean }>('PUT', () => `/api/families/versions/${version.id}/comment`,
+    { invalidate: [familiesKey], success: t.families.commentSaved });
+  return (
+    <>
+      <Button size="compact-xs" variant="subtle" onClick={() => setOpened(true)}>{t.families.comment}</Button>
+      <Modal opened={opened} onClose={() => setOpened(false)} title={t.families.comment}>
+        <Stack>
+          <Textarea label={t.families.commentLabel} autosize minRows={2} value={comment} onChange={(e) => setComment(e.currentTarget.value)} data-autofocus />
+          <Checkbox label={t.families.authorMe} checked={mine} onChange={(e) => setMine(e.currentTarget.checked)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setOpened(false)}>{t.common.cancel}</Button>
+            <Button loading={save.isPending} onClick={() => save.mutate({ comment, mine }, { onSuccess: () => setOpened(false) })}>{t.common.save}</Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   );
 }
 

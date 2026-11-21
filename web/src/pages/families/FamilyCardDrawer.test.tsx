@@ -22,9 +22,10 @@ const card = (patch: Partial<FamilyCardView> = {}): FamilyCardView => ({
     parameters: [{ name: 'Диаметр условный', isShared: true, sharedGuid: 'g1', isInstance: false, group: 'Размеры', dataType: 'Длина' }],
   },
   versions: [
-    { id: 'v2', hash: 'b', revitYear: 2022, state: 'Approved', note: 'изменено без проверки', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-20T10:00:00Z', readState: 'Done', readError: null, hasPreview: false, isCurrent: true },
-    { id: 'v1', hash: 'a', revitYear: 2022, state: 'Approved', note: '', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-19T10:00:00Z', readState: 'Failed', readError: 'Revit не открыл файл', hasPreview: false, isCurrent: false },
+    { id: 'v2', hash: 'b', revitYear: 2022, state: 'Approved', note: 'изменено без проверки', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-20T10:00:00Z', readState: 'Done', readError: null, hasPreview: false, isCurrent: true, authorName: null, comment: null },
+    { id: 'v1', hash: 'a', revitYear: 2022, state: 'Approved', note: '', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-19T10:00:00Z', readState: 'Failed', readError: 'Revit не открыл файл', hasPreview: false, isCurrent: false, authorName: 'Петров', comment: 'первая версия' },
   ],
+  loadCount: 3, lastLoadedAt: '2026-11-20T12:00:00Z',
   ...patch,
 });
 
@@ -103,5 +104,43 @@ describe('FamilyCardDrawer', () => {
     await screen.findByText('КЛАБ-40-20');
     expect(screen.queryByLabelText('Описание')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Сохранить' })).toBeNull();
+  });
+
+  it('coordinator archives the card and reverts to a previous version; loads and authors are shown', async () => {
+    const posted: string[] = [];
+    render(card(), undefined, {
+      '/api/families/actions': { available: true, reason: null },
+      'POST /api/families/c1/archive': () => {
+        posted.push('archive');
+        return {};
+      },
+      'POST /api/families/versions/v1/revert': () => {
+        posted.push('revert');
+        return {};
+      },
+    });
+
+    expect(await screen.findByText(/Загружали в проекты: 3 раза/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Версии' }));
+    expect(await screen.findByText('первая версия')).toBeTruthy();
+    expect(screen.getByText('Петров')).toBeTruthy();
+    expect(screen.getByText('автор неизвестен')).toBeTruthy();
+
+    const archive = screen.getByRole('button', { name: 'В архив' });
+    await waitFor(() => expect((archive as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(archive);
+    fireEvent.click(await screen.findByRole('button', { name: 'Да' }));
+    await waitFor(() => expect(posted).toEqual(['archive']));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуть эту' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Да' })).at(-1)!);
+    await waitFor(() => expect(posted).toEqual(['archive', 'revert']));
+  });
+
+  it('designer sees no coordinator buttons', async () => {
+    render(card(), { id: 'u2', login: 'ivanov', displayName: 'Иванов', role: 'Designer', isDisabled: false, lastLoginAt: null, disciplines: [] });
+
+    expect(await screen.findByText(/Загружали в проекты/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'В архив' })).toBeNull();
   });
 });
