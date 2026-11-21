@@ -28,7 +28,7 @@ public sealed class LibraryFiles(ToadFlowDb db, FamiliesSettingsStore store, Lib
         var modules = await db.Agents.AsNoTracking().Where(a => a.Id == agent.Id).Select(a => a.Modules).SingleOrDefaultAsync(ct);
         return modules?.Contains(ModuleKinds.FamiliesFiles) == true
             ? new FileActionsState(true, null)
-            : new FileActionsState(false, $"агент библиотеки {agent.MachineName} старой версии — действия с файлами появились в агенте 2.5");
+            : new FileActionsState(false, $"агент библиотеки {agent.MachineName} старой версии — действия с файлами появились в агенте 3.0");
     }
 
     /// <returns>Почему не сделано; null — сделано, обход попрошен.</returns>

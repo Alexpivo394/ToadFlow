@@ -29,7 +29,7 @@ public static class AgentCapabilities
     public static string MinimumVersion(string moduleKind) => moduleKind switch
     {
         ModuleKinds.ClashExtract => "1.8",
-        ModuleKinds.FamiliesRead => "2.5",
+        ModuleKinds.FamiliesRead => "3.0",
         _ => "1.1"
     };
 

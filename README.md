@@ -87,13 +87,13 @@ docker compose up -d --build
 **2. Агент.** Windows с Revit. В интерфейсе нажмите **Ферма → Агенты → Подключить агента** и получите код. Затем поставьте `ToadFlowAgent-*.msi` из [релизов](https://github.com/Alexpivo394/ToadFlow/releases/latest):
 
 ```powershell
-msiexec /i ToadFlowAgent-2.4.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
+msiexec /i ToadFlowAgent-3.0.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
 ```
 
 **3. Первое расписание.** Пользователи, источники моделей, пресеты и расписание — по странице [«Первый запуск»](https://github.com/Alexpivo394/ToadFlow/wiki/Getting-started).
 
 > [!NOTE]
-> Обновление с 1.7.1 на 2.0.0 требует копии базы и новой переменной `CLASH_ENGINE_KEY`. Порядок — в вики: [С 1.7.1 на 2.0.0](https://github.com/Alexpivo394/ToadFlow/wiki/Server#с-171-на-200).
+> Обновление с 2.4 на 3.0.0 добавляет модуль «Семейства»; править `.env` не нужно. Порядок — в вики: [С 2.4 на 3.0.0](https://github.com/Alexpivo394/ToadFlow/wiki/Server#с-24-на-300-семейства-и-новый-обзор).
 
 ## Документация
 
@@ -108,7 +108,8 @@ msiexec /i ToadFlowAgent-2.4.0.msi SERVER=http://toadflow:8080 CODE=TF-XXXX-XXXX
 | | [Расписания](https://github.com/Alexpivo394/ToadFlow/wiki/Schedules) | Какую задачу, над какими моделями, куда и как часто выполнять |
 | | [Проверка LOI](https://github.com/Alexpivo394/ToadFlow/wiki/LOI) | Из чего состоит проверка и как настроить её с нуля |
 | | [Коллизии](https://github.com/Alexpivo394/ToadFlow/wiki/Clash) | Выгрузка, проверки, статусы, отчёты |
-| Проектировщику | [Проектировщику](https://github.com/Alexpivo394/ToadFlow/wiki/Designer) | Работа с коллизиями в браузере и в Revit |
+| | [Семейства](https://github.com/Alexpivo394/ToadFlow/wiki/Families) | Папка библиотеки, утверждение, заявки, права на папку |
+| Проектировщику | [Проектировщику](https://github.com/Alexpivo394/ToadFlow/wiki/Designer) | Коллизии и семейства в браузере и в Revit |
 | Разработчику | [Разработка](https://github.com/Alexpivo394/ToadFlow/wiki/Development) | Сборка, тесты, выпуск версии, модули |
 
 ## Соседние проекты
@@ -120,7 +121,8 @@ ToadFlow собран из ядер, которые живут в своих р�
 | [ToadExport](https://github.com/Alexpivo394/ToadExport) | Ядро выгрузки RVT и NWC |
 | [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck) | Ядро проверки LOI |
 | [ToadClash](https://github.com/Alexpivo394/ToadClash) | Ядро поиска коллизий |
-| [ToadTools](https://github.com/Alexpivo394/ToadTools) | Плагины для Revit: ToadExporter, ParamChecker, панель «Коллизии» и другие |
+| [ToadFamilyManager](https://github.com/Alexpivo394/ToadFamilyManager) | Ядро библиотеки семейств |
+| [ToadTools](https://github.com/Alexpivo394/ToadTools) | Плагины для Revit: ToadExporter, ParamChecker, панели «Коллизии» и «Семейства» и другие |
 
 ## Лицензия
 
