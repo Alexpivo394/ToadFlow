@@ -8,6 +8,7 @@ import type { LoginResponse, UserView } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { PageTitle, Panel } from '../../components/ui';
 import { t } from '../../i18n/ru';
+import { NotificationSettingsPanel } from '../../notifications/NotificationSettingsPanel';
 
 const orNull = (value: string) => value.trim() || null;
 
@@ -98,6 +99,7 @@ export function ProfilePage() {
             </Group>
           </Stack>
         </Panel>
+        <NotificationSettingsPanel />
       </Stack>
     </>
   );

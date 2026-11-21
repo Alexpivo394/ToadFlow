@@ -1,8 +1,9 @@
 import { NavLink as RouterLink, useLocation } from 'react-router';
-import { ActionIcon, Box, Stack, Text, Tooltip, UnstyledButton, useMantineColorScheme } from '@mantine/core';
+import { ActionIcon, Box, Center, Stack, Text, Tooltip, UnstyledButton, useMantineColorScheme } from '@mantine/core';
 import { IconLayoutDashboard, IconLogout, IconMoon, IconSun, IconUserCircle, type Icon } from '@tabler/icons-react';
 import { useAuth } from '../auth/AuthContext';
 import { t } from '../i18n/ru';
+import { NotificationBell } from '../notifications/NotificationBell';
 import { visiblePages } from '../spaces/useSpaces';
 import type { Space } from '../spaces/types';
 
@@ -47,6 +48,7 @@ export function Rail({ spaces, current, onNavigate }: { spaces: Space[]; current
             active={current?.id === space.id} onClick={onNavigate} />
         ))}
         <Box mt="auto" />
+        <Center visibleFrom="sm"><NotificationBell /></Center>
         <RailLink to="/profile" label={t.nav.profile} short={t.nav.profile} icon={IconUserCircle} active={pathname === '/profile'} onClick={onNavigate}
           tooltip={auth.user ? `${auth.user.displayName} · ${t.role[auth.user.role]}` : undefined} />
       </Stack>
