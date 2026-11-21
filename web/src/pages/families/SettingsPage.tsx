@@ -4,6 +4,7 @@ import { useApi, useApiMutation } from '../../api/queries';
 import { useAuth } from '../../auth/AuthContext';
 import { Panel } from '../../components/ui';
 import { t } from '../../i18n/ru';
+import { DirectionsPanel } from './DirectionsPanel';
 import { familiesKey, type FamiliesSettings, type LibraryAgent } from './api';
 import { LibraryStatus } from './LibraryStatus';
 
@@ -50,6 +51,8 @@ export function SettingsPage() {
               onChange={(e) => setDraft({ ...value, reviewFolder: e.currentTarget.value })} />
             <NumberInput label={t.families.interval} w={240} min={1} max={1440} value={value.scanIntervalMinutes} disabled={readOnly} error={errors.interval}
               onChange={(v) => setDraft({ ...value, scanIntervalMinutes: Number(v) })} />
+            <NumberInput label={t.insights.autoAccept} description={t.insights.autoAcceptHint} w={240} min={1} max={60} value={value.autoAcceptDays ?? 5} disabled={readOnly}
+              onChange={(v) => setDraft({ ...value, autoAcceptDays: Number(v) })} />
             <Select label={t.families.agent} description={t.families.agentHint} data={agentOptions} allowDeselect={false} disabled={readOnly}
               value={value.libraryAgentId ?? anyAgent} onChange={(v) => setDraft({ ...value, libraryAgentId: v === anyAgent || v === null ? null : v })} />
             {!readOnly && (
@@ -60,6 +63,7 @@ export function SettingsPage() {
           </Stack>
         </Panel>
       )}
+      <DirectionsPanel />
     </Stack>
   );
 }

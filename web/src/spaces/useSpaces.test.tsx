@@ -58,7 +58,7 @@ describe('useSpaces', () => {
 
     const items = (await screen.findAllByRole('listitem')).map((item) => item.textContent);
 
-    expect(items).toContain('families: /families/catalog,/families/requests,/families/review,/families/issues,/families/settings');
+    expect(items).toContain('families: /families/catalog,/families/requests,/families/review,/families/issues,/families/misses,/families/analytics,/families/settings');
   });
 
   it('families space is absent while the module is not enabled', async () => {

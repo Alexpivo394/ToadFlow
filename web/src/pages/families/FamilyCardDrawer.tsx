@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Checkbox, Code, Drawer, Group, Modal, ScrollArea, Stack, Table, Tabs, TagsInput, Text, Textarea, TextInput, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Checkbox, Code, Drawer, Group, Modal, ScrollArea, Stack, Table, Tabs, TagsInput, Text, Textarea, TextInput, Title } from '@mantine/core';
+import { Link } from 'react-router';
 import { useApi, useApiMutation } from '../../api/queries';
 import { useAuth } from '../../auth/AuthContext';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -43,6 +44,19 @@ export function FamilyCardDrawer({ cardId, unreviewed, onClose }: { cardId: stri
                 <CopyTextButton value={view.fullPath} label={t.families.copyPath} copiedLabel={t.families.pathCopied} />
                 {auth.isStaff && auth.can('Operator') && <CardActions view={view} />}
               </Group>
+              <Group gap={6}>
+                <Button size="xs" variant="light" color="orange" component={Link} to={`/families/requests/new?kind=fix&card=${view.id}`}>{t.insights.reportProblem}</Button>
+              </Group>
+              {view.openFixRequests.length > 0 && (
+                <Alert color="orange" variant="light" p="xs" title={t.insights.knownProblems}>
+                  <Stack gap={2}>
+                    {view.openFixRequests.map((r) => (
+                      <Anchor key={r.id} component={Link} to={`/families/requests/${r.id}`} size="sm">№ {r.number} · {r.title}</Anchor>
+                    ))}
+                  </Stack>
+                </Alert>
+              )}
+              {view.loadedProjects.length > 0 && <Text size="sm" c="dimmed">{t.insights.loadedInto}: {view.loadedProjects.join(', ')}</Text>}
               {view.description && <Text size="sm">{view.description}</Text>}
               {(view.tags.length > 0 || view.manufacturer) && (
                 <Group gap={4}>

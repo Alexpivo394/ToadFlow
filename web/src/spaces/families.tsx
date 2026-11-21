@@ -14,6 +14,8 @@ const SettingsPage = lazy(() => import('../pages/families/SettingsPage').then((m
 const RequestsPage = lazy(() => import('../pages/families/RequestsPage').then((m) => ({ default: m.RequestsPage })));
 const RequestNewPage = lazy(() => import('../pages/families/RequestNewPage').then((m) => ({ default: m.RequestNewPage })));
 const RequestPage = lazy(() => import('../pages/families/RequestPage').then((m) => ({ default: m.RequestPage })));
+const MissesPage = lazy(() => import('../pages/families/MissesPage').then((m) => ({ default: m.MissesPage })));
+const AnalyticsPage = lazy(() => import('../pages/families/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 
 /** Библиотека семейств Revit: каталог и заявки для всех, проверка и спорные случаи — координатору, параметры — администратору. */
 export const familiesSpace: Space = {
@@ -27,6 +29,8 @@ export const familiesSpace: Space = {
     { to: '/families/requests', label: t.nav.familiesRequests, designer: true, section: 'work' },
     { to: '/families/review', label: t.nav.familiesReview, role: 'Operator', section: 'work' },
     { to: '/families/issues', label: t.nav.familiesIssues, role: 'Operator', section: 'work' },
+    { to: '/families/misses', label: t.insights.misses, role: 'Operator', section: 'work' },
+    { to: '/families/analytics', label: t.insights.analytics, role: 'Operator', section: 'work' },
     { to: '/families/settings', label: t.nav.familiesSettings, section: 'setup' },
   ],
   routes: () => (
@@ -38,6 +42,8 @@ export const familiesSpace: Space = {
       <Route path="requests/:id" element={<Titled title={t.requests.title}><RequestPage /></Titled>} />
       <Route path="review" element={<RoleOnly role="Operator"><Titled title={t.nav.familiesReview}><ReviewPage /></Titled></RoleOnly>} />
       <Route path="issues" element={<RoleOnly role="Operator"><Titled title={t.nav.familiesIssues}><IssuesPage /></Titled></RoleOnly>} />
+      <Route path="misses" element={<RoleOnly role="Operator"><Titled title={t.insights.missesTitle}><MissesPage /></Titled></RoleOnly>} />
+      <Route path="analytics" element={<RoleOnly role="Operator"><Titled title={t.insights.analyticsTitle}><AnalyticsPage /></Titled></RoleOnly>} />
       <Route path="settings" element={<RoleOnly role="Viewer"><Titled title={t.nav.familiesSettings}><SettingsPage /></Titled></RoleOnly>} />
     </>
   ),

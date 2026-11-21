@@ -38,6 +38,7 @@ function render(view: FamilyCardView, user?: object, extra: Record<string, unkno
 }
 
 describe('FamilyCardDrawer', () => {
+it('card offers to report a problem and shows known problems and projects', async () => {    render(card({ openFixRequests: [{ id: 'r7', number: 7, title: 'Не тот уровень' }], loadedProjects: ['ЖК Север', 'Дом 2'] }), viewer);    expect(await screen.findByText(/№ 7 · Не тот уровень/)).toBeTruthy();    expect(screen.getByText(/ЖК Север, Дом 2/)).toBeTruthy();    expect(screen.getByRole('link', { name: 'Сообщить о проблеме' }).getAttribute('href')).toBe('/families/requests/new?kind=fix&card=c1');  });
   it('card shows the full path and copies it', async () => {
     render(card());
 

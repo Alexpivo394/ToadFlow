@@ -138,6 +138,7 @@ export interface FamiliesSettings {
   reviewFolder: string;
   scanIntervalMinutes: number;
   libraryAgentId: string | null;
+  autoAcceptDays?: number;
 }
 
 export interface LibraryStatus {

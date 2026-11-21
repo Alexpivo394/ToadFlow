@@ -1,3 +1,4 @@
+import { FollowButton } from './FollowButton';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Alert, Anchor, Button, Checkbox, Group, NumberInput, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput } from '@mantine/core';
@@ -163,7 +164,7 @@ export function ScheduleEditor({ schedule, module, base }: { schedule: ScheduleV
   }
 
   return (
-    <Panel title={schedule ? `Расписание «${schedule.name}»` : 'Новое расписание'}>
+    <Panel title={schedule ? `Расписание «${schedule.name}»` : 'Новое расписание'} actions={schedule ? <FollowButton id={schedule.id} /> : undefined}>
       {errors && (
         <Alert color="red" mb="sm">
           {errors}
