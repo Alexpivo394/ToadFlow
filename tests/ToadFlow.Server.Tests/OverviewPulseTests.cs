@@ -22,7 +22,11 @@ public class OverviewPulseTests : ServerTest
     public OverviewPulseTests()
     {
         Time = _time;
-        Services = OverviewFakes.Quiet;
+        Services = services =>
+        {
+            OverviewFakes.Quiet(services);
+            OverviewFakes.TokensOnTestClock(services);
+        };
     }
 
     private async Task<OverviewPulse> PulseAsync() => (await (await AdminAsync()).GetJsonAsync<OverviewDto>("/api/overview")).Pulse;
@@ -112,7 +116,11 @@ public class OverviewPulseDisabledModuleTests : ServerTest
     public OverviewPulseDisabledModuleTests()
     {
         Modules = "export";
-        Services = OverviewFakes.Quiet;
+        Services = services =>
+        {
+            OverviewFakes.Quiet(services);
+            OverviewFakes.TokensOnTestClock(services);
+        };
     }
 
     [Test]

@@ -16,7 +16,11 @@ public class OverviewFeedTests : ServerTest
     public OverviewFeedTests()
     {
         Time = new FakeTimeProvider(Now);
-        Services = OverviewFakes.Quiet;
+        Services = services =>
+        {
+            OverviewFakes.Quiet(services);
+            OverviewFakes.TokensOnTestClock(services);
+        };
     }
 
     private async Task<FeedItem[]> FeedAsync(UserRole role = UserRole.Viewer) =>

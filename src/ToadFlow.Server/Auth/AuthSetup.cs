@@ -18,15 +18,6 @@ public static class AuthSetup
         builder.Services.AddMemoryCache();
         builder.Services.AddHostedService<AdminSeeder>();
 
-        // Срок токена проверяется по тем же часам, по которым он выдан (TimeProvider): в работе это системные часы, в тестах с
-        // подменёнными часами токен не «истекает» оттого, что настоящий календарь ушёл вперёд.
-        builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
-            .PostConfigure<TimeProvider>((options, time) => options.TokenValidationParameters.LifetimeValidator = (notBefore, expires, _, parameters) =>
-            {
-                var now = time.GetUtcNow().UtcDateTime;
-                return (notBefore is not { } from || from <= now + parameters.ClockSkew) && (expires is not { } to || to >= now - parameters.ClockSkew);
-            });
-
         var jwtKey = builder.Configuration[$"{AuthOptions.Section}:JwtKey"] ?? "";
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>

@@ -24,6 +24,19 @@ internal static class OverviewFakes
         services.RemoveAll<IWorkerProbe>();
     }
 
+    /// <summary>
+    ///     Для тестов с часами на фиксированной дате: срок токена проверяется по тем же подменённым часам, по которым он выдан. Иначе
+    ///     через сутки после даты теста настоящие часы считают токен истёкшим и тесты падают с 401.
+    /// </summary>
+    public static void TokensOnTestClock(IServiceCollection services) =>
+        services.AddOptions<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(
+                Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
+            .PostConfigure<TimeProvider>((options, time) => options.TokenValidationParameters.LifetimeValidator = (notBefore, expires, _, parameters) =>
+            {
+                var now = time.GetUtcNow().UtcDateTime;
+                return (notBefore is not { } from || from <= now + parameters.ClockSkew) && (expires is not { } to || to >= now - parameters.ClockSkew);
+            });
+
     public sealed class Volume(string name, long free, long total) : IDataVolume
     {
         public string Name => name;
