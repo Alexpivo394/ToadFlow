@@ -23,6 +23,7 @@ public class OverviewSeriesTests : ServerTest
         {
             OverviewFakes.Quiet(services);
             FamiliesFixtures.WithoutScanLoop(services);
+            OverviewFakes.TokensOnTestClock(services);
         };
     }
 
