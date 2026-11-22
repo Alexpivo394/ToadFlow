@@ -72,6 +72,16 @@ internal static class OverviewFakes
         job.Status = JobStatus.Failed;
         job.FinishedAt = finished;
     }
+
+    /// <summary>Законченное задание модели по пути <paramref name="path" />.</summary>
+    public static void FinishedJob(ToadFlowDb db, string kind, string path, JobStatus status, DateTimeOffset finished)
+    {
+        var job = Seed.Job(db, Seed.Run(db, RunState.Completed).Id);
+        job.ModuleKind = kind;
+        job.ModelPath = path;
+        job.Status = status;
+        job.FinishedAt = finished;
+    }
 }
 
 public class OverviewTests : ServerTest
@@ -168,6 +178,54 @@ public class OverviewTests : ServerTest
         });
         var item = (await admin.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
         (item.Level, item.Text).ShouldBe((AttentionLevel.Problem, "Выгрузка: 16 моделей с ошибкой за сутки"));
+    }
+
+    [Test]
+    public async Task FailedJobs_LaterSuccessOfSameModel_NotCounted()
+    {
+        var now = _time.GetUtcNow();
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/A.rvt", JobStatus.Failed, now.AddHours(-3));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/A.rvt", JobStatus.Succeeded, now.AddHours(-1));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/B.rvt", JobStatus.Failed, now.AddHours(-2));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/B.rvt", JobStatus.Warning, now.AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+
+        (await (await AdminAsync()).GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task FailedJobs_SuccessBeforeFailure_StillCounted()
+    {
+        var now = _time.GetUtcNow();
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/A.rvt", JobStatus.Succeeded, now.AddHours(-3));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/A.rvt", JobStatus.Failed, now.AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+
+        var item = (await (await AdminAsync()).GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
+        item.Text.ShouldBe("Проверка LOI: 1 модель с ошибкой за сутки");
+    }
+
+    [Test]
+    public async Task FailedJobs_SuccessInOtherKindOrEmptyPath_StillCounted()
+    {
+        var now = _time.GetUtcNow();
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "RSN://rs22/A.rvt", JobStatus.Failed, now.AddHours(-3));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Export, "RSN://rs22/A.rvt", JobStatus.Succeeded, now.AddHours(-1));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "", JobStatus.Failed, now.AddHours(-3));
+            OverviewFakes.FinishedJob(db, ModuleKinds.Loi, "", JobStatus.Succeeded, now.AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+
+        var item = (await (await AdminAsync()).GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
+        item.Text.ShouldBe("Проверка LOI: 2 модели с ошибкой за сутки");
     }
 
     [Test]

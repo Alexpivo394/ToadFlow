@@ -48,7 +48,11 @@ public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, Module
     private async Task<IEnumerable<AttentionItem>> FailedJobsAsync(DateTimeOffset now, CancellationToken ct)
     {
         var dayAgo = now.AddDays(-1);
+        // Модель, которая после ошибки прошла успешно (перезапуск), уже не проблема. Пустой путь — не «та же модель».
         var byKind = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed && j.FinishedAt >= dayAgo)
+            .Where(j => j.ModelPath == "" || !db.Jobs.Any(s => s.ModuleKind == j.ModuleKind && s.ModelPath == j.ModelPath
+                                                              && (s.Status == JobStatus.Succeeded || s.Status == JobStatus.Warning)
+                                                              && s.FinishedAt > j.FinishedAt))
             .GroupBy(j => j.ModuleKind).Select(g => new { Kind = g.Key, Count = g.Count() }).ToListAsync(ct);
         return modules.Enabled
             .Select(module => (Module: module, Count: byKind.Where(k => module.Kinds.Contains(k.Kind)).Sum(k => k.Count)))
