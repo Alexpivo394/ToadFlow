@@ -22,6 +22,8 @@ const affected: Record<string, (id: string) => QueryKey[]> = {
   // Журнал действий: новая строка может попасть в ленту «Обзора».
   events: () => [['events'], ['overview-feed']],
   'family-requests': () => [['family-requests'], ['overview']],
+  // Ошибки модуля отметили решёнными: «Обзор» у всех, у кого он открыт.
+  overview: () => [['overview'], ['overview-feed']],
 };
 
 /** Паузы повторов первого подключения: потом — автоматическое переподключение SignalR. */

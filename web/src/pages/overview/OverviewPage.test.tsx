@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderApp } from '../../test/renderApp';
 
@@ -90,6 +90,29 @@ describe('OverviewPage', () => {
       ['Агент BIM-PC-03 не в сети 2 ч', '/farm/agents', 'Problem'],
       ['2 заявки на регистрацию', '/admin/users', 'Todo'],
     ]);
+  });
+
+  const failedLoi = { level: 'Problem', text: 'Проверка LOI: 2 модели с ошибкой за сутки', link: '/loi/history?status=Failed', module: 'loi', minRole: 'Viewer', resolveKey: 'loi' };
+  const offline = { level: 'Problem', text: 'Агент BIM-PC-03 не в сети 2 ч', link: '/farm/agents', module: null, minRole: 'Viewer', resolveKey: null };
+  type FetchMock = { mock: { calls: [string, RequestInit?][] } };
+  const posts = (path: string) => (fetch as unknown as FetchMock).mock.calls.filter(([url, init]) => url === path && init?.method === 'POST');
+
+  it('coordinator marks failed models resolved; rows that clear by themselves have no button', async () => {
+    renderApp('/', { ...responses([failedLoi, offline]), '/api/auth/me': operator, 'POST /api/overview/attention/loi/resolve': null });
+
+    const block = await screen.findByRole('region', { name: 'Требует внимания' });
+    const buttons = await within(block).findAllByRole('button', { name: 'Решено' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    await waitFor(() => expect(posts('/api/overview/attention/loi/resolve')).toHaveLength(1));
+  });
+
+  it('viewer sees failed models but no resolve button', async () => {
+    renderApp('/', { ...responses([failedLoi]), '/api/auth/me': { ...operator, role: 'Viewer' } });
+
+    const block = await screen.findByRole('region', { name: 'Требует внимания' });
+    expect(await within(block).findByText('Проверка LOI: 2 модели с ошибкой за сутки')).toBeTruthy();
+    expect(within(block).queryByRole('button', { name: 'Решено' })).toBeNull();
   });
 
   it('module tiles link to the module and draw their two-week chart', async () => {

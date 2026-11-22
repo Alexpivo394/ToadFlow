@@ -321,6 +321,8 @@ export interface AttentionItem {
   link: string;
   module: string | null;
   minRole: UserRole;
+  /** Строку можно отметить решённой: POST /api/overview/attention/{resolveKey}/resolve; null — пропадёт сама. */
+  resolveKey?: string | null;
 }
 
 /** Плитка модуля на «Обзоре»: главное число с подписью, изменение, до трёх строк пояснений. */

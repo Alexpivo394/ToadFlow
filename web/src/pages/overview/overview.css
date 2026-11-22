@@ -47,6 +47,17 @@
 }
 .ov-chip[data-level='ok'] { color: var(--mantine-color-green-7); font-weight: 600; }
 a.ov-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08); }
+/* Плашка с кнопкой «Решено»: две половинки одной плашки. */
+.ov-chip-pair { display: inline-flex; align-items: stretch; }
+.ov-chip-pair > .ov-chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ov-chip-resolve {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--mantine-color-default-border); border-left: none; border-radius: 0 12px 12px 0;
+  background: var(--mantine-color-body); color: var(--mantine-color-green-7);
+}
+.ov-chip-resolve[data-level='Problem'] { border-color: light-dark(var(--mantine-color-red-2), rgba(224, 49, 49, 0.4)); }
+.ov-chip-resolve:hover:not(:disabled) { background: light-dark(var(--mantine-color-green-0), rgba(47, 158, 68, 0.15)); }
+.ov-chip-resolve:disabled { opacity: 0.6; cursor: default; }
 
 .ov-tile {
   position: relative; overflow: hidden; display: block; text-decoration: none; color: inherit; min-height: 168px;
