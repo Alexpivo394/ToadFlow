@@ -165,7 +165,7 @@ public class FamilyLibraryEndToEndTests : ServerTest
         await ScanUntilAsync(async () => await DbAsync(db => db.Set<FamilyCard>().AnyAsync(c => c.Name == "Задвижка клиновая")));
 
         var request = await designer.GetJsonAsync<RequestView>($"/api/families/requests/{created.Id}");
-        (request.Request.State, request.Request.CardName, request.Request.Unread).ShouldBe((RequestState.Done, "Задвижка клиновая", true));
+        (request.Request.State, request.Request.CardName, request.Request.Unread).ShouldBe((RequestState.Review, "Задвижка клиновая", true)); // публикация — на приёмку автору
 
         var card = await CardAsync("Задвижка клиновая");
         card.State.ShouldBe(CardState.InReview);
