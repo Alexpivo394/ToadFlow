@@ -13,7 +13,9 @@ public enum AttentionLevel
 /// <param name="Link">Адрес страницы веба, где это делается.</param>
 /// <param name="Module">Модуль-источник; null — ядро.</param>
 /// <param name="MinRole">С какой роли строка видна: Наблюдатель не видит то, с чем ничего не может сделать.</param>
-public sealed record AttentionItem(AttentionLevel Level, string Text, string Link, string? Module, UserRole MinRole = UserRole.Viewer);
+/// <param name="ResolveKey">Строку можно отметить решённой (<c>POST /api/overview/attention/{ResolveKey}/resolve</c>); null — нельзя, она пропадёт сама.</param>
+public sealed record AttentionItem(AttentionLevel Level, string Text, string Link, string? Module, UserRole MinRole = UserRole.Viewer,
+    string? ResolveKey = null);
 
 /// <summary>Плитка модуля на «Обзоре»: главное число с подписью, изменение за период, до трёх строк пояснений.</summary>
 /// <param name="Series">Ряд для графика: <see cref="OverviewDays.Count" /> значений по дням пояса из настроек, последний — сегодня; null — графика нет.</param>

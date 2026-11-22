@@ -7,7 +7,8 @@ using ToadFlow.Server.Settings;
 namespace ToadFlow.Server.Overview;
 
 /// <summary>Строки «Требует внимания» от ядра: агенты не в сети, заявки, ошибки за сутки, место на дисках, молчащие рабочие процессы.</summary>
-public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, ModuleSet modules, ServerStatsReader stats, TimeProvider time)
+public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, ModuleSet modules, ServerStatsReader stats, AttentionResolutions resolutions,
+    TimeProvider time)
 {
     /// <summary>Мало места: свободно меньше этой доли тома…</summary>
     public const double LowDiskShare = 0.10;
@@ -49,17 +50,20 @@ public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, Module
     {
         var dayAgo = now.AddDays(-1);
         // Модель, которая после ошибки прошла успешно (перезапуск), уже не проблема. Пустой путь — не «та же модель».
-        var byKind = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed && j.FinishedAt >= dayAgo)
+        var failed = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed && j.FinishedAt >= dayAgo)
             .Where(j => j.ModelPath == "" || !db.Jobs.Any(s => s.ModuleKind == j.ModuleKind && s.ModelPath == j.ModelPath
                                                               && (s.Status == JobStatus.Succeeded || s.Status == JobStatus.Warning)
                                                               && s.FinishedAt > j.FinishedAt))
-            .GroupBy(j => j.ModuleKind).Select(g => new { Kind = g.Key, Count = g.Count() }).ToListAsync(ct);
+            .Select(j => new { Kind = j.ModuleKind, At = j.FinishedAt!.Value }).ToListAsync(ct);
+        // Ошибки до «Решено» модуля не считаются.
+        var resolved = await resolutions.ListAsync(ct);
         return modules.Enabled
-            .Select(module => (Module: module, Count: byKind.Where(k => module.Kinds.Contains(k.Kind)).Sum(k => k.Count)))
+            .Select(module => (Module: module, Count: failed.Count(j => module.Kinds.Contains(j.Kind)
+                                                                       && !(resolved.TryGetValue(module.Name, out var at) && j.At <= at))))
             .Where(m => m.Count > 0 && m.Count >= m.Module.FailedJobsAlarm)
             .Select(m => new AttentionItem(AttentionLevel.Problem,
                 $"{m.Module.Title}: {m.Count} {Russian.Plural(m.Count, "модель", "модели", "моделей")} с ошибкой за сутки",
-                $"{m.Module.HistoryPath}?status=Failed", m.Module.Name));
+                $"{m.Module.HistoryPath}?status=Failed", m.Module.Name, ResolveKey: m.Module.Name));
     }
 
     private IEnumerable<AttentionItem> LowDisk() => stats.Volumes()

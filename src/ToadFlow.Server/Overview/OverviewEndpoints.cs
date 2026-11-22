@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using ToadFlow.Contracts;
+using ToadFlow.Server.Auth;
+using ToadFlow.Server.Events;
 using ToadFlow.Server.Modules;
 
 namespace ToadFlow.Server.Overview;
@@ -15,6 +17,18 @@ public static class OverviewEndpoints
         api.MapGet("/overview", OverviewAsync);
         api.MapGet("/server", (ServerStatsReader stats, CancellationToken ct) => stats.ReadAsync(ct));
         api.MapOverviewFeed();
+        api.MapPost("/overview/attention/{module}/resolve", ResolveAsync).RequireAuthorization(Policies.Operator);
+    }
+
+    /// <summary>«Решено» у строки ошибок модуля: ошибки до этого момента больше не считаются, новые вернут строку.</summary>
+    private static async Task<IResult> ResolveAsync(string module, ModuleSet modules, AttentionResolutions resolutions, IDomainEvents events,
+        TimeProvider time, HttpContext http, CancellationToken ct)
+    {
+        if (modules.Enabled.FirstOrDefault(m => m.Name == module) is not { } found) return Results.NotFound();
+
+        await resolutions.ResolveAsync(found.Name, time.GetUtcNow(), ct);
+        events.Publish(new AttentionResolved(http.User.Actor(), found.Title));
+        return Results.NoContent();
     }
 
     private static async Task<OverviewView> OverviewAsync(CoreAttention core, ServerStatsReader stats, OverviewPulseReader pulse, ModuleSet modules,

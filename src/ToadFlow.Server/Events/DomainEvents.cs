@@ -115,3 +115,11 @@ public sealed record AgentStatusReceived(Actor Actor, Guid AgentId) : DomainEven
     public override string UiEntity => "agents";
     public override string UiId => AgentId.ToString();
 }
+
+/// <summary>Ошибки модуля отметили решёнными на «Обзоре»: в журнал, открытые «Обзоры» перечитываются.</summary>
+public sealed record AttentionResolved(Actor Actor, string ModuleTitle) : DomainEvent(Actor)
+{
+    public override string Describe() => $"«Требует внимания»: ошибки модуля «{ModuleTitle}» отмечены решёнными";
+    public override string UiEntity => "overview";
+    public override string UiId => "";
+}

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
@@ -227,6 +228,38 @@ public class OverviewTests : ServerTest
         var item = (await (await AdminAsync()).GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
         item.Text.ShouldBe("Проверка LOI: 2 модели с ошибкой за сутки");
     }
+
+    [Test]
+    public async Task Resolve_HidesFailuresBefore_NewFailureReturns()
+    {
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FailedJob(db, ModuleKinds.Loi, _time.GetUtcNow().AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+        var coordinator = await ClientAsync(UserRole.Operator);
+        var item = (await coordinator.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
+        item.ResolveKey.ShouldBe("loi");
+
+        (await coordinator.PostAsync("/api/overview/attention/loi/resolve", null)).StatusCode.ShouldBe(System.Net.HttpStatusCode.NoContent);
+
+        (await coordinator.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldBeEmpty();
+        await EventuallyAsync(async () =>
+            await DbAsync(db => db.SystemEvents.AnyAsync(e => e.Text == "«Требует внимания»: ошибки модуля «Проверка LOI» отмечены решёнными")));
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FailedJob(db, ModuleKinds.Loi, _time.GetUtcNow());
+            await db.SaveChangesAsync();
+        });
+        (await coordinator.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem()
+            .Text.ShouldBe("Проверка LOI: 1 модель с ошибкой за сутки");
+    }
+
+    [Test]
+    public async Task Resolve_UnknownModule_NotFound() =>
+        (await (await AdminAsync()).PostAsync("/api/overview/attention/nope/resolve", null)).StatusCode.ShouldBe(System.Net.HttpStatusCode.NotFound);
 
     [Test]
     public async Task LowDisk_Listed()
