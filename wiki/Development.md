@@ -1,9 +1,43 @@
 # Разработка
 
+Страница для тех, кому мало пользоваться — хочется залезть под капот. Здесь: как собрать, запустить, протестировать, выпустить и написать свой модуль.
+
+Хорошая новость: чтобы начать, **Revit не нужен**. Сервер поднимается одной командой вместе с базой, а тесты обходятся имитацией Revit.
+
 ## Что нужно
 
 - .NET SDK 10, Node.js 24.
 - Для агента и аддина — Windows. Revit нужен только для живой проверки: тесты обходятся без него.
+
+## Запуск локально
+
+Два терминала — и у вас работающий ToadFlow:
+
+```powershell
+dotnet run --project src/ToadFlow.Server.Host   # http://localhost:5000, вход admin / admin
+cd web; npm install; npm run dev                # http://localhost:5173
+```
+
+В режиме Development сервер сам поднимает встроенный PostgreSQL (порт 54329, данные в `%LocalAppData%\ToadFlow\pgdata`). Ставить и настраивать PostgreSQL не нужно — это, пожалуй, самая приятная строчка на странице.
+
+**Агент** против локального сервера:
+
+```powershell
+dotnet run --project src/ToadFlow.Agent -- --register --server http://localhost:5000 --code TF-XXXX-XXXX
+dotnet run --project src/ToadFlow.Agent
+```
+
+> [!WARNING]
+> Если на этой же машине стоит рабочий агент, второй агент прочитает его конфигурацию из `%ProgramData%\ToadFlow\Agent`. Отлаживать агента лучше там, где боевого нет.
+
+**Аддин** для отладки: `dotnet build src/ToadFlow.Revit.Addin -c Debug.R22` кладёт его в `%AppData%\Autodesk\Revit\Addins\2022`. Аддин работает только в Revit, запущенном агентом, — запускайте выгрузку через расписание.
+
+**Движок коллизий** против локального сервера (ключ — любой не короче 32 символов, одинаковый у обоих):
+
+```powershell
+$env:Clash__EngineKey = 'dev-engine-key-0123456789abcdefghij'; dotnet run --project src/ToadFlow.Server.Host   # сервер с ключом движка
+$env:Clash__EngineKey = 'dev-engine-key-0123456789abcdefghij'; dotnet run --project src/ToadFlow.Clash.Worker   # работник: http://localhost:5000
+```
 
 ## Состав репозитория
 
@@ -27,32 +61,24 @@
 | `tests/` | Тесты сервера, агента и аддина |
 | `wiki/` | Эта вики; публикуется в GitHub Wiki при изменении в `main` |
 
-Ядро выгрузки — пакеты [ToadExport](https://github.com/Alexpivo394/ToadExport), ядро проверки LOI — пакеты [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck), ядро коллизий — пакеты [ToadClash](https://github.com/Alexpivo394/ToadClash), ядро семейств — пакеты [ToadFamilyManager](https://github.com/Alexpivo394/ToadFamilyManager) (`Alexpivo394.Revit.Families.*`) на nuget.org. Чтобы собрать ToadFlow с пакетами, которых ещё нет на nuget.org, соберите их локально (`DOTNET_ENVIRONMENT=Development Publish__Version=X.Y.Z dotnet run -c Release -- pack` в `build/` репозитория пакета) и добавьте папку `output` как источник: `dotnet build -p:RestoreAdditionalProjectSources=<папка>`.
+**Ядра модулей** живут в своих репозиториях и приходят пакетами с nuget.org:
 
-## Запуск локально
+| Модуль | Ядро |
+|---|---|
+| Выгрузка | [ToadExport](https://github.com/Alexpivo394/ToadExport) |
+| Проверка LOI | [ToadParamCheck](https://github.com/Alexpivo394/ToadParamCheck) |
+| Коллизии | [ToadClash](https://github.com/Alexpivo394/ToadClash) |
+| Семейства | [ToadFamilyManager](https://github.com/Alexpivo394/ToadFamilyManager) (`Alexpivo394.Revit.Families.*`) |
 
-```powershell
-dotnet run --project src/ToadFlow.Server.Host   # http://localhost:5000, вход admin / admin
-cd web; npm install; npm run dev                # http://localhost:5173
-```
+Чтобы собрать ToadFlow с пакетами, которых ещё нет на nuget.org, соберите их локально (`DOTNET_ENVIRONMENT=Development Publish__Version=X.Y.Z dotnet run -c Release -- pack` в `build/` репозитория пакета) и добавьте папку `output` как источник: `dotnet build -p:RestoreAdditionalProjectSources=<папка>`.
 
-В режиме Development сервер сам поднимает встроенный PostgreSQL (порт 54329, данные в `%LocalAppData%\ToadFlow\pgdata`) — ставить PostgreSQL не нужно.
+## Три вещи, которые нельзя ломать
 
-Агент против локального сервера:
+ToadFlow уже работает у людей в бою. Поэтому в коде есть несколько священных коров:
 
-```powershell
-dotnet run --project src/ToadFlow.Agent -- --register --server http://localhost:5000 --code TF-XXXX-XXXX
-dotnet run --project src/ToadFlow.Agent
-```
-
-Аддин для отладки: `dotnet build src/ToadFlow.Revit.Addin -c Debug.R22` кладёт его в `%AppData%\Autodesk\Revit\Addins\2022`. Аддин работает только в Revit, запущенном агентом, — запускайте выгрузку через расписание.
-
-Движок коллизий против локального сервера (ключ — любой не короче 32 символов, одинаковый у обоих):
-
-```powershell
-$env:Clash__EngineKey = 'dev-engine-key-0123456789abcdefghij'; dotnet run --project src/ToadFlow.Server.Host   # сервер с ключом движка
-$env:Clash__EngineKey = 'dev-engine-key-0123456789abcdefghij'; dotnet run --project src/ToadFlow.Clash.Worker   # работник: http://localhost:5000
-```
+- **Адреса.** `/api/clash/...`, `/api/loi/checks`, `/api/auth/...` — ими пользуются плагины ToadTools уже установленных версий. Веб-адреса `/clash/...` стоят в разосланных отчётах HTML. Менять нельзя.
+- **Протокол агента.** Агенты стоят на рабочих машинах и обновляются отдельно, иногда через полгода. Сервер обязан работать с агентом прошлой версии.
+- **Схема базы одна.** Миграции покрывают таблицы всех модулей, включённых и выключенных.
 
 ## Тесты
 
@@ -62,6 +88,12 @@ dotnet test --project tests/ToadFlow.Agent.Tests       # агент против
 dotnet test --project tests/ToadFlow.Revit.Addin.Tests # логика аддина без Revit
 dotnet test --project tests/ToadFlow.Clash.Worker.Tests # работник движка коллизий против настоящего сервера
 cd web; npm test; npm run lint; npx tsc -b
+```
+
+Один класс тестов сервера — быстрее, чем весь набор:
+
+```powershell
+dotnet test --project tests/ToadFlow.Server.Tests -- --treenode-filter "/*/*/<Класс>/*"
 ```
 
 ## Миграции базы
@@ -93,7 +125,11 @@ Workflow собирает установщик агента и создаёт р
 
 ## Новый модуль
 
-Модуль — новый тип задания (как выгрузка или проверка LOI): реализует `IServerModule` (`src/ToadFlow.Server/Modules`) — службы, таблицы, API, проверку настроек расписания и сборку задания для агента; если модулю нужен итог задания у себя (как каталог LOI), — `OnJobCompletedAsync`. Подключается ссылкой на проект в `ToadFlow.Server.Host` (и строкой `COPY` в `deploy/server.Dockerfile`) и одной строкой в `Program.cs`: `builder.AddServerModule<МойМодуль>()`.
+Модуль — это новый тип задания со своими страницами, как выгрузка или проверка LOI. Чтобы написать свой, нужно три вещи:
+
+1. Реализовать `IServerModule` (`src/ToadFlow.Server/Modules`) — службы, таблицы, API, проверку настроек расписания и сборку задания для агента. Если модулю нужен итог задания у себя (как каталог LOI) — `OnJobCompletedAsync`.
+2. Подключить ссылкой на проект в `ToadFlow.Server.Host` (и строкой `COPY` в `deploy/server.Dockerfile`).
+3. Добавить одну строку в `Program.cs`: `builder.AddServerModule<МойМодуль>()`.
 
 Вид задания (`ModuleKinds`) агент передаёт аддину в `JobMessage.ModuleKind`, аддин выбирает по нему исполнителя в `JobExecutor`. Пустой вид — выгрузка: так шлют задания агенты до 1.1.0.
 
@@ -101,13 +137,22 @@ Workflow собирает установщик агента и создаёт р
 
 | Член `IServerModule` | Зачем |
 |---|---|
-| `Name` | Имя в настройке `MODULES`: `export`, `loi`, `clash`. Строчными латинскими |
+| `Name` | Имя в настройке `MODULES`: `export`, `loi`, `clash`, `families`. Строчными латинскими |
 | `Title` | Название для людей: «Выгрузка», «Проверка LOI», «Коллизии» |
 | `Kind` | Основной вид задания — его выбирают расписания модуля |
 | `Kinds` | Все виды заданий модуля (у LOI — `loi` и `loi-catalog`, у выгрузки — `export` и пустой). Соответствие «модуль → виды» задаётся только здесь |
 | `WebPath`, `HistoryPath` | Адреса пространства и истории модуля в вебе — туда ведут плитка и строка «модели с ошибкой» на «Обзоре» |
 
-Сервер делит модули на **известные** (все, что подключены в `Program.cs`) и **включённые** (`ModuleSet`, по настройке `Modules`). `ConfigureModel` выполняется у всех известных — схема базы одна, миграции покрывают таблицы всех модулей. `AddServices`, маршруты, обработка итогов заданий и пробы `/api/health` — только у включённых. Поэтому всё, что модуль регистрирует в `AddServices` (фоновые службы, источники «Обзора», рабочие процессы, тома), у выключенного модуля само исчезает.
+**Известные и включённые.** Сервер делит модули на **известные** (все, что подключены в `Program.cs`) и **включённые** (`ModuleSet`, по настройке `Modules`):
+
+| | Известные | Включённые |
+|---|:---:|:---:|
+| `ConfigureModel` — схема базы | ✔ | ✔ |
+| `AddServices`, маршруты | | ✔ |
+| Обработка итогов заданий | | ✔ |
+| Пробы `/api/health` | | ✔ |
+
+Схема базы одна, поэтому `ConfigureModel` выполняется у всех. А всё, что модуль регистрирует в `AddServices` (фоновые службы, источники «Обзора», рабочие процессы, тома), у выключенного модуля само исчезает — отдельно проверять «а включён ли я?» в каждой службе не нужно.
 
 Модуль не должен зависеть от другого модуля: общее (справочник именования, источники, агенты) живёт в ядре.
 
@@ -121,7 +166,7 @@ Workflow собирает установщик агента и создаёт р
 
 ### Как модуль описывает себя вебу
 
-Пространство модуля — один файл-манифест в `web/src/spaces` (по образцу `export.tsx`, `loi.tsx`, `clash.tsx`) и строка в `registry.ts`:
+Пространство модуля — один файл-манифест в `web/src/spaces` (по образцу `export.tsx`, `loi.tsx`, `clash.tsx`, `families.tsx`) и строка в `registry.ts`:
 
 | Поле `Space` | Зачем |
 |---|---|
@@ -130,4 +175,10 @@ Workflow собирает установщик агента и создаёт р
 | `pages` | Страницы меню: адрес, подпись, раздел (`work` — сверху, `setup` — под разделителем), роль, с которой видна (`Operator`, `Admin`), видна ли проектировщику, условие скрытия |
 | `routes` | `<Route>`-элементы пространства с путями относительно `/{id}`; у выключенного модуля маршрутов нет, его адреса ведут на «Обзор» |
 
-Если у модуля есть задания, добавьте его в `web/src/spaces/modules.ts` (вид задания, адреса расписаний и истории): расписания и история модуля — это общие `SchedulesPage` и `HistoryPage` с `module` и `base`. Тексты — в `web/src/i18n/ru.ts`. Списки — на общей таблице `web/src/components/DataTable.tsx`.
+Если у модуля есть задания, добавьте его в `web/src/spaces/modules.ts` (вид задания, адреса расписаний и истории): расписания и история модуля — это общие `SchedulesPage` и `HistoryPage` с `module` и `base`.
+
+Тексты — в `web/src/i18n/ru.ts`. Списки — на общей таблице `web/src/components/DataTable.tsx`: сортировка, поиск и фильтры в адресе страницы достанутся вам бесплатно.
+
+## Про саму вики
+
+Эта вики лежит в папке `wiki/` репозитория и публикуется в GitHub Wiki автоматически при изменении в `main`. Нашли неточность или опечатку — правьте файл и присылайте pull request. Жаба одобряет. 🐸
