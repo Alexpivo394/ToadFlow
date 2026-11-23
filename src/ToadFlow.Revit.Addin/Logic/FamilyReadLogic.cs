@@ -1,7 +1,5 @@
 using System.IO;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
+using System.Text.Json;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Families;
 
@@ -19,20 +17,15 @@ public static class FamilyReadLogic
     public const int MaxPreviewBytes = 150 * 1024;
 
     /// <summary>
-    ///     Как <see cref="AddinPipeJson" />, но ключи словарей как есть: в них имена параметров и столбцов каталога («Width» не должно
-    ///     стать «width»).
+    ///     Формат <see cref="AddinPipeJson" />. Ключи словарей при этом остаются как есть: в них имена параметров и столбцов каталога
+    ///     («Width» не должно стать «width») — имена свойств переводятся в camelCase, ключи словарей нет.
     /// </summary>
-    private static readonly JsonSerializerSettings Settings = new()
-    {
-        ContractResolver = new DefaultContractResolver { NamingStrategy = new CamelCaseNamingStrategy { ProcessDictionaryKeys = false } },
-        Converters = { new StringEnumConverter() },
-        Formatting = Formatting.None
-    };
+    private static JsonSerializerOptions Options => AddinPipeJson.Options;
 
     public static FamilyReadPayload ParsePayload(string json) =>
-        JsonConvert.DeserializeObject<FamilyReadPayload>(json, Settings) ?? throw new InvalidOperationException("Пустое задание чтения семейства");
+        JsonSerializer.Deserialize<FamilyReadPayload>(json, Options) ?? throw new InvalidOperationException("Пустое задание чтения семейства");
 
-    public static string SerializeResult(FamilyReadResult result) => JsonConvert.SerializeObject(result, Settings);
+    public static string SerializeResult(FamilyReadResult result) => JsonSerializer.Serialize(result, Options);
 
     /// <summary>Файл на диске уже не тот, что видел обход: читать его под этой версией нельзя, следующий обход заведёт новую.</summary>
     public static (JobOutcome Outcome, string Note)? CheckHash(string expected, string actual) =>

@@ -42,6 +42,26 @@ public class AddinPipeJsonTests
             PipeJson.Serialize(PipeJson.Deserialize(line)).ShouldBe(PipeJson.Serialize(message)); // агент читает то же, что аддин писал
         }
     }
+    /// <summary>Кириллица идёт по пайпу как есть, перевод строки внутри текста экранируется — сообщение остаётся одной строкой.</summary>
+    [Test]
+    public void WritesCyrillicAsIs_OnOneLine()
+    {
+        var line = AddinPipeJson.Serialize(new ResultMessage { JobId = Guid.NewGuid(), Outcome = JobOutcome.Failed, Note = "Нет вида «Navisworks»\nвторая строка" });
+
+        line.ShouldContain("Нет вида «Navisworks»\\nвторая строка");
+        line.ShouldNotContain("\n");
+        line.ShouldContain("\"outcome\":\"Failed\"");
+        line.ShouldContain("\"resultJson\":null");
+    }
+
+    [Test]
+    public void RejectsForeignLines()
+    {
+        Should.Throw<InvalidDataException>(() => AddinPipeJson.Deserialize("не json"));
+        Should.Throw<InvalidDataException>(() => AddinPipeJson.Deserialize("[1]"));
+        Should.Throw<InvalidDataException>(() => AddinPipeJson.Deserialize("{\"type\":\"unknown\"}"));
+        Should.Throw<InvalidDataException>(() => AddinPipeJson.Deserialize("{\"type\":5}"));
+    }
 }
 
 public class PayloadMappingTests

@@ -12,7 +12,7 @@ namespace ToadFlow.Revit.Addin.Tests;
 
 public class LoiMappingTests
 {
-    /// <summary>Сервер пишет payload через System.Text.Json (camelCase, перечисления строками), аддин читает Newtonsoft.</summary>
+    /// <summary>Сервер пишет payload через System.Text.Json (camelCase, перечисления строками), аддин читает теми же настройками.</summary>
     private static readonly JsonSerializerOptions Server = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     private static ModelReport Report()

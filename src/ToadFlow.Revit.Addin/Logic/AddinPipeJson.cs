@@ -1,30 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using ToadFlow.Contracts.Pipe;
 
 namespace ToadFlow.Revit.Addin.Logic;
 
 /// <summary>
-///     Сообщения пайпа на стороне аддина (Newtonsoft — работает во всех Revit 2020–2027). Формат тот же, что у агента:
-///     camelCase, перечисления строками, одна строка на сообщение.
+///     Сообщения пайпа на стороне аддина. Формат тот же, что у агента: camelCase, перечисления строками, одна строка на
+///     сообщение.
 /// </summary>
 public static class AddinPipeJson
 {
-    public static readonly JsonSerializerSettings Settings = new()
+    /// <summary>
+    ///     Как у агента (веб-настройки System.Text.Json), но кириллица не экранируется: пути моделей и имена параметров
+    ///     идут по пайпу и в базу как есть, а не шестью знаками на букву.
+    /// </summary>
+    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
-        ContractResolver = new CamelCasePropertyNamesContractResolver(),
-        Converters = { new StringEnumConverter() },
-        DateParseHandling = DateParseHandling.DateTimeOffset,
-        Formatting = Formatting.None,
-        NullValueHandling = NullValueHandling.Include
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new JsonStringEnumConverter() }
     };
-
-    private static readonly JsonSerializer Serializer = JsonSerializer.Create(Settings);
 
     private static readonly Dictionary<string, Type> Types = new()
     {
@@ -37,18 +35,22 @@ public static class AddinPipeJson
         [CancelMessage.Kind] = typeof(CancelMessage)
     };
 
-    public static string Serialize(PipeMessage message) => JsonConvert.SerializeObject(message, message.GetType(), Settings);
+    /// <summary>Одна строка без переводов строк: внутри строк JSON они экранируются.</summary>
+    public static string Serialize(PipeMessage message) => JsonSerializer.Serialize(message, message.GetType(), Options);
 
     /// <exception cref="InvalidDataException">Не JSON или неизвестный вид сообщения.</exception>
     public static PipeMessage Deserialize(string line)
     {
         try
         {
-            using var reader = new JsonTextReader(new StringReader(line)) { DateParseHandling = DateParseHandling.DateTimeOffset };
-            var json = JObject.Load(reader);
-            var kind = (string?)json["type"];
+            using var document = JsonDocument.Parse(line);
+            var kind = document.RootElement.ValueKind == JsonValueKind.Object
+                       && document.RootElement.TryGetProperty("type", out var type)
+                       && type.ValueKind == JsonValueKind.String
+                ? type.GetString()
+                : null;
             if (kind is null || !Types.TryGetValue(kind, out var target)) throw new InvalidDataException($"Неизвестное сообщение пайпа: «{kind}»");
-            return (PipeMessage)json.ToObject(target, Serializer)!;
+            return (PipeMessage)document.RootElement.Deserialize(target, Options)!;
         }
         catch (JsonException exception)
         {
@@ -56,7 +58,7 @@ public static class AddinPipeJson
         }
     }
 
-    public static T DeserializeObject<T>(string json) => JsonConvert.DeserializeObject<T>(json, Settings)!;
+    public static T DeserializeObject<T>(string json) => JsonSerializer.Deserialize<T>(json, Options)!;
 
-    public static string SerializeObject(object value) => JsonConvert.SerializeObject(value, Settings);
+    public static string SerializeObject(object value) => JsonSerializer.Serialize(value, value.GetType(), Options);
 }

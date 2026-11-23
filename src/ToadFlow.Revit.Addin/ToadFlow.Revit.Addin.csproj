@@ -17,12 +17,17 @@
         <DeployAddin>true</DeployAddin>
     </PropertyGroup>
 
-    <!-- Revit до 2027 не изолирует зависимости аддинов: Newtonsoft, Toolkit, EPPlus и библиотеки модулей вливаем в сборку аддина,
-         чтобы они не конфликтовали с версиями, уже загруженными Revit или другими аддинами. В 2027 — свой контекст загрузки (манифест). -->
+    <!-- Revit до 2027 не изолирует зависимости аддинов: Toolkit, System.Text.Json с его System.Memory, ClosedXML и библиотеки модулей
+         вливаем в сборку аддина целиком, как в ToadTools, — чтобы они не конфликтовали с версиями, уже загруженными Revit или другими
+         аддинами (в папке Revit 2024 лежит свой System.Memory старее нужного). В 2027 — свой контекст загрузки (манифест).
+         Вливается всё без исключений: сборка, оставленная рядом (System.Text.Json), не находит своих зависимостей, влитых внутрь
+         (Microsoft.Bcl.AsyncInterfaces), и это видно только при работе в Revit. -->
     <PropertyGroup Condition="'$(RevitVersion)' &lt; '2027'">
-        <IsRepackable>true</IsRepackable>
-        <RepackBinariesExcludes>System*.dll</RepackBinariesExcludes>
+        <RepackAddin>true</RepackAddin>
     </PropertyGroup>
+
+    <!-- Вместо IsRepackable из SDK: то же слияние, но вывод ILRepack не превращается в предупреждения сборки (см. комментарий в файле) -->
+    <Import Project="ToadFlow.Revit.Addin.Repack.targets"/>
 
     <ItemGroup>
         <PackageReference Include="Nice3point.Revit.Toolkit"/>
@@ -33,8 +38,12 @@
         <PackageReference Include="Alexpivo394.Revit.ParamCheck"/>
         <PackageReference Include="Alexpivo394.Revit.Clash.Revit"/>
         <PackageReference Include="Alexpivo394.Revit.Families.Revit"/>
-        <PackageReference Include="Newtonsoft.Json"/>
         <PackageReference Include="ILRepack" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <!-- На .NET (Revit 2025+) входит в рантайм -->
+    <ItemGroup Condition="'$([MSBuild]::GetTargetFrameworkIdentifier($(TargetFramework)))' == '.NETFramework'">
+        <PackageReference Include="System.Text.Json"/>
     </ItemGroup>
 
     <ItemGroup>
