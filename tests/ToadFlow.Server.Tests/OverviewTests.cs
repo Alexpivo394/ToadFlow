@@ -241,11 +241,12 @@ public class OverviewTests : ServerTest
         var item = (await coordinator.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
         item.ResolveKey.ShouldBe("loi");
 
-        (await coordinator.PostAsync("/api/overview/attention/loi/resolve", null)).StatusCode.ShouldBe(System.Net.HttpStatusCode.NoContent);
+        (await coordinator.PostJsonAsync("/api/overview/attention/loi/resolve", new ResolveRequest("  Сервер RS22 перезапустили  "))).StatusCode
+            .ShouldBe(System.Net.HttpStatusCode.NoContent);
 
         (await coordinator.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldBeEmpty();
-        await EventuallyAsync(async () =>
-            await DbAsync(db => db.SystemEvents.AnyAsync(e => e.Text == "«Требует внимания»: ошибки модуля «Проверка LOI» отмечены решёнными")));
+        await EventuallyAsync(async () => await DbAsync(db => db.SystemEvents.AnyAsync(e => e.Kind == "AttentionResolved"
+            && e.Text.StartsWith("Проверка LOI: ошибки отмечены решёнными — ") && e.Text.EndsWith(": Сервер RS22 перезапустили"))));
 
         _time.Advance(TimeSpan.FromMinutes(1));
         await DbAsync(async db =>
@@ -259,7 +260,25 @@ public class OverviewTests : ServerTest
 
     [Test]
     public async Task Resolve_UnknownModule_NotFound() =>
-        (await (await AdminAsync()).PostAsync("/api/overview/attention/nope/resolve", null)).StatusCode.ShouldBe(System.Net.HttpStatusCode.NotFound);
+        (await (await AdminAsync()).PostJsonAsync("/api/overview/attention/nope/resolve", new ResolveRequest("ок"))).StatusCode
+            .ShouldBe(System.Net.HttpStatusCode.NotFound);
+
+    [Test]
+    public async Task Resolve_WithoutNote_BadRequest_NothingResolved()
+    {
+        await DbAsync(async db =>
+        {
+            OverviewFakes.FailedJob(db, ModuleKinds.Loi, _time.GetUtcNow().AddHours(-1));
+            await db.SaveChangesAsync();
+        });
+        var admin = await AdminAsync();
+
+        (await admin.PostJsonAsync("/api/overview/attention/loi/resolve", new ResolveRequest("   "))).StatusCode.ShouldBe(System.Net.HttpStatusCode.BadRequest);
+        (await admin.PostJsonAsync("/api/overview/attention/loi/resolve", new ResolveRequest(new string('я', 501)))).StatusCode
+            .ShouldBe(System.Net.HttpStatusCode.BadRequest);
+
+        (await admin.GetJsonAsync<OverviewDto>("/api/overview")).Attention.ShouldHaveSingleItem();
+    }
 
     [Test]
     public async Task LowDisk_Listed()

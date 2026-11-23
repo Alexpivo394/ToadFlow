@@ -71,7 +71,48 @@ public class PersonalTests : ServerTest
         });
 
         var item = (await TodayAsync(creator)).Items.Single(i => i.Module == null);
-        (item.Count, item.Link).ShouldBe((1, "/export/history"));
+        (item.Count, item.Link, item.ResolveKey).ShouldBe((1, "/export/history", "export"));
+    }
+
+    /// <summary>Запуск расписания с моделью <paramref name="path" /> в статусе <paramref name="status" />.</summary>
+    private Task FollowedRunAsync(Guid scheduleId, string path, JobStatus status, DateTimeOffset finished) => DbAsync(async db =>
+    {
+        var run = new Run { Id = Guid.NewGuid(), ScheduleId = scheduleId, ModuleName = "export", Name = "ЖК Север", State = RunState.Completed,
+            CreatedAt = finished, FinishedAt = finished };
+        db.Runs.Add(run);
+        db.Jobs.Add(new Job { Id = Guid.NewGuid(), RunId = run.Id, Status = status, ModuleKind = "export", ModelPath = path, CreatedAt = finished, FinishedAt = finished });
+        await db.SaveChangesAsync();
+    });
+
+    private async Task<(HttpClient Admin, HttpClient Creator, Guid ScheduleId)> FollowedScheduleAsync()
+    {
+        var admin = await AdminAsync();
+        var creator = await ClientAsync(UserRole.Operator);
+        var schedule = await ScheduleApi.CreateAsync(creator, ScheduleApi.Body(await ScheduleApi.SourceAsync(admin), await ScheduleApi.DefaultPresetAsync(admin)));
+        return (admin, creator, schedule.Id);
+    }
+
+    [Test]
+    public async Task FollowedScheduleFailed_ModelLaterSucceeded_NotListed()
+    {
+        var (_, creator, scheduleId) = await FollowedScheduleAsync();
+        await FollowedRunAsync(scheduleId, "RSN://rs22/А.rvt", JobStatus.Failed, DateTimeOffset.UtcNow.AddHours(-2));
+        await FollowedRunAsync(scheduleId, "RSN://rs22/А.rvt", JobStatus.Succeeded, DateTimeOffset.UtcNow.AddHours(-1));
+
+        (await TodayAsync(creator)).Items.ShouldNotContain(i => i.Module == null);
+    }
+
+    [Test]
+    public async Task FollowedScheduleFailed_Resolved_Hidden_NewFailureReturns()
+    {
+        var (_, creator, scheduleId) = await FollowedScheduleAsync();
+        await FollowedRunAsync(scheduleId, "RSN://rs22/А.rvt", JobStatus.Failed, DateTimeOffset.UtcNow.AddMinutes(-30));
+
+        (await creator.PostJsonAsync("/api/overview/attention/export/resolve", new ResolveRequest("Источник недоступен, починили"))).EnsureSuccessStatusCode();
+        (await TodayAsync(creator)).Items.ShouldNotContain(i => i.Module == null);
+
+        await FollowedRunAsync(scheduleId, "RSN://rs22/Б.rvt", JobStatus.Failed, DateTimeOffset.UtcNow.AddSeconds(1));
+        (await TodayAsync(creator)).Items.Single(i => i.Module == null).Count.ShouldBe(1);
     }
 }
 

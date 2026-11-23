@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Contracts;
 using ToadFlow.Server.Data;
+using ToadFlow.Server.Data.Entities;
 using ToadFlow.Server.Modules;
 using ToadFlow.Server.Settings;
 
@@ -49,11 +50,7 @@ public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, Module
     private async Task<IEnumerable<AttentionItem>> FailedJobsAsync(DateTimeOffset now, CancellationToken ct)
     {
         var dayAgo = now.AddDays(-1);
-        // Модель, которая после ошибки прошла успешно (перезапуск), уже не проблема. Пустой путь — не «та же модель».
-        var failed = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed && j.FinishedAt >= dayAgo)
-            .Where(j => j.ModelPath == "" || !db.Jobs.Any(s => s.ModuleKind == j.ModuleKind && s.ModelPath == j.ModelPath
-                                                              && (s.Status == JobStatus.Succeeded || s.Status == JobStatus.Warning)
-                                                              && s.FinishedAt > j.FinishedAt))
+        var failed = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed && j.FinishedAt >= dayAgo).NotRecovered(db)
             .Select(j => new { Kind = j.ModuleKind, At = j.FinishedAt!.Value }).ToListAsync(ct);
         // Ошибки до «Решено» модуля не считаются.
         var resolved = await resolutions.ListAsync(ct);
@@ -74,6 +71,16 @@ public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, Module
         .Select(w => (Worker: w, Silent: ServerStatsReader.SilentFor(w, now)))
         .Where(w => w.Silent > ServerStatsReader.WorkerSilence)
         .Select(w => new AttentionItem(AttentionLevel.Problem, $"{w.Worker.Title} не на связи {Russian.Duration(w.Silent)}", "/admin/server", w.Worker.Module));
+}
+
+/// <summary>Упавшие задания, которые ещё считаются проблемой — и в «Требует внимания», и в «Для вас».</summary>
+public static class FailedJobs
+{
+    /// <summary>Без тех, чья модель после ошибки прошла успешно (перезапуск). Пустой путь — не «та же модель».</summary>
+    public static IQueryable<Job> NotRecovered(this IQueryable<Job> failed, ToadFlowDb db) =>
+        failed.Where(j => j.ModelPath == "" || !db.Jobs.Any(s => s.ModuleKind == j.ModuleKind && s.ModelPath == j.ModelPath
+                                                                 && (s.Status == JobStatus.Succeeded || s.Status == JobStatus.Warning)
+                                                                 && s.FinishedAt > j.FinishedAt));
 }
 
 /// <summary>Числа и сроки по-русски для строк «Обзора».</summary>

@@ -116,10 +116,13 @@ public sealed record AgentStatusReceived(Actor Actor, Guid AgentId) : DomainEven
     public override string UiId => AgentId.ToString();
 }
 
-/// <summary>Ошибки модуля отметили решёнными на «Обзоре»: в журнал, открытые «Обзоры» перечитываются.</summary>
-public sealed record AttentionResolved(Actor Actor, string ModuleTitle) : DomainEvent(Actor)
+/// <summary>
+///     Ошибки модуля отметили решёнными на «Обзоре»: в журнал и ленту — кто и почему, открытые «Обзоры» перечитываются. Текст
+///     начинается с «<see cref="ModuleTitle" />:» — по нему лента ставит значок модуля.
+/// </summary>
+public sealed record AttentionResolved(Actor Actor, string ModuleTitle, string Note) : DomainEvent(Actor)
 {
-    public override string Describe() => $"«Требует внимания»: ошибки модуля «{ModuleTitle}» отмечены решёнными";
+    public override string Describe() => $"{ModuleTitle}: ошибки отмечены решёнными — {Actor.Name}: {Note}";
     public override string UiEntity => "overview";
     public override string UiId => "";
 }

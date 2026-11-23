@@ -20,14 +20,20 @@ public static class OverviewEndpoints
         api.MapPost("/overview/attention/{module}/resolve", ResolveAsync).RequireAuthorization(Policies.Operator);
     }
 
-    /// <summary>«Решено» у строки ошибок модуля: ошибки до этого момента больше не считаются, новые вернут строку.</summary>
-    private static async Task<IResult> ResolveAsync(string module, ModuleSet modules, AttentionResolutions resolutions, IDomainEvents events,
-        TimeProvider time, HttpContext http, CancellationToken ct)
+    /// <summary>
+    ///     «Решено» у строки ошибок модуля: ошибки до этого момента больше не считаются ни в «Требует внимания», ни в «Для вас»; новые
+    ///     вернут строку. Примечание обязательно — кто и почему, видно в ленте и журнале.
+    /// </summary>
+    private static async Task<IResult> ResolveAsync(string module, ResolveRequest? request, ModuleSet modules, AttentionResolutions resolutions,
+        IDomainEvents events, TimeProvider time, HttpContext http, CancellationToken ct)
     {
         if (modules.Enabled.FirstOrDefault(m => m.Name == module) is not { } found) return Results.NotFound();
+        var note = request?.Note?.Trim() ?? "";
+        if (note.Length == 0) return Results.BadRequest(new { error = "Напишите, почему ошибки решены" });
+        if (note.Length > ResolveRequest.MaxNote) return Results.BadRequest(new { error = $"Примечание длиннее {ResolveRequest.MaxNote} символов" });
 
         await resolutions.ResolveAsync(found.Name, time.GetUtcNow(), ct);
-        events.Publish(new AttentionResolved(http.User.Actor(), found.Title));
+        events.Publish(new AttentionResolved(http.User.Actor(), found.Title, note));
         return Results.NoContent();
     }
 

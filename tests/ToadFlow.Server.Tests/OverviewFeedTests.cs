@@ -104,4 +104,19 @@ public class OverviewFeedTests : ServerTest
 
         (await FeedAsync()).Select(f => f.Tone).ShouldBe(["fail", "ok"]);
     }
+
+    [Test]
+    public async Task Feed_ShowsWhoResolvedAndWhy_WithModuleIcon()
+    {
+        const string text = "Выгрузка: ошибки отмечены решёнными — Борисов: модель удалили из источника";
+        await DbAsync(async db =>
+        {
+            Event(db, "AttentionResolved", text, Now.AddMinutes(-1));
+            await db.SaveChangesAsync();
+        });
+
+        var item = (await FeedAsync()).ShouldHaveSingleItem();
+
+        (item.Text, item.Module, item.Tone).ShouldBe((text, "export", "ok"));
+    }
 }

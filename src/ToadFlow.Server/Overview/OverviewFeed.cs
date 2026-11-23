@@ -31,7 +31,8 @@ public static class OverviewFeed
         ["InstanceKilled"] = (null, "fail"),
         ["RunFinished"] = (null, "info"),
         ["ClashPartApproved"] = ("clash", "info"),
-        ["ClashApprovedRunSkipped"] = ("clash", "warn")
+        ["ClashApprovedRunSkipped"] = ("clash", "warn"),
+        ["AttentionResolved"] = (null, "ok") // модуль — по началу текста
     };
 
     public static void MapOverviewFeed(this RouteGroupBuilder api) =>
@@ -56,9 +57,11 @@ public static class OverviewFeed
         var items = jobs.Select(j => new FeedItem(j.At, modules.NameOfKind(j.ModuleKind),
             $"{j.ModelName} — {Outcome(j.Status)}{(j.AgentId is { } id && machines.TryGetValue(id, out var machine) ? $" · {machine}" : "")}",
             j.Status switch { JobStatus.Failed => "fail", JobStatus.Warning => "warn", _ => "ok" }));
-        items = items.Concat(events.Select(e => Allowed.TryGetValue(e.Kind, out var known)
-            ? new FeedItem(e.At, known.Module, e.Text, known.Tone)
-            : new FeedItem(e.At, modules.IsEnabled("families") ? "families" : null, e.Text, "info")));
+        items = items.Concat(events.Select(e => e.Kind == "AttentionResolved"
+            ? new FeedItem(e.At, modules.Enabled.FirstOrDefault(m => e.Text.StartsWith(m.Title + ":"))?.Name, e.Text, "ok")
+            : Allowed.TryGetValue(e.Kind, out var known)
+                ? new FeedItem(e.At, known.Module, e.Text, known.Tone)
+                : new FeedItem(e.At, modules.IsEnabled("families") ? "families" : null, e.Text, "info")));
         return items.OrderByDescending(i => i.At).Take(Take).ToList();
     }
 

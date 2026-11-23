@@ -15,11 +15,11 @@ public static class PersonalEndpoints
 {
     public static void MapPersonal(this RouteGroupBuilder members) => members.MapGet("/me/today", TodayAsync);
 
-    private static async Task<PersonalView> TodayAsync(HttpContext http, ToadFlowDb db, ModuleSet modules, IEnumerable<IOverviewSource> sources, TimeProvider time,
-        ILoggerFactory loggers, CancellationToken ct)
+    private static async Task<PersonalView> TodayAsync(HttpContext http, ToadFlowDb db, ModuleSet modules, AttentionResolutions resolutions,
+        IEnumerable<IOverviewSource> sources, TimeProvider time, ILoggerFactory loggers, CancellationToken ct)
     {
         var me = http.User.UserId();
-        var items = new List<PersonalItem>(await FollowedFailuresAsync(db, modules, me, time.GetUtcNow(), ct));
+        var items = new List<PersonalItem>(await FollowedFailuresAsync(db, modules, resolutions, me, time.GetUtcNow(), ct));
         foreach (var source in sources)
         {
             try
@@ -35,20 +35,26 @@ public static class PersonalEndpoints
         return new PersonalView(items.Where(i => i.Count > 0).OrderBy(i => i.Tone).ToList());
     }
 
-    /// <summary>Расписания, за которыми человек следит, с ошибками за сутки — строкой на модуль.</summary>
-    private static async Task<List<PersonalItem>> FollowedFailuresAsync(ToadFlowDb db, ModuleSet modules, Guid me, DateTimeOffset now, CancellationToken ct)
+    /// <summary>
+    ///     Расписания, за которыми человек следит, с ошибками за сутки — строкой на модуль. Как в «Требует внимания»: модель, которая
+    ///     потом прошла, и ошибки до «Решено» модуля не считаются.
+    /// </summary>
+    private static async Task<List<PersonalItem>> FollowedFailuresAsync(ToadFlowDb db, ModuleSet modules, AttentionResolutions resolutions, Guid me,
+        DateTimeOffset now, CancellationToken ct)
     {
         var since = now.AddDays(-1);
         var followed = db.Set<ScheduleFollower>().Where(f => f.UserId == me).Select(f => f.ScheduleId);
-        var runs = await db.Runs.AsNoTracking()
-            .Where(r => r.ScheduleId != null && followed.Contains(r.ScheduleId.Value) && r.FinishedAt >= since
-                        && db.Jobs.Any(j => j.RunId == r.Id && j.Status == JobStatus.Failed))
-            .Select(r => new { r.ScheduleId, r.ModuleName }).ToListAsync(ct);
-        return runs.GroupBy(r => r.ModuleName).Select(g =>
-        {
-            var module = modules.Enabled.FirstOrDefault(m => m.Name == g.Key);
-            return new PersonalItem(null, $"{module?.Title ?? "Ферма"}: расписания с ошибками за сутки", module?.HistoryPath ?? "/farm/queue", PersonalTone.Action,
-                g.Select(r => r.ScheduleId).Distinct().Count());
-        }).ToList();
+        var runs = db.Runs.Where(r => r.ScheduleId != null && followed.Contains(r.ScheduleId.Value) && r.FinishedAt >= since);
+        var failed = await db.Jobs.AsNoTracking().Where(j => j.Status == JobStatus.Failed).NotRecovered(db)
+            .Join(runs, j => j.RunId, r => r.Id, (j, r) => new { r.ScheduleId, r.ModuleName, At = j.FinishedAt ?? r.FinishedAt!.Value })
+            .ToListAsync(ct);
+        var resolved = await resolutions.ListAsync(ct);
+        return failed.Where(f => !(resolved.TryGetValue(f.ModuleName, out var at) && f.At <= at))
+            .GroupBy(f => f.ModuleName).Select(g =>
+            {
+                var module = modules.Enabled.FirstOrDefault(m => m.Name == g.Key);
+                return new PersonalItem(null, $"{module?.Title ?? "Ферма"}: расписания с ошибками за сутки", module?.HistoryPath ?? "/farm/queue",
+                    PersonalTone.Action, g.Select(f => f.ScheduleId).Distinct().Count(), module?.Name);
+            }).ToList();
     }
 }

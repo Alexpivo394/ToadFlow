@@ -123,6 +123,13 @@ public enum PersonalTone
 /// <summary>Строка «Для вас».</summary>
 /// <param name="Module">Модуль-источник; null — ядро.</param>
 /// <param name="Count">Сколько — крупно рядом с текстом.</param>
-public sealed record PersonalItem(string? Module, string Text, string Link, PersonalTone Tone, int Count);
+/// <param name="ResolveKey">Ошибки модуля можно отметить решёнными тем же «Решено», что в «Требует внимания»; null — нельзя.</param>
+public sealed record PersonalItem(string? Module, string Text, string Link, PersonalTone Tone, int Count, string? ResolveKey = null);
+
+/// <summary>Тело «Решено»: почему ошибки больше не проблема.</summary>
+public sealed record ResolveRequest(string? Note)
+{
+    public const int MaxNote = 500;
+}
 
 public sealed record PersonalView(IReadOnlyList<PersonalItem> Items);
