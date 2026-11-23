@@ -104,7 +104,33 @@ describe('OverviewPage', () => {
     const buttons = await within(block).findAllByRole('button', { name: 'Решено' });
     expect(buttons).toHaveLength(1);
     fireEvent.click(buttons[0]);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Проверка LOI: 2 модели с ошибкой за сутки' });
+    const submit = within(dialog).getByRole('button', { name: 'Отметить решённым' });
+    expect((submit as HTMLButtonElement).disabled).toBe(true); // без примечания нельзя
+    fireEvent.change(within(dialog).getByLabelText('Почему решено'), { target: { value: 'Перезапустили RS22' } });
+    fireEvent.click(submit);
     await waitFor(() => expect(posts('/api/overview/attention/loi/resolve')).toHaveLength(1));
+    expect(JSON.parse(String(posts('/api/overview/attention/loi/resolve')[0][1]?.body))).toEqual({ note: 'Перезапустили RS22' });
+  });
+
+  it('coordinator resolves followed-schedule errors right in For you', async () => {
+    renderApp('/', {
+      ...responses(), '/api/auth/me': operator, 'POST /api/overview/attention/export/resolve': null,
+      '/api/me/today': { items: [
+        { module: null, text: 'Выгрузка: расписания с ошибками за сутки', link: '/export/history', tone: 'Action', count: 1, resolveKey: 'export' },
+        { module: 'clash', text: 'Новые коллизии в ваших разделах', link: '/clash/my?since=unseen', tone: 'Action', count: 4, resolveKey: null },
+      ] },
+    });
+
+    const block = await screen.findByRole('region', { name: 'Для вас' });
+    const buttons = await within(block).findAllByRole('button', { name: 'Решено' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'Выгрузка: расписания с ошибками за сутки' });
+    fireEvent.change(within(dialog).getByLabelText('Почему решено'), { target: { value: 'Модель удалили' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Отметить решённым' }));
+    await waitFor(() => expect(posts('/api/overview/attention/export/resolve')).toHaveLength(1));
   });
 
   it('viewer sees failed models but no resolve button', async () => {

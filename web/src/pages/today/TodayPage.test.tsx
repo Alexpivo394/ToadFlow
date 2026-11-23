@@ -21,11 +21,15 @@ describe('for you', () => {
       {
         '/api/auth/me': designer,
         '/api/modules': [{ name: 'families', title: 'Семейства', enabled: true }, { name: 'clash', title: 'Коллизии', enabled: true }],
-        '/api/me/today': { items: [{ module: 'families', text: 'Заявки ждут вашего ответа или приёмки', link: '/families/requests?scope=mine', tone: 'Action', count: 2 }] },
+        '/api/me/today': { items: [
+          { module: 'families', text: 'Заявки ждут вашего ответа или приёмки', link: '/families/requests?scope=mine', tone: 'Action', count: 2 },
+          { module: null, text: 'Выгрузка: расписания с ошибками за сутки', link: '/export/history', tone: 'Action', count: 1, resolveKey: 'export' },
+        ] },
       });
 
     expect(await screen.findByRole('heading', { name: 'Для вас' })).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Решено' })).toBeNull(); // отмечает Координатор и выше
     expect(screen.getByRole('link', { name: /Подать заявку/ }).getAttribute('href')).toBe('/families/requests/new');
     fireEvent.click(screen.getByText('Заявки ждут вашего ответа или приёмки'));
     expect(await screen.findByText('мои заявки')).toBeTruthy();

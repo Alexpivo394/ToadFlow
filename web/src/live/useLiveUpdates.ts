@@ -8,7 +8,7 @@ const clashLists = ['clash-list', 'clash-collisions', 'clash-my', 'clash-checks'
 /** Какие запросы устаревают при изменении сущности на сервере; <c>id</c> — id сущности из события. */
 const affected: Record<string, (id: string) => QueryKey[]> = {
   jobs: () => [['jobs'], ['runs'], ['overview'], ['overview-feed'], ['farm-summary']],
-  runs: () => [['runs'], ['jobs'], ['overview'], ['overview-feed'], ['farm-summary'], ['schedules']],
+  runs: () => [['runs'], ['jobs'], ['overview'], ['overview-feed'], ['farm-summary'], ['schedules'], ['me-today']],
   agents: () => [['agents'], ['overview'], ['farm-summary']],
   schedules: () => [['schedules'], ['overview'], ['farm-summary']],
   // Черновик части и итог его прогона.
@@ -22,8 +22,8 @@ const affected: Record<string, (id: string) => QueryKey[]> = {
   // Журнал действий: новая строка может попасть в ленту «Обзора».
   events: () => [['events'], ['overview-feed']],
   'family-requests': () => [['family-requests'], ['overview']],
-  // Ошибки модуля отметили решёнными: «Обзор» у всех, у кого он открыт.
-  overview: () => [['overview'], ['overview-feed']],
+  // Ошибки модуля отметили решёнными: «Обзор» и «Для вас» у всех, у кого они открыты.
+  overview: () => [['overview'], ['overview-feed'], ['me-today']],
 };
 
 /** Паузы повторов первого подключения: потом — автоматическое переподключение SignalR. */
