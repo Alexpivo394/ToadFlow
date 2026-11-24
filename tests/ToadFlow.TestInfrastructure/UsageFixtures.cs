@@ -118,4 +118,22 @@ public static class UsageFixtures
     }
 
     public sealed record IngestAnswer(int Accepted, int Skipped);
+
+    /// <summary>Id учётки, под которой вошёл клиент.</summary>
+    public static async Task<Guid> UserIdAsync(HttpClient client) =>
+        (await client.GetJsonAsync<JsonElement>("/api/profile")).GetProperty("id").GetGuid();
+
+    /// <summary>Сегодняшний день в поясе по умолчанию («Общие» — Москва).</summary>
+    public static DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).DateTime);
+
+    public static TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow");
+
+    /// <summary>Начало местного дня — момент UTC.</summary>
+    public static DateTimeOffset StartOf(DateOnly day)
+    {
+        var local = day.ToDateTime(TimeOnly.MinValue);
+        return new DateTimeOffset(local, Zone.GetUtcOffset(local)).ToUniversalTime();
+    }
+
+    public static string Day(DateOnly day) => day.ToString("yyyy-MM-dd");
 }
