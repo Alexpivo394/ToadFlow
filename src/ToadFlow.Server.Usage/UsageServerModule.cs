@@ -43,6 +43,7 @@ public sealed class UsageServerModule : IServerModule
         usage.MapUsageWaits();
         usage.MapUsageMachines();
         usage.MapUsageCoverage();
+        usage.MapUsageCommands();
     }
 
     /// <summary>Приём пачек от ToadTools — любой роли: проектировщик данные отправляет, но не читает.</summary>
