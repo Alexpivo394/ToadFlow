@@ -9,6 +9,7 @@ import { useLiveUpdates } from '../live/useLiveUpdates';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { useNotificationsLive } from '../notifications/useNotificationsLive';
 import { CommandPalette, SearchButton } from '../search/CommandPalette';
+import { usePageViews } from '../pages/usage/usePageViews';
 import type { Space } from '../spaces/types';
 import { Rail, railWidth } from './Rail';
 import { menuWidth, SpaceMenu } from './SpaceMenu';
@@ -30,6 +31,8 @@ export function AppShell({ spaces }: { spaces: Space[] }) {
   useLiveUpdates(user !== null && isStaff);
   // Свои уведомления — любой роли: личный хаб.
   useNotificationsLive(user !== null);
+  // Переходы по страницам — для экрана «Сервис» аналитики (если модуль включён).
+  usePageViews(spaces);
 
   const current = spaceOf(spaces, pathname);
 
