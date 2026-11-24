@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Modules;
 using ToadFlow.Server.Usage.Data;
+using ToadFlow.Server.Usage.Ingest;
 
 namespace ToadFlow.Server.Usage;
 
@@ -27,6 +28,7 @@ public sealed class UsageServerModule : IServerModule
 
     public void AddServices(IServiceCollection services)
     {
+        services.AddScoped<UsageIngest>();
     }
 
     public void ConfigureModel(ModelBuilder model) => UsageModel.Configure(model);
@@ -34,6 +36,9 @@ public sealed class UsageServerModule : IServerModule
     public void MapEndpoints(RouteGroupBuilder api)
     {
     }
+
+    /// <summary>Приём пачек от ToadTools — любой роли: проектировщик данные отправляет, но не читает.</summary>
+    public void MapMemberEndpoints(RouteGroupBuilder members) => members.MapGroup("/usage").MapUsageIngest();
 
     public Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<string>>(["У модуля «Аналитика» нет расписаний"]);
