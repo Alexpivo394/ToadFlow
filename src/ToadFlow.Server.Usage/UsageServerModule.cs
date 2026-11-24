@@ -5,6 +5,8 @@ using ToadFlow.Server.Usage.Data;
 using ToadFlow.Server.Usage.Ingest;
 using ToadFlow.Server.Usage.Query;
 using ToadFlow.Server.Usage.Service;
+using ToadFlow.Server.Usage.Settings;
+using ToadFlow.Server.Usage.Maintenance;
 
 namespace ToadFlow.Server.Usage;
 
@@ -32,6 +34,10 @@ public sealed class UsageServerModule : IServerModule
     {
         services.AddScoped<UsageIngest>();
         services.AddScoped<UsageQuery>();
+        services.AddScoped<UsageSettingsStore>();
+        services.AddSingleton<UsageCleaner>();
+        services.AddHostedService(provider => provider.GetRequiredService<UsageCleaner>());
+        services.AddSingleton<ToadFlow.Server.Overview.IOverviewSource, UsageOverview>();
         services.AddSingleton<PluginCallCounter>();
         services.AddHostedService<PluginCallFlusher>();
         // Учёт вызовов плагинов — в начале конвейера сервера; у выключенного модуля фильтра нет вовсе.
@@ -52,6 +58,7 @@ public sealed class UsageServerModule : IServerModule
         usage.MapUsageService();
         usage.MapUsageSummary();
         usage.MapUsagePeople();
+        usage.MapUsageSettings();
     }
 
     /// <summary>Приём пачек от ToadTools и отметки переходов веба — любой роли: проектировщик данные отправляет, но не читает.</summary>
