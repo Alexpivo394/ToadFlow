@@ -90,7 +90,12 @@ public sealed class LoiServerModule : IServerModule
 
     public void MapEndpoints(RouteGroupBuilder api) => api.MapLoi();
 
-    public void MapMemberEndpoints(RouteGroupBuilder members) => members.MapLoiChecks();
+    /// <summary>Приём ручных проверок (сам требует координатора) и просмотр аналитики — его видят и проектировщики.</summary>
+    public void MapMemberEndpoints(RouteGroupBuilder members)
+    {
+        members.MapLoiChecks();
+        members.MapLoiAnalyticsQueries();
+    }
 
     public async Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct)
     {

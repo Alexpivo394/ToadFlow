@@ -85,7 +85,7 @@ describe('AppShell', () => {
   });
 
   it('designer with no available space lands on the profile with a note', async () => {
-    as('Designer', '/', { disciplines: ['ОВ'], disabled: ['clash'] });
+    as('Designer', '/', { disciplines: ['ОВ'], disabled: ['clash', 'loi'] });
 
     expect(await screen.findByText('Для вашей роли пока нет доступных разделов')).toBeTruthy();
   });

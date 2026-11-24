@@ -97,6 +97,13 @@ public class AuthorizationMatrixTests : ServerTest
         members.ShouldNotContain("GET /api/clash/parts/{id:guid}");
         members.ShouldNotContain("POST /api/loi/checks"); // статистику LOI отправляют только координаторы и администраторы
         members.ShouldContain("GET /api/modules"); // по нему веб проектировщика собирает меню
+        // Аналитика LOI: проектировщик только смотрит; настройки, поправки моделей и пересчёт — не ему
+        string[] loiAnalytics =
+        [
+            "GET /api/loi/analytics/settings", "GET /api/loi/analytics/filters", "GET /api/loi/analytics/overview", "GET /api/loi/analytics/models",
+            "GET /api/loi/analytics/model", "GET /api/loi/analytics/parameters", "GET /api/loi/analytics/models.csv"
+        ];
+        members.Where(route => route.Contains(" /api/loi/")).ShouldBe(loiAnalytics, ignoreOrder: true);
         // Семейства: проектировщик ищет, открывает карточку, грузит из панели и ведёт свои заявки; «На проверке», «Нужно решение», параметры,
         // публикация и правка — не ему
         string[] families =
@@ -118,7 +125,7 @@ public class AuthorizationMatrixTests : ServerTest
         ];
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
-                               && !route.EndsWith(" /api/modules") && !families.Contains(route)
+                               && !route.EndsWith(" /api/modules") && !families.Contains(route) && !loiAnalytics.Contains(route)
                                && !route.Contains(" /api/profile") && !route.EndsWith("/card") && !route.Contains(" /api/notifications") && !route.EndsWith(" /api/me/today") && !route.EndsWith(" /api/search"))
             .ShouldBeEmpty();
 

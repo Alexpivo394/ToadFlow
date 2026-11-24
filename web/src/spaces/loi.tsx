@@ -18,7 +18,7 @@ export const loiSpace: Space = {
   short: t.nav.shortLoi,
   icon: IconChecklist,
   pages: [
-    { to: '/loi/analytics', label: t.nav.analyticsPage, section: 'work' },
+    { to: '/loi/analytics', label: t.nav.analyticsPage, designer: true, section: 'work' },
     { to: '/loi/schedules', label: t.nav.schedules, section: 'work' },
     { to: '/loi/history', label: t.nav.historyPage, section: 'work' },
     { to: '/loi/profiles', label: t.nav.profilesPage, section: 'setup' },
@@ -26,7 +26,8 @@ export const loiSpace: Space = {
   ],
   routes: () => (
     <>
-      <Route path="analytics/*" element={<RoleOnly role="Viewer"><AnalyticsPage /></RoleOnly>} />
+      {/* Аналитику смотрят и проектировщики: на странице нет ничего, что меняет настройки. */}
+      <Route path="analytics/*" element={<AnalyticsPage />} />
       <Route path="schedules/:id?" element={<RoleOnly role="Viewer"><SchedulesPage module="loi" base="/loi/schedules" /></RoleOnly>} />
       <Route path="history/*" element={<RoleOnly role="Viewer"><HistoryPage module="loi" base="/loi/history" /></RoleOnly>} />
       <Route path="profiles" element={<RoleOnly role="Viewer"><Titled title={t.nav.profilesPage}><LoiSettings /></Titled></RoleOnly>} />

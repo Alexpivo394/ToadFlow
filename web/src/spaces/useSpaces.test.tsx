@@ -76,13 +76,13 @@ describe('useSpaces', () => {
   it('designer sees only spaces with designer pages', async () => {
     const spaces = await spacesOf('Designer', { disciplines: ['ОВ'] });
 
-    expect(spaces).toEqual({ clash: ['/clash/my', '/clash/checks', '/clash/summary'] });
+    expect(spaces).toEqual({ loi: ['/loi/analytics'], clash: ['/clash/my', '/clash/checks', '/clash/summary'] });
   });
 
   it('designer without disciplines does not see "Мои"', async () => {
     const spaces = await spacesOf('Designer');
 
-    expect(spaces).toEqual({ clash: ['/clash/checks', '/clash/summary'] });
+    expect(spaces).toEqual({ loi: ['/loi/analytics'], clash: ['/clash/checks', '/clash/summary'] });
   });
 
   it('viewer sees admin without "Пользователи"', async () => {
@@ -100,8 +100,8 @@ describe('useSpaces', () => {
     expect(spaces.admin).toContain('/admin/users');
   });
 
-  it('no space at all while modules are unknown to a designer with clash disabled', async () => {
-    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Designer', ['ОВ']), '/api/modules': modules(['clash']) });
+  it('no space at all for a designer with clash and LOI disabled', async () => {
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Designer', ['ОВ']), '/api/modules': modules(['clash', 'loi']) });
 
     expect(await screen.findByRole('list')).toBeTruthy();
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);

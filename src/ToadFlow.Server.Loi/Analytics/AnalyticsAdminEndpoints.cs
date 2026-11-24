@@ -48,8 +48,6 @@ internal static class AnalyticsAdminEndpoints
 
     public static void MapLoiAnalyticsAdmin(this RouteGroupBuilder loi)
     {
-
-        loi.MapGet("/analytics/settings", (LoiSettingsStore store, CancellationToken ct) => store.AnalyticsAsync(ct));
         loi.MapGet("/models/overrides", async (ToadFlowDb db) => (await db.Set<LoiModelOverride>().AsNoTracking().OrderBy(o => o.ModelName).ToListAsync())
             .Select(ModelOverrideView.Of).ToList());
 

@@ -93,9 +93,11 @@ internal static class AnalyticsQueryEndpoints
 {
     private const int TopCount = 10;
 
-    public static void MapLoiAnalyticsQueries(this RouteGroupBuilder loi)
+    /// <summary>Только чтение — открыто и проектировщикам: модуль подключает это в маршруты участников.</summary>
+    public static void MapLoiAnalyticsQueries(this RouteGroupBuilder members)
     {
-        var analytics = loi.MapGroup("/analytics");
+        var analytics = members.MapGroup("/loi/analytics");
+        analytics.MapGet("/settings", (LoiSettingsStore store, CancellationToken ct) => store.AnalyticsAsync(ct));
         analytics.MapGet("/filters", FiltersAsync);
         analytics.MapGet("/overview", OverviewAsync);
         analytics.MapGet("/models", async ([AsParameters] AnalyticsFilter filter, ToadFlowDb db, CancellationToken ct) =>
