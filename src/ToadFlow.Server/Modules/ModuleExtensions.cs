@@ -43,7 +43,7 @@ public static class ModuleExtensions
 /// </summary>
 public sealed class ServerModuleRegistry(ModuleSet modules)
 {
-    private readonly Dictionary<string, IServerModule> _modules = modules.Enabled.ToDictionary(m => m.Kind);
+    private readonly Dictionary<string, IServerModule> _modules = modules.Enabled.Where(m => m.HasJobs).ToDictionary(m => m.Kind);
 
     public IServerModule? Find(string kind) => _modules.GetValueOrDefault(kind);
 

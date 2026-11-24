@@ -5,6 +5,7 @@ using ToadFlow.Server.Families;
 using ToadFlow.Server.Health;
 using ToadFlow.Server.Loi;
 using ToadFlow.Server.Modules;
+using ToadFlow.Server.Usage;
 
 // Healthcheck контейнера: запрос к /api/health работающего сервера, без запуска второго.
 if (args.Contains(HealthCheck.Argument)) return await HealthCheck.RunAsync();
@@ -15,6 +16,7 @@ builder.AddServerModule<ExportServerModule>();
 builder.AddServerModule<LoiServerModule>();
 builder.AddServerModule<ClashServerModule>();
 builder.AddServerModule<FamiliesServerModule>();
+builder.AddServerModule<UsageServerModule>();
 
 var app = builder.Build();
 app.UseToadFlowServer();

@@ -9,6 +9,7 @@ COPY src/ToadFlow.Server.Export/ToadFlow.Server.Export.csproj src/ToadFlow.Serve
 COPY src/ToadFlow.Server.Loi/ToadFlow.Server.Loi.csproj src/ToadFlow.Server.Loi/
 COPY src/ToadFlow.Server.Clash/ToadFlow.Server.Clash.csproj src/ToadFlow.Server.Clash/
 COPY src/ToadFlow.Server.Families/ToadFlow.Server.Families.csproj src/ToadFlow.Server.Families/
+COPY src/ToadFlow.Server.Usage/ToadFlow.Server.Usage.csproj src/ToadFlow.Server.Usage/
 COPY src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj src/ToadFlow.Server.Host/
 RUN dotnet restore src/ToadFlow.Server.Host/ToadFlow.Server.Host.csproj
 
