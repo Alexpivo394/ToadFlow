@@ -30,7 +30,7 @@ public class AuthorizationMatrixTests : ServerTest
          // Следить за расписанием — личная подписка на уведомления
          "/api/schedules/{id:guid}/follow",
          // Аналитика: свои данные из ToadTools — любой роли
-         "/api/usage/events"];
+         "/api/usage/events", "/api/usage/pageview"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()
@@ -127,7 +127,7 @@ public class AuthorizationMatrixTests : ServerTest
         ];
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
         // Аналитика: проектировщик только отправляет свои данные, ничего не читает
-        string[] usage = ["POST /api/usage/events"];
+        string[] usage = ["POST /api/usage/events", "POST /api/usage/pageview"];
         members.Where(route => route.Contains(" /api/usage")).ShouldBe(usage, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
                                && !route.EndsWith(" /api/modules") && !families.Contains(route) && !loiAnalytics.Contains(route) && !usage.Contains(route)
