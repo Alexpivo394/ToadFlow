@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Modules;
 using ToadFlow.Server.Usage.Data;
 using ToadFlow.Server.Usage.Ingest;
+using ToadFlow.Server.Usage.Query;
 
 namespace ToadFlow.Server.Usage;
 
@@ -29,12 +30,17 @@ public sealed class UsageServerModule : IServerModule
     public void AddServices(IServiceCollection services)
     {
         services.AddScoped<UsageIngest>();
+        services.AddScoped<UsageQuery>();
     }
 
     public void ConfigureModel(ModelBuilder model) => UsageModel.Configure(model);
 
+    /// <summary>Чтение — от Наблюдателя: проектировщик данные отправляет, но не видит.</summary>
     public void MapEndpoints(RouteGroupBuilder api)
     {
+        var usage = api.MapGroup("/usage").WithBadRequests();
+        usage.MapUsageFilters();
+        usage.MapUsageWaits();
     }
 
     /// <summary>Приём пачек от ToadTools — любой роли: проектировщик данные отправляет, но не читает.</summary>
