@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ToadFlow.Server.Modules;
+using ToadFlow.Server.Usage.Data;
 
 namespace ToadFlow.Server.Usage;
 
@@ -28,9 +29,7 @@ public sealed class UsageServerModule : IServerModule
     {
     }
 
-    public void ConfigureModel(ModelBuilder model)
-    {
-    }
+    public void ConfigureModel(ModelBuilder model) => UsageModel.Configure(model);
 
     public void MapEndpoints(RouteGroupBuilder api)
     {

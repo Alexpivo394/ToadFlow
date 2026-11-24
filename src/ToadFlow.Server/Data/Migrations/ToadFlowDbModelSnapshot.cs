@@ -3131,6 +3131,426 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("schedule_followers", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsageCommandDay", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("CommandId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("command_id");
+
+                    b.Property<int>("Cancelled")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancelled");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("bigint")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<int>("Failed")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed");
+
+                    b.Property<string>("MachineKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("machine_key");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Tab")
+                        .HasColumnType("text")
+                        .HasColumnName("tab");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("SessionId", "Day", "Source", "CommandId")
+                        .HasName("pk_usage_command_days");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_usage_command_days_day");
+
+                    b.HasIndex("UserId", "Day")
+                        .HasDatabaseName("ix_usage_command_days_user_id_day");
+
+                    b.ToTable("usage_command_days", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsageMachine", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("key");
+
+                    b.Property<int?>("Cores")
+                        .HasColumnType("integer")
+                        .HasColumnName("cores");
+
+                    b.Property<string>("Cpu")
+                        .HasColumnType("text")
+                        .HasColumnName("cpu");
+
+                    b.Property<int?>("DiskFreeGb")
+                        .HasColumnType("integer")
+                        .HasColumnName("disk_free_gb");
+
+                    b.Property<string>("DiskKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("disk_kind");
+
+                    b.Property<int?>("DiskTotalGb")
+                        .HasColumnType("integer")
+                        .HasColumnName("disk_total_gb");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<string>("Gpu")
+                        .HasColumnType("text")
+                        .HasColumnName("gpu");
+
+                    b.Property<int?>("GpuMemoryMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("gpu_memory_mb");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<Guid?>("LastUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_user_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Os")
+                        .HasColumnType("text")
+                        .HasColumnName("os");
+
+                    b.Property<int?>("RamMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("ram_mb");
+
+                    b.PrimitiveCollection<int[]>("RevitYears")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("revit_years")
+                        .HasDefaultValueSql("'{}'::integer[]");
+
+                    b.Property<string>("ToadTools")
+                        .HasColumnType("text")
+                        .HasColumnName("toad_tools");
+
+                    b.HasKey("Key")
+                        .HasName("pk_usage_machines");
+
+                    b.HasIndex("LastSeenAt")
+                        .HasDatabaseName("ix_usage_machines_last_seen_at");
+
+                    b.ToTable("usage_machines", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsageOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("bigint")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("file_size_bytes");
+
+                    b.Property<int?>("FreeMemoryMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("free_memory_mb");
+
+                    b.Property<string>("HostModelKey")
+                        .HasColumnType("text")
+                        .HasColumnName("host_model_key");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("MachineKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("machine_key");
+
+                    b.Property<string>("ModelKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_key");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_name");
+
+                    b.Property<string>("ModelPath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("model_path");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<int>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<string>("ServerHost")
+                        .HasColumnType("text")
+                        .HasColumnName("server_host");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Storage")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("storage");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usage_operations");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("ix_usage_operations_started_at");
+
+                    b.HasIndex("MachineKey", "StartedAt")
+                        .HasDatabaseName("ix_usage_operations_machine_key_started_at");
+
+                    b.HasIndex("ModelKey", "StartedAt")
+                        .HasDatabaseName("ix_usage_operations_model_key_started_at");
+
+                    b.HasIndex("UserId", "StartedAt")
+                        .HasDatabaseName("ix_usage_operations_user_id_started_at");
+
+                    b.ToTable("usage_operations", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsagePluginDay", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<string>("Area")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("area");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.HasKey("UserId", "Day", "Area")
+                        .HasName("pk_usage_plugin_days");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_usage_plugin_days_day");
+
+                    b.ToTable("usage_plugin_days", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsageSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ActiveSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("active_seconds");
+
+                    b.Property<string>("End")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("end");
+
+                    b.Property<string>("MachineKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("machine_key");
+
+                    b.Property<int?>("PeakMemoryMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("peak_memory_mb");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("RevitBuild")
+                        .HasColumnType("text")
+                        .HasColumnName("revit_build");
+
+                    b.Property<int>("RevitYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("revit_year");
+
+                    b.Property<DateTimeOffset>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("ToadTools")
+                        .HasColumnType("text")
+                        .HasColumnName("toad_tools");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("WindowsUser")
+                        .HasColumnType("text")
+                        .HasColumnName("windows_user");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usage_sessions");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("ix_usage_sessions_started_at");
+
+                    b.HasIndex("MachineKey", "StartedAt")
+                        .HasDatabaseName("ix_usage_sessions_machine_key_started_at");
+
+                    b.HasIndex("UserId", "StartedAt")
+                        .HasDatabaseName("ix_usage_sessions_user_id_started_at");
+
+                    b.ToTable("usage_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsageSessionDay", b =>
+                {
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("ActiveSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("active_seconds");
+
+                    b.Property<string>("MachineKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("machine_key");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("SessionId", "Day")
+                        .HasName("pk_usage_session_days");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_usage_session_days_day");
+
+                    b.ToTable("usage_session_days", (string)null);
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Usage.Data.UsageWebDay", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<string>("Space")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("space");
+
+                    b.Property<string>("Page")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("page");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.HasKey("UserId", "Day", "Space", "Page")
+                        .HasName("pk_usage_web_days");
+
+                    b.HasIndex("Day")
+                        .HasDatabaseName("ix_usage_web_days_day");
+
+                    b.ToTable("usage_web_days", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Auth.RefreshToken", b =>
                 {
                     b.HasOne("ToadFlow.Server.Data.Entities.User", null)
