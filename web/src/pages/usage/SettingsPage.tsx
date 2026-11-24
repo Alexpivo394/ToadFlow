@@ -25,7 +25,7 @@ export function SettingsPage() {
   return (
     <Panel>
       <Stack gap="md" maw={420}>
-        <TextInput label={t.usage.retention} description={t.usage.retentionHint} inputMode="numeric" w={200} disabled={readOnly}
+        <TextInput label={t.usage.retention} description={t.usage.retentionHint} inputMode="numeric" disabled={readOnly}
           value={raw} error={invalid ? t.usage.retentionRange : null} onChange={(e) => setText(e.currentTarget.value)} />
         {!readOnly && (
           <Group>
