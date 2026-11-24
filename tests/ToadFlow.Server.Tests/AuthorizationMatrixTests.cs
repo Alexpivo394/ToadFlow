@@ -28,7 +28,9 @@ public class AuthorizationMatrixTests : ServerTest
          // Свои уведомления: прочесть, настроить
          "/api/notifications/{id:long}/read", "/api/notifications/read-all", "/api/notifications/read-link", "/api/notifications/settings",
          // Следить за расписанием — личная подписка на уведомления
-         "/api/schedules/{id:guid}/follow"];
+         "/api/schedules/{id:guid}/follow",
+         // Аналитика: свои данные из ToadTools — любой роли
+         "/api/usage/events"];
 
     [Test]
     public async Task Authorization_MutatingEndpoints_RejectViewer()
@@ -124,8 +126,11 @@ public class AuthorizationMatrixTests : ServerTest
             "POST /api/families/requests/uploads", "GET /api/families/requests/uploads/{fileId:guid}", "DELETE /api/families/requests/{id:guid}/files/{fileId:guid}"
         ];
         members.Where(route => route.Contains(" /api/families")).ShouldBe(families, ignoreOrder: true);
+        // Аналитика: проектировщик только отправляет свои данные, ничего не читает
+        string[] usage = ["POST /api/usage/events"];
+        members.Where(route => route.Contains(" /api/usage")).ShouldBe(usage, ignoreOrder: true);
         members.Where(route => !route.Contains(" /api/auth/") && !route.EndsWith(" /api/health") && !route.Contains(" /api/clash/")
-                               && !route.EndsWith(" /api/modules") && !families.Contains(route) && !loiAnalytics.Contains(route)
+                               && !route.EndsWith(" /api/modules") && !families.Contains(route) && !loiAnalytics.Contains(route) && !usage.Contains(route)
                                && !route.Contains(" /api/profile") && !route.EndsWith("/card") && !route.Contains(" /api/notifications") && !route.EndsWith(" /api/me/today") && !route.EndsWith(" /api/search"))
             .ShouldBeEmpty();
 
