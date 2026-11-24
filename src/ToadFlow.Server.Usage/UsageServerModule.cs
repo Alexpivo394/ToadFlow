@@ -41,6 +41,8 @@ public sealed class UsageServerModule : IServerModule
         var usage = api.MapGroup("/usage").WithBadRequests();
         usage.MapUsageFilters();
         usage.MapUsageWaits();
+        usage.MapUsageMachines();
+        usage.MapUsageCoverage();
     }
 
     /// <summary>Приём пачек от ToadTools — любой роли: проектировщик данные отправляет, но не читает.</summary>
