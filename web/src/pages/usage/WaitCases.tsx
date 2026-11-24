@@ -1,4 +1,4 @@
-import { Badge, Table, Text } from '@mantine/core';
+import { Table, Text } from '@mantine/core';
 import { useApi } from '../../api/queries';
 import { QueryState } from '../../components/QueryState';
 import { formatDateTime } from '../../lib/format';
@@ -37,7 +37,7 @@ export function WaitCases({ group, rowKey, kind, query }: { group: WaitGroup; ro
                   <Table.Td>{formatDateTime(c.startedAt)}</Table.Td>
                   <Table.Td>{t.usage.kinds[c.kind]}</Table.Td>
                   <Table.Td>{formatDuration(c.durationMs)}</Table.Td>
-                  <Table.Td><Badge variant="light" color={outcomeColor[c.outcome]}>{t.usage.outcomes[c.outcome]}</Badge></Table.Td>
+                  <Table.Td><Text size="sm" c={c.outcome === 'Succeeded' ? undefined : outcomeColor[c.outcome]}>{t.usage.outcomes[c.outcome]}</Text></Table.Td>
                   <Table.Td><PersonLink id={c.user.id} name={c.user.name} /></Table.Td>
                   <Table.Td><MachineLink machineKey={c.machine.key} name={c.machine.name} /></Table.Td>
                   <Table.Td>

@@ -1,4 +1,4 @@
-import { Alert, Badge, Select, Stack, Table, Text } from '@mantine/core';
+import { Alert, Badge, Group, Select, Stack, Table, Text } from '@mantine/core';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useApi } from '../../api/queries';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -54,12 +54,12 @@ export function ToolsPage() {
             {view.ribbonOnly && source !== 'ToadTools' && <Alert variant="light" color="gray">{t.usage.ribbonOnly}</Alert>}
             {view.rows.length === 0 ? <EmptyState /> : (
               <Block actions={(
-                <>
+                <Group gap="sm">
                   <Select size="xs" w={200} aria-label={t.usage.source} placeholder={t.usage.allSources} clearable value={source ?? null}
                     data={sources.map((s) => ({ value: s, label: t.usage.sources[s] }))} onChange={setSource} />
                   <CsvButton fileName="инструменты" header={[t.usage.title, t.usage.source, t.usage.tab, t.usage.runs, t.usage.people, `${t.usage.failedShare}, %`, `${t.usage.avg}, с`]}
                     rows={() => view.rows.map((r) => [r.name, t.usage.sources[r.source], r.tab, r.count, r.people, failedShare(r), r.avgMs == null ? null : Math.round(r.avgMs / 1000)])} />
-                </>
+                </Group>
               )}>
                 <DataTable rows={view.rows} columns={columns} rowKey={(r) => `${r.source}/${r.commandId}`} search={(r) => `${r.name} ${r.commandId}`}
                   onRowClick={(r) => navigate(`/usage/tools/${r.source}/${encodeURIComponent(r.commandId)}`)} />
