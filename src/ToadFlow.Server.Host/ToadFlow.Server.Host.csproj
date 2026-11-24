@@ -16,6 +16,7 @@
         <ProjectReference Include="..\ToadFlow.Server.Loi\ToadFlow.Server.Loi.csproj"/>
         <ProjectReference Include="..\ToadFlow.Server.Clash\ToadFlow.Server.Clash.csproj"/>
         <ProjectReference Include="..\ToadFlow.Server.Families\ToadFlow.Server.Families.csproj"/>
+        <ProjectReference Include="..\ToadFlow.Server.Usage\ToadFlow.Server.Usage.csproj"/>
     </ItemGroup>
 
 </Project>

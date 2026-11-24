@@ -54,7 +54,7 @@ public sealed class CoreAttention(ToadFlowDb db, ISettingsStore settings, Module
             .Select(j => new { Kind = j.ModuleKind, At = j.FinishedAt!.Value }).ToListAsync(ct);
         // Ошибки до «Решено» модуля не считаются.
         var resolved = await resolutions.ListAsync(ct);
-        return modules.Enabled
+        return modules.Enabled.Where(module => module.HasJobs)
             .Select(module => (Module: module, Count: failed.Count(j => module.Kinds.Contains(j.Kind)
                                                                        && !(resolved.TryGetValue(module.Name, out var at) && j.At <= at))))
             .Where(m => m.Count > 0 && m.Count >= m.Module.FailedJobsAlarm)

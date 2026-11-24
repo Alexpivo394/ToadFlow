@@ -125,7 +125,7 @@ public sealed class JobQueue(ToadFlowDb db, RunProgress runs, IDomainEvents even
 
     private async Task NotifyModulesAsync(Job job)
     {
-        foreach (var module in services.GetRequiredService<ModuleSet>().Enabled)
+        foreach (var module in services.GetRequiredService<ModuleSet>().Enabled.Where(m => m.HasJobs))
         {
             try
             {
