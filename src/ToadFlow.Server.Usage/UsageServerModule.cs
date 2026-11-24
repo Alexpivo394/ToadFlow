@@ -4,6 +4,7 @@ using ToadFlow.Server.Modules;
 using ToadFlow.Server.Usage.Data;
 using ToadFlow.Server.Usage.Ingest;
 using ToadFlow.Server.Usage.Query;
+using ToadFlow.Server.Usage.Service;
 
 namespace ToadFlow.Server.Usage;
 
@@ -31,6 +32,10 @@ public sealed class UsageServerModule : IServerModule
     {
         services.AddScoped<UsageIngest>();
         services.AddScoped<UsageQuery>();
+        services.AddSingleton<PluginCallCounter>();
+        services.AddHostedService<PluginCallFlusher>();
+        // Учёт вызовов плагинов — в начале конвейера сервера; у выключенного модуля фильтра нет вовсе.
+        services.AddTransient<IStartupFilter, PluginCallStartupFilter>();
     }
 
     public void ConfigureModel(ModelBuilder model) => UsageModel.Configure(model);
@@ -44,10 +49,16 @@ public sealed class UsageServerModule : IServerModule
         usage.MapUsageMachines();
         usage.MapUsageCoverage();
         usage.MapUsageCommands();
+        usage.MapUsageService();
     }
 
-    /// <summary>Приём пачек от ToadTools — любой роли: проектировщик данные отправляет, но не читает.</summary>
-    public void MapMemberEndpoints(RouteGroupBuilder members) => members.MapGroup("/usage").MapUsageIngest();
+    /// <summary>Приём пачек от ToadTools и отметки переходов веба — любой роли: проектировщик данные отправляет, но не читает.</summary>
+    public void MapMemberEndpoints(RouteGroupBuilder members)
+    {
+        var usage = members.MapGroup("/usage");
+        usage.MapUsageIngest();
+        usage.MapUsagePageViews();
+    }
 
     public Task<IReadOnlyList<string>> ValidateSettingsAsync(JsonElement settings, IServiceProvider services, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<string>>(["У модуля «Аналитика» нет расписаний"]);
