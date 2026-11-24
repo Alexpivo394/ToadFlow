@@ -46,6 +46,30 @@ public class FamiliesRequestWorkflowTests : ServerTest
         await RequestMaintenance.RunOnceAsync(scope.ServiceProvider, now, CancellationToken.None);
     }
 
+    /// <summary>
+    ///     Сообщение и строка о событии одного действия пишутся с одним моментом, а Id версии 7 внутри миллисекунды случайны: событие
+    ///     («автор ответил») всё равно идёт после сообщения.
+    /// </summary>
+    [Test]
+    public async Task Messages_SameMoment_EventAfterMessage()
+    {
+        var author = await ClientAsync(UserRole.Designer);
+        var created = await CreateAsync(author);
+        var me = await IdAsync(author);
+        var at = DateTimeOffset.UtcNow.AddMinutes(1);
+        await DbAsync(async db =>
+        {
+            db.Set<FamilyRequestMessage>().AddRange(
+                new FamilyRequestMessage { Id = Guid.Parse("ffffffff-ffff-7fff-bfff-ffffffffffff"), RequestId = created.Id, AuthorUserId = me, Text = "Danfoss", At = at },
+                new FamilyRequestMessage { Id = Guid.Parse("00000000-0000-7000-8000-000000000001"), RequestId = created.Id, AuthorUserId = me, Text = "автор ответил", IsEvent = true, At = at });
+            await db.SaveChangesAsync();
+        });
+
+        var view = await ViewAsync(author, created.Id);
+
+        view.Messages.TakeLast(2).Select(m => m.Text).ShouldBe(["Danfoss", "автор ответил"]);
+    }
+
     [Test]
     public async Task Cycle_AskAnswerReviewDeclineAccept()
     {

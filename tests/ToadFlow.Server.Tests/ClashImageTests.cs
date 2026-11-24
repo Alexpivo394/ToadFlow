@@ -209,8 +209,10 @@ public class ClashImageTests : ServerTest
 
         (second.Status, second.Error).ShouldBe((200, null));
         PngSize(await File.ReadAllBytesAsync(second.Path!)).ShouldBe((640, 400));
-        Images.Renders.ShouldBe(1);
-        Images.RenderStarts.ShouldBeLessThanOrEqualTo(2); // брошенная отрисовка отменена (или снята до начала), новая — с начала
+        // Брошенная отрисовка отменена (или снята до начала), новая — с начала. Отмена, пришедшая после последней проверки внутри
+        // отрисовки, её уже не остановит: тогда дорисуются обе — на быстрой машине так и бывает.
+        Images.Renders.ShouldBeInRange(1, 2);
+        Images.RenderStarts.ShouldBeLessThanOrEqualTo(2);
         (await setup.Admin.GetAsync($"/api/clash/collisions/{collision.Id}/image")).StatusCode.ShouldBe(HttpStatusCode.OK);
         Directory.GetFiles(ImageFolder(setup.PartId), "*.tmp").ShouldBeEmpty();
     }

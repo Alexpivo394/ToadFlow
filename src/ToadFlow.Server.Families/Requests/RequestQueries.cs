@@ -146,7 +146,9 @@ internal static partial class RequestEndpoints
 
         var me = user.UserId();
         var members = await db.Set<FamilyRequestMember>().AsNoTracking().Where(m => m.RequestId == id).OrderBy(m => m.JoinedAt).ToListAsync(ct);
-        var messages = await db.Set<FamilyRequestMessage>().AsNoTracking().Where(m => m.RequestId == id).OrderBy(m => m.At).ThenBy(m => m.Id).ToListAsync(ct);
+        // Сообщение и строка о событии одного действия пишутся с одним моментом, а Id внутри миллисекунды не растут: событие — после сообщения.
+        var messages = await db.Set<FamilyRequestMessage>().AsNoTracking().Where(m => m.RequestId == id)
+            .OrderBy(m => m.At).ThenBy(m => m.IsEvent).ThenBy(m => m.Id).ToListAsync(ct);
         var files = await db.Set<FamilyRequestFile>().AsNoTracking().Where(f => f.RequestId == id).OrderBy(f => f.At).ThenBy(f => f.Id).ToListAsync(ct);
         var names = await NamesAsync(db, members.Select(m => m.UserId).Concat(messages.Select(m => m.AuthorUserId).OfType<Guid>()).Concat(files.Select(f => f.UploadedBy)), ct);
         var item = (await ItemsAsync(db, [request], me, await TodayAsync(settings, time, ct), time.GetUtcNow(), ct))[0];
