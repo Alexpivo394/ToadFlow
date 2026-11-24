@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { Link } from 'react-router';
 import { Group, Paper, Text } from '@mantine/core';
 import type { OverviewTile } from '../../api/types';
-import { moduleInfo, type ModuleName } from '../../spaces/modules';
+import { moduleInfo, otherModuleLook, type ModuleName } from '../../spaces/modules';
 import { sparkPath } from './greeting';
 
 const width = 280;
@@ -32,7 +32,7 @@ function Sparkline({ module, values, color }: { module: string; values: number[]
  */
 export function ModuleTile({ tile, title }: { tile: OverviewTile; title: string }) {
   const muted = tile.value === '—';
-  const info = moduleInfo[tile.module as ModuleName];
+  const info = moduleInfo[tile.module as ModuleName] ?? otherModuleLook[tile.module];
   const color = `var(--mantine-color-${info?.color ?? 'gray'}-6)`;
   const Icon = info?.icon;
   return (

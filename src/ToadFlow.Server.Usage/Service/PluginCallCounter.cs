@@ -45,6 +45,7 @@ public sealed class PluginCallCounter(IServiceScopeFactory scopes, ModuleSet mod
     /// <summary>Прибавляет накопленное к таблице и обнуляет память; заодно обновляет часовой пояс для дней.</summary>
     public async Task FlushAsync(CancellationToken ct)
     {
+        if (_counts.IsEmpty && _zone is not null) return;
         await using var scope = scopes.CreateAsyncScope();
         _zone = (await scope.ServiceProvider.GetRequiredService<ISettingsStore>().GetAsync(ct)).TimeZone;
         var counts = Interlocked.Exchange(ref _counts, new ConcurrentDictionary<(Guid, DateOnly, string), int>());
@@ -116,7 +117,14 @@ internal sealed class PluginCallFlusher(PluginCallCounter counter, ILogger<Plugi
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "Аналитика: не сохранены вызовы плагинов");
+            try
+            {
+                logger.LogWarning(exception, "Аналитика: не сохранены вызовы плагинов");
+            }
+            catch (Exception)
+            {
+                // Сервер останавливается: журнал уже закрыт.
+            }
         }
     }
 }

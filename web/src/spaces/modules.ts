@@ -1,4 +1,4 @@
-import { type Icon, IconBooks, IconBox, IconChecklist, IconFileExport } from '@tabler/icons-react';
+import { type Icon, IconBooks, IconBox, IconChartHistogram, IconChecklist, IconFileExport } from '@tabler/icons-react';
 import { t } from '../i18n/ru';
 
 /** Модули сервера, у которых есть задания: их расписания и история живут внутри модуля. */
@@ -30,3 +30,8 @@ export const moduleInfo: Record<ModuleName, ModuleInfo> = {
 export function moduleOfKind(kind: string): ModuleName {
   return kind === 'loi' || kind === 'loi-catalog' ? 'loi' : kind === 'clash-extract' ? 'clash' : kind === 'families-read' ? 'families' : 'export';
 }
+
+/** Цвет и значок модулей без заданий (их нет в <c>moduleInfo</c>): плитка «Обзора», лента. */
+export const otherModuleLook: Record<string, { color: string; icon: Icon }> = {
+  usage: { color: 'teal', icon: IconChartHistogram },
+};
