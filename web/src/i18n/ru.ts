@@ -1,5 +1,20 @@
 import type { AgentState, JobStatus, RunState, StepStatus, UserRole } from '../api/types';
 
+/** Форма слова по числу: 1 учётка, 2 учётки, 5 учёток. */
+function pluralWord(n: number, [one, few, many]: [string, string, string]): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+/** «по 1 человеку», «по 5 людям». */
+const peopleWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'человеку' : 'людям');
+
+/** «и 1 машине», «и 5 машинам». */
+const machinesWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'машине' : 'машинам');
+
 // Все подписи интерфейса в одном месте — чтобы позже можно было добавить английский.
 export const t = {
   appName: 'ToadFlow',
@@ -60,6 +75,144 @@ export const t = {
     familiesIssues: 'Нужно решение',
     familiesSettings: 'Параметры',
     familiesRequests: 'Заявки',
+    usage: 'Аналитика',
+    shortUsage: 'Аналитика',
+  },
+  usage: {
+    summary: 'Обзор',
+    waits: 'Ожидание',
+    tools: 'Инструменты',
+    machines: 'Машины',
+    service: 'Сервис',
+    coverage: 'Охват',
+    settings: 'Настройки',
+    period: 'Период',
+    periods: { '7d': '7 дней', '30d': '30 дней', '90d': '90 дней', custom: 'Свой' } as Record<string, string>,
+    range: 'Даты',
+    discipline: 'Раздел',
+    person: 'Человек',
+    machine: 'Машина',
+    revitYear: 'Год Revit',
+    basis: (people: number, machines: number) => `Построено по ${people} ${peopleWord(people)} и ${machines} ${machinesWord(machines)}`,
+    csv: 'CSV',
+    emptyTitle: 'Данных пока нет',
+    emptyText: (version: string) =>
+      `Данные присылает ToadTools не ниже ${version} — после того как человек вошёл в ToadFlow (ToadTools → «Подключение к ToadFlow»). ` +
+      'Первые цифры появятся в течение 10 минут после запуска Revit.',
+    emptyLink: 'Кто уже присылает данные — «Охват»',
+    // Ожидание
+    groups: { model: 'По моделям', machine: 'По машинам', user: 'По людям', server: 'По серверам Revit', link: 'Связи' } as Record<string, string>,
+    kinds: { Open: 'Открытие', Link: 'Загрузка связи', Sync: 'Синхронизация', Save: 'Сохранение', Reload: 'Обновить до последней' } as Record<string, string>,
+    allKinds: 'Все, кроме связей',
+    kind: 'Операция',
+    title: 'Название',
+    count: 'Раз',
+    median: 'Медиана',
+    p90: '90-й процентиль',
+    total: 'Всего',
+    failed: 'С ошибкой',
+    trend: 'Тренд',
+    cases: 'Случаи',
+    when: 'Когда',
+    duration: 'Длительность',
+    outcome: 'Итог',
+    outcomes: { Succeeded: 'успех', Failed: 'ошибка', Cancelled: 'отмена' } as Record<string, string>,
+    freeMemory: 'Свободно памяти',
+    hostModel: 'В модель',
+    linksEmpty:
+      'Загрузки связей пока не пришли. Если Revit не сообщает о загрузке каждой связи отдельно, их время входит в открытие модели — смотрите вкладку «По моделям».',
+    // Машины
+    cpu: 'Процессор',
+    ram: 'Память',
+    gpu: 'Видеокарта',
+    disk: 'Системный диск',
+    diskKinds: { Ssd: 'SSD', Hdd: 'HDD', Unknown: 'не определён' } as Record<string, string>,
+    os: 'Windows',
+    revitYears: 'Годы Revit',
+    toadTools: 'ToadTools',
+    lastSeen: 'Последний раз на связи',
+    lastUser: 'Последний человек',
+    openMedian: 'Медиана открытия',
+    syncMedian: 'Медиана синхронизации',
+    sessions: 'Сессий',
+    abnormal: 'Аварий',
+    activeHours: 'Активных часов',
+    whoWorks: 'Кто работает',
+    weeks: 'Ожидание по неделям',
+    abnormalSessions: 'Аварийные сессии',
+    abnormalNote: 'Вылет, снятие процесса или выключение компьютера — различить нельзя.',
+    sessionEnd: 'Последняя отметка',
+    machineMissing: 'Такой машины нет',
+    // Охват
+    coverageStates: { Never: 'нет данных', Active: 'на связи', Gone: 'пропал' } as Record<string, string>,
+    onlyNever: 'Нет данных ни разу',
+    onlyGone: 'Пропал больше 14 дней',
+    onlyOutdated: 'Старая версия ToadTools',
+    state: 'Состояние',
+    lastSession: 'Последняя сессия',
+    role: 'Роль',
+    position: 'Должность',
+    disciplines: 'Разделы',
+    accounts: (n: number) => `${n} ${pluralWord(n, ['учётка', 'учётки', 'учёток'])}`,
+    minVersion: (min: string, latest: string | null) => `Данные присылает ToadTools не ниже ${min}${latest ? `; самая новая у людей — ${latest}` : ''}.`,
+    outdated: 'старая',
+    // Инструменты
+    sources: { ToadTools: 'ToadTools', Revit: 'Revit', Addin: 'Другие плагины' } as Record<string, string>,
+    allSources: 'Все',
+    source: 'Источник',
+    tab: 'Вкладка',
+    runs: 'Запусков',
+    people: 'Людей',
+    failedShare: 'Доля ошибок',
+    avg: 'В среднем',
+    ribbonOnly: 'Штатные команды Revit — только запуски с ленты, без горячих клавиш',
+    unused: 'Не запускали 90 дней',
+    unusedEmpty: 'Все команды ToadTools запускали за последние 90 дней',
+    lastRun: 'Последний запуск',
+    never: 'никогда',
+    commandWeeks: 'Запуски по неделям',
+    whoUses: 'Кто пользуется',
+    commandMissing: 'Запусков этой команды нет',
+    // Сервис
+    web: 'Веб',
+    webDays: 'Людей в вебе по дням',
+    spaces: 'Пространства',
+    pages: 'Страницы',
+    roles: 'По ролям',
+    space: 'Пространство',
+    page: 'Страница',
+    visits: 'Посещений',
+    plugins: 'Плагины',
+    area: 'Раздел API',
+    calls: 'Вызовов',
+    // Обзор
+    tiles: {
+      waitHours: 'часов ожидания',
+      abnormal: 'аварийных сессий',
+      people: 'людей на связи',
+      runs: 'запусков ToadTools',
+    },
+    vsPrevious: 'к прошлому периоду',
+    waitByDay: 'Ожидание по дням',
+    hurts: 'Что болит',
+    slowModels: 'Самые медленные модели',
+    slowMachines: 'Машины с худшим ожиданием',
+    crashingMachines: 'Машины с авариями',
+    nothingHurts: 'Ничего',
+    // Человек
+    personMachines: 'Машины',
+    activity: 'Активное время по дням',
+    personWaits: 'Ожидания',
+    personCommands: 'Команды',
+    personWeb: 'Веб',
+    personPlugins: 'Плагины',
+    personMissing: 'Такой учётки нет',
+    // Настройки
+    retention: 'Хранить данные, месяцев',
+    retentionHint: '13 месяцев — чтобы месяц можно было сравнить с тем же месяцем год назад. Старые записи удаляются раз в сутки.',
+    retentionRange: 'От 1 до 120 месяцев',
+    save: 'Сохранить',
+    saved: 'Сохранено',
   },
   auth: {
     title: 'Вход в ToadFlow',

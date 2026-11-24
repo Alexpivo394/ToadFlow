@@ -107,3 +107,28 @@ describe('useSpaces', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 });
+
+describe('usage space', () => {
+  const withUsage = (enabled = true) => [...modules(), { name: 'usage', title: 'Аналитика', enabled }];
+
+  it('viewer sees analytics with all its screens and settings', async () => {
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Viewer'), '/api/modules': withUsage() });
+    const items = (await screen.findAllByRole('listitem')).map((item) => item.textContent);
+
+    expect(items).toContain('usage: /usage,/usage/waits,/usage/tools,/usage/machines,/usage/service,/usage/coverage,/usage/settings');
+  });
+
+  it('designer does not see analytics', async () => {
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Designer', ['ОВ']), '/api/modules': withUsage() });
+    const items = (await screen.findAllByRole('listitem')).map((item) => item.textContent!.split(':')[0]);
+
+    expect(items).not.toContain('usage');
+  });
+
+  it('analytics is absent while the module is disabled', async () => {
+    renderUi(<AuthProvider><Probe /></AuthProvider>, { '/api/auth/me': user('Admin'), '/api/modules': withUsage(false) });
+    const items = (await screen.findAllByRole('listitem')).map((item) => item.textContent!.split(':')[0]);
+
+    expect(items).not.toContain('usage');
+  });
+});

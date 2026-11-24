@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { Icon } from '@tabler/icons-react';
 import type { AuthState } from '../auth/AuthContext';
 
-export type SpaceId = 'export' | 'loi' | 'clash' | 'families' | 'farm' | 'admin';
+export type SpaceId = 'export' | 'loi' | 'clash' | 'families' | 'usage' | 'farm' | 'admin';
 
 /** Страница меню пространства. */
 export interface SpacePage {

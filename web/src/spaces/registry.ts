@@ -4,7 +4,8 @@ import { exportSpace } from './export';
 import { familiesSpace } from './families';
 import { farmSpace } from './farm';
 import { loiSpace } from './loi';
+import { usageSpace } from './usage';
 import type { Space } from './types';
 
 /** Все пространства в порядке полосы: модули, затем «Ферма» и «Администрирование». */
-export const allSpaces: Space[] = [exportSpace, loiSpace, clashSpace, familiesSpace, farmSpace, adminSpace];
+export const allSpaces: Space[] = [exportSpace, loiSpace, clashSpace, familiesSpace, usageSpace, farmSpace, adminSpace];
