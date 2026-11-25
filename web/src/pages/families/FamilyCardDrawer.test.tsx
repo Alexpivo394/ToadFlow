@@ -22,10 +22,10 @@ const card = (patch: Partial<FamilyCardView> = {}): FamilyCardView => ({
     parameters: [{ name: 'Диаметр условный', isShared: true, sharedGuid: 'g1', isInstance: false, group: 'Размеры', dataType: 'Длина' }],
   },
   versions: [
-    { id: 'v2', hash: 'b', revitYear: 2022, state: 'Approved', note: 'изменено без проверки', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-20T10:00:00Z', readState: 'Done', readError: null, hasPreview: false, isCurrent: true, authorName: null, comment: null },
-    { id: 'v1', hash: 'a', revitYear: 2022, state: 'Approved', note: '', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-19T10:00:00Z', readState: 'Failed', readError: 'Revit не открыл файл', hasPreview: false, isCurrent: false, authorName: 'Петров', comment: 'первая версия' },
+    { id: 'v2', hash: 'b', revitYear: 2022, state: 'Approved', note: 'изменено без проверки', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-20T10:00:00Z', readState: 'Done', readError: null, hasPreview: false, isCurrent: true, authorName: null, comment: null, iterationId: null, silent: false },
+    { id: 'v1', hash: 'a', revitYear: 2022, state: 'Approved', note: '', relativePath: 'ОВ\Клапаны\Клапан обратный.rfa', seenAt: '2026-11-19T10:00:00Z', readState: 'Failed', readError: 'Revit не открыл файл', hasPreview: false, isCurrent: false, authorName: 'Петров', comment: 'первая версия', iterationId: null, silent: false },
   ],
-  loadCount: 3, lastLoadedAt: '2026-11-20T12:00:00Z',
+  loadCount: 3, lastLoadedAt: '2026-11-20T12:00:00Z', coordinatorsOnly: false, silent: false, iterations: [],
   ...patch,
 });
 

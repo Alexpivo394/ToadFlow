@@ -34,6 +34,8 @@ export function FamilyTile({ hit, onOpen }: { hit: FamilyHit; onOpen: () => void
           <YearBadge year={hit.revitYear} />
           {unreviewed && <Badge size="sm" color="orange" variant="light">{t.families.inReview}</Badge>}
           {hit.state === 'Archived' && <Badge size="sm" color="gray" variant="light">{t.families.archived}</Badge>}
+          {hit.coordinatorsOnly && <Badge size="sm" color="orange" variant="light" title={t.families.iterations.locked}>🔒</Badge>}
+          {hit.iterationCount > 0 && <Badge size="sm" color="blue" variant="light">{t.families.iterations.tab}: {hit.iterationCount}</Badge>}
         </Group>
       </Stack>
     </Card>

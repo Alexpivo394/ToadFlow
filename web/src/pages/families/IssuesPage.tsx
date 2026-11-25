@@ -17,6 +17,8 @@ const kindColor: Record<IssueKind, string> = {
   Ambiguous: 'violet',
   Unreadable: 'orange',
   UnreviewedChange: 'yellow',
+  MisplacedIteration: 'grape',
+  ChangedAfterFinal: 'yellow',
 };
 
 /** Ответы на случай: файлы трогает агент библиотеки, остальное — сервер. Проводником по-прежнему можно, случай закроется сам. */
@@ -92,7 +94,7 @@ export function IssuesPage() {
     { key: 'card', title: 'С чем связан', render: (issue) => issue.cardName ?? '—', sort: (issue) => issue.cardName },
     { key: 'created', title: 'Когда', width: 140, render: (issue) => dateTime(issue.createdAt), sort: (issue) => issue.createdAt },
     {
-      key: 'action', title: '', width: 300, render: (issue) => issue.kind === 'UnreviewedChange' ? (
+      key: 'action', title: '', width: 300, render: (issue) => issue.kind === 'UnreviewedChange' || issue.kind === 'ChangedAfterFinal' ? (
         <Button size="compact-xs" variant="default" loading={resolve.isPending && resolve.variables === issue.id}
           onClick={(event) => {
             event.stopPropagation();

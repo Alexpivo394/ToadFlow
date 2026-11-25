@@ -8,8 +8,10 @@ import { QueryError } from '../../components/QueryState';
 import { CopyTextButton, YearBadge } from '../../components/ui';
 import { t } from '../../i18n/ru';
 import {
-  familiesKey, typesLabel, type FamilyCardView, type FamilyContent, type FamilyNotes, type FamilyParameterInfo, type FamilyTypeInfo, type FamilyVersionView,
+  familiesKey, typesLabel, type FamilyCardView, type FamilyContent, type FamilyIterationView, type FamilyNotes, type FamilyParameterInfo, type FamilyTypeInfo,
+  type FamilyVersionView,
 } from './api';
+import { FamilyFlags, IterationsPanel } from './IterationsPanel';
 import { FamilyPreview } from './FamilyTile';
 import { ApproveNewButton, FileActionButton, RejectButton, useFamilyAction } from './FileActions';
 
@@ -35,13 +37,15 @@ export function FamilyCardDrawer({ cardId, unreviewed, onClose }: { cardId: stri
               <Group gap={6}>
                 <YearBadge year={view.revitYear} />
                 {view.state !== 'Approved' && <Badge color={view.state === 'InReview' ? 'orange' : 'gray'} variant="light">{t.familyState[view.state]}</Badge>}
+                {view.coordinatorsOnly && <Badge color="orange" variant="light" title={t.families.iterations.locked}>🔒 {t.families.iterations.coordinatorsOnly}</Badge>}
+                {view.silent && <Badge color="gray" variant="light">{t.families.iterations.silent}</Badge>}
               </Group>
               <Text size="sm">{[view.category, view.placement ? t.placement[view.placement] ?? view.placement : '', view.section].filter(Boolean).join(' · ')}</Text>
               {view.typeCount > 0 && <Text size="sm" c="dimmed">{typesLabel(view.typeCount)}</Text>}
               <Text size="sm" c="dimmed">{view.loadCount > 0 && view.lastLoadedAt ? t.families.loaded(view.loadCount, dateTime(view.lastLoadedAt)) : t.families.neverLoaded}</Text>
-              <Code block style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{view.fullPath}</Code>
+              {view.fullPath && <Code block style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{view.fullPath}</Code>}
               <Group gap={6}>
-                <CopyTextButton value={view.fullPath} label={t.families.copyPath} copiedLabel={t.families.pathCopied} />
+                {view.fullPath && <CopyTextButton value={view.fullPath} label={t.families.copyPath} copiedLabel={t.families.pathCopied} />}
                 {auth.isStaff && auth.can('Operator') && <CardActions view={view} />}
               </Group>
               <Group gap={6}>
@@ -72,6 +76,7 @@ export function FamilyCardDrawer({ cardId, unreviewed, onClose }: { cardId: stri
               {view.content && <Tabs.Tab value="types">{t.families.tabTypes}</Tabs.Tab>}
               {view.content && <Tabs.Tab value="parameters">{t.families.tabParameters}</Tabs.Tab>}
               <Tabs.Tab value="versions">{t.families.tabVersions}</Tabs.Tab>
+              <Tabs.Tab value="iterations">{t.families.iterations.tab} ({view.iterations.filter((i) => !i.removedAt).length})</Tabs.Tab>
             </Tabs.List>
             {view.content && (
               <Tabs.Panel value="types" pt="sm">
@@ -84,9 +89,15 @@ export function FamilyCardDrawer({ cardId, unreviewed, onClose }: { cardId: stri
               </Tabs.Panel>
             )}
             <Tabs.Panel value="versions" pt="sm">
-              <VersionsTable view={view} staff={auth.isStaff && auth.can('Operator')} />
+              <VersionsTable view={view} versions={view.versions.filter((v) => v.iterationId === null)} staff={auth.isStaff && auth.can('Operator')} />
+            </Tabs.Panel>
+            <Tabs.Panel value="iterations" pt="sm">
+              <IterationsPanel view={view} renderVersions={(versions, iteration) => (
+                <VersionsTable view={view} versions={versions} iteration={iteration} staff={auth.isStaff && auth.can('Operator')} />
+              )} />
             </Tabs.Panel>
           </Tabs>
+          {auth.can('Operator') && auth.isStaff && <FamilyFlags view={view} />}
           {auth.can('Operator') && auth.isStaff && <NotesEditor view={view} />}
         </Stack>
       )}
@@ -151,7 +162,8 @@ function CardActions({ view }: { view: FamilyCardView }) {
   );
 }
 
-function VersionsTable({ view, staff }: { view: FamilyCardView; staff: boolean }) {
+/** Версии «Основной» или одной итерации (<code>iteration</code>). */
+function VersionsTable({ view, versions, iteration, staff }: { view: FamilyCardView; versions: FamilyVersionView[]; iteration?: FamilyIterationView; staff: boolean }) {
   return (
     <Table striped>
       <Table.Thead>
@@ -164,12 +176,13 @@ function VersionsTable({ view, staff }: { view: FamilyCardView; staff: boolean }
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {view.versions.map((version) => (
+        {versions.map((version) => (
           <Table.Tr key={version.id}>
             <Table.Td>{dateTime(version.seenAt)}</Table.Td>
             <Table.Td>
               {version.note || (version.comment ? '' : '—')}
-              {version.isCurrent && <Badge ml={6} size="xs" variant="light">{t.families.current}</Badge>}
+              {(iteration ? version.id === iteration.currentVersionId : version.isCurrent) && <Badge ml={6} size="xs" variant="light">{t.families.current}</Badge>}
+              {iteration?.finalVersionId === version.id && <Badge ml={6} size="xs" color="gray" variant="light">{t.families.iterations.finalBadge}</Badge>}
               {version.comment && <Text size="sm">{version.comment}</Text>}
               <Text size="xs" c="dimmed">{version.authorName ?? t.families.authorUnknown}</Text>
             </Table.Td>
@@ -180,7 +193,7 @@ function VersionsTable({ view, staff }: { view: FamilyCardView; staff: boolean }
             </Table.Td>
             {staff && (
               <Table.Td>
-                <VersionActions view={view} version={version} />
+                {iteration ? <IterationVersionActions iteration={iteration} version={version} /> : <VersionActions view={view} version={version} />}
               </Table.Td>
             )}
           </Table.Tr>
@@ -205,6 +218,22 @@ function VersionActions({ view, version }: { view: FamilyCardView; version: Fami
         </FileActionButton>
       )}
       {(candidate || newInReview) && <RejectButton versionId={version.id} name={view.name} />}
+      {previous && (
+        <FileActionButton question={t.families.revertQuestion(dateTime(version.seenAt))} loading={revert.isPending} onRun={() => revert.mutate()}>
+          {t.families.revert}
+        </FileActionButton>
+      )}
+      <CommentButton version={version} />
+    </Group>
+  );
+}
+
+/** Версия итерации: вернуть прошлую (итерация не завершена и не убрана), дописать комментарий. */
+function IterationVersionActions({ iteration, version }: { iteration: FamilyIterationView; version: FamilyVersionView }) {
+  const revert = useFamilyAction(() => `/api/families/versions/${version.id}/revert`, t.families.reverted);
+  const previous = !iteration.isFinal && !iteration.removedAt && version.id !== iteration.currentVersionId && version.hash !== iteration.currentHash;
+  return (
+    <Group gap={4} wrap="nowrap">
       {previous && (
         <FileActionButton question={t.families.revertQuestion(dateTime(version.seenAt))} loading={revert.isPending} onRun={() => revert.mutate()}>
           {t.families.revert}

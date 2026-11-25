@@ -28,9 +28,13 @@ export function SettingsPage() {
   const value = draft ?? saved.data;
   const root = value?.root.trim() ?? '';
   const folder = value?.reviewFolder.trim() ?? '';
+  const iterationsFolder = (value?.iterationsFolder ?? '_Итерации').trim();
+  const badFolder = (name: string) => name.length === 0 || /[\\/:*?"<>|]/.test(name) || name.toLowerCase() === '.toadflow';
   const errors = {
     root: root.length > 0 && !rootPattern.test(root) ? 'Нужен путь UNC (\\\\сервер\\папка) или с буквой диска (Y:\\…)' : null,
-    folder: folder.length === 0 || /[\\/:*?"<>|]/.test(folder) || folder.toLowerCase() === '.toadflow' ? 'Одно имя папки, без \\ и /' : null,
+    folder: badFolder(folder) ? 'Одно имя папки, без \\ и /' : null,
+    iterations: badFolder(iterationsFolder) ? 'Одно имя папки, без \\ и /'
+      : iterationsFolder.toLowerCase() === folder.toLowerCase() ? 'Не та же, что папка проверки' : null,
     interval: !value || !(value.scanIntervalMinutes >= 1 && value.scanIntervalMinutes <= 1440) ? 'От 1 до 1440 минут' : null,
   };
   const invalid = Object.values(errors).some(Boolean);
@@ -49,6 +53,8 @@ export function SettingsPage() {
               onChange={(e) => setDraft({ ...value, root: e.currentTarget.value })} />
             <TextInput label={t.families.reviewFolder} description={t.families.reviewFolderHint} value={value.reviewFolder} disabled={readOnly} error={errors.folder}
               onChange={(e) => setDraft({ ...value, reviewFolder: e.currentTarget.value })} />
+            <TextInput label={t.families.iterationsFolder} description={t.families.iterationsFolderHint} value={value.iterationsFolder ?? '_Итерации'} disabled={readOnly}
+              error={errors.iterations} onChange={(e) => setDraft({ ...value, iterationsFolder: e.currentTarget.value })} />
             <NumberInput label={t.families.interval} w={240} min={1} max={1440} value={value.scanIntervalMinutes} disabled={readOnly} error={errors.interval}
               onChange={(v) => setDraft({ ...value, scanIntervalMinutes: Number(v) })} />
             <NumberInput label={t.insights.autoAccept} description={t.insights.autoAcceptHint} w={240} min={1} max={60} value={value.autoAcceptDays ?? 5} disabled={readOnly}
@@ -57,7 +63,7 @@ export function SettingsPage() {
               value={value.libraryAgentId ?? anyAgent} onChange={(v) => setDraft({ ...value, libraryAgentId: v === anyAgent || v === null ? null : v })} />
             {!readOnly && (
               <Group>
-                <Button disabled={invalid} loading={save.isPending} onClick={() => save.mutate({ ...value, root, reviewFolder: folder })}>{t.common.save}</Button>
+                <Button disabled={invalid} loading={save.isPending} onClick={() => save.mutate({ ...value, root, reviewFolder: folder, iterationsFolder })}>{t.common.save}</Button>
               </Group>
             )}
           </Stack>

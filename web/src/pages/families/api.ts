@@ -3,7 +3,7 @@ import type { Page } from '../../api/types';
 export type CardState = 'Approved' | 'InReview' | 'Archived';
 export type VersionState = 'Approved' | 'InReview' | 'Rejected';
 export type ReadState = 'Pending' | 'Done' | 'Failed';
-export type IssueKind = 'NameConflict' | 'Duplicate' | 'Ambiguous' | 'Unreadable' | 'UnreviewedChange';
+export type IssueKind = 'NameConflict' | 'Duplicate' | 'Ambiguous' | 'Unreadable' | 'UnreviewedChange' | 'MisplacedIteration' | 'ChangedAfterFinal';
 
 export interface FamilyHit {
   id: string;
@@ -20,6 +20,10 @@ export interface FamilyHit {
   previewHash: string | null;
   /** Сколько раз загружали в проекты из панели Revit. */
   loadCount: number;
+  /** Загружают только координаторы. */
+  coordinatorsOnly: boolean;
+  /** Сколько незавершённых итераций. */
+  iterationCount: number;
 }
 
 export type FamilyPage = Page<FamilyHit>;
@@ -75,6 +79,35 @@ export interface FamilyVersionView {
   authorName: string | null;
   /** Что изменилось — словами автора. */
   comment: string | null;
+  /** Итерация; null — «Основная». */
+  iterationId: string | null;
+  /** Опубликована без оповещения. */
+  silent: boolean;
+}
+
+/** Итерация семейства — проектный вариант со своей историей версий. */
+export interface FamilyIterationView {
+  id: string;
+  name: string;
+  comment: string | null;
+  currentVersionId: string | null;
+  relativePath: string;
+  /** Пусто — проектировщику, если загружают только координаторы. */
+  fullPath: string;
+  coordinatorsOnly: boolean;
+  isFinal: boolean;
+  finalVersionId: string | null;
+  finalComment: string | null;
+  finalByName: string | null;
+  finalAt: string | null;
+  removedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revitYear: number | null;
+  currentHash: string | null;
+  previewHash: string | null;
+  currentReadState: ReadState | null;
+  content: FamilyContent | null;
 }
 
 export interface FamilyCardView {
@@ -104,6 +137,9 @@ export interface FamilyCardView {
   lastLoadedAt: string | null;
   openFixRequests: { id: string; number: number; title: string }[];
   loadedProjects: string[];
+  coordinatorsOnly: boolean;
+  silent: boolean;
+  iterations: FamilyIterationView[];
 }
 
 export interface FamilyNotes {
@@ -139,6 +175,7 @@ export interface FamiliesSettings {
   scanIntervalMinutes: number;
   libraryAgentId: string | null;
   autoAcceptDays?: number;
+  iterationsFolder?: string;
 }
 
 export interface LibraryStatus {

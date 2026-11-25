@@ -8,7 +8,7 @@ import { SettingsPage } from './SettingsPage';
 const user = (role: string) => ({ id: 'u1', login: role.toLowerCase(), displayName: role, role, isDisabled: false, lastLoginAt: null, disciplines: [] });
 
 const root = '\\\\nas\\Families';
-const settings: FamiliesSettings = { root, reviewFolder: '_На проверке', scanIntervalMinutes: 10, libraryAgentId: null };
+const settings: FamiliesSettings = { root, reviewFolder: '_На проверке', scanIntervalMinutes: 10, libraryAgentId: null, iterationsFolder: '_Итерации' };
 const status: LibraryStatus = {
   configured: true, agentName: 'BIM-LIB-01', agentOnline: true, lastScanAt: '2026-11-20T10:00:00Z', lastScanComplete: false,
   lastScanErrors: ['КР\\Архив: Отказано в доступе'], pendingReads: 3, failedReads: 1,
@@ -52,6 +52,19 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 
     await waitFor(() => expect(saved).toEqual([{ ...settings, root: 'Y:\\12-BIM\\Семейства' }]));
+  });
+
+  it('administrator sets the iterations folder; it may not be the review folder', async () => {
+    const { saved } = render('Admin');
+
+    fireEvent.change(await screen.findByDisplayValue('_Итерации'), { target: { value: '_На проверке' } });
+    expect(screen.getByText('Не та же, что папка проверки')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toHaveProperty('disabled', true);
+
+    fireEvent.change(input('Папка итераций'), { target: { value: ' _Проекты ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(saved).toEqual([{ ...settings, iterationsFolder: '_Проекты' }]));
   });
 
   it('a wrong root is shown before saving', async () => {
