@@ -172,6 +172,23 @@ public class FamiliesIterationScanTests : ServerTest
     }
 
     [Test]
+    public async Task Publication_ToIteration_NotBoundToBaseFileWithSameContent()
+    {
+        var library = await LibraryAsync();
+        await library.ScanAsync(File(Base, "a"), File(Polk, "a"));
+        var iteration = (await IterationsAsync()).Single();
+        (await library.Admin.PostJsonAsync("/api/families/publications",
+            new PublishRequest($@"{Root}\{Polk}", Hash("q"), iteration.CardId, "ручка слева", null) { IterationId = iteration.Id })).EnsureSuccessStatusCode();
+
+        // Файл с этим содержимым оказался на месте «Основной», а не в итерации.
+        await library.ReportLastAsync(File(Base, "q"), File(Polk, "a"));
+
+        var baseVersion = (await VersionsAsync()).Single(v => v.IterationId == null && v.Hash == Hash("q"));
+        baseVersion.Comment.ShouldBeNull();
+        (await DbAsync(db => db.Set<FamilyPublication>().AsNoTracking().SingleAsync())).VersionId.ShouldBeNull();
+    }
+
+    [Test]
     public async Task Publication_ToExistingIteration_NewVersionWithComment()
     {
         var library = await LibraryAsync();

@@ -168,7 +168,7 @@ public sealed partial class ScanApplier(ToadFlowDb db, FamiliesSettingsStore set
         {
             // Тот же путь — точнее; иначе любая ожидающая с этим хешем (файл переложили до обхода).
             var match = waiting.FirstOrDefault(p => p.VersionId is null && p.Hash == version.Hash && p.RelativePath.Equals(version.RelativePath, StringComparison.OrdinalIgnoreCase))
-                        ?? waiting.FirstOrDefault(p => p.VersionId is null && p.Hash == version.Hash);
+                        ?? waiting.FirstOrDefault(p => p.VersionId is null && p.Hash == version.Hash && SameLine(p, version));
             if (match is null) continue;
 
             match.VersionId = version.Id;
@@ -190,6 +190,16 @@ public sealed partial class ScanApplier(ToadFlowDb db, FamiliesSettingsStore set
         }
 
         return published;
+    }
+
+    /// <summary>
+    ///     Публикация и версия из одной линии: обе — «Основная» (новое семейство, кандидат, файл переложили до обхода) или обе — одна и та же
+    ///     итерация. Иначе одинаковое содержимое в другом месте приписало бы описание и финал чужой версии.
+    /// </summary>
+    private bool SameLine(FamilyPublication publication, FamilyVersion version)
+    {
+        var toIteration = publication.IterationId is not null || IterationPaths.Parse(publication.RelativePath, _iterationsFolder) is not null;
+        return toIteration ? version.IterationId is not null && (publication.IterationId is null || publication.IterationId == version.IterationId) : version.IterationId is null;
     }
 
     /// <summary>Сколько публикация ждёт свой файл в обходах.</summary>
