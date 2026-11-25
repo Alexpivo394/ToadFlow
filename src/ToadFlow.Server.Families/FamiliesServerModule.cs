@@ -96,8 +96,8 @@ public sealed class FamiliesServerModule : IServerModule
         {
             iteration.ToTable("family_iterations");
             iteration.Property(i => i.Id).ValueGeneratedNever();
-            iteration.Property(i => i.Name).HasMaxLength(100);
-            iteration.Property(i => i.NameKey).HasMaxLength(100);
+            iteration.Property(i => i.Name).HasMaxLength(260);
+            iteration.Property(i => i.NameKey).HasMaxLength(260);
             iteration.HasIndex(i => new { i.CardId, i.NameKey }).IsUnique();
             iteration.Ignore(i => i.IsFinal);
             iteration.HasOne<FamilyCard>().WithMany().HasForeignKey(i => i.CardId).OnDelete(DeleteBehavior.Cascade);

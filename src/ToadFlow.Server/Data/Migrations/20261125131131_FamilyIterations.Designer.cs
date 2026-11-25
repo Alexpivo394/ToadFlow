@@ -12,7 +12,7 @@ using ToadFlow.Server.Data;
 namespace ToadFlow.Server.Data.Migrations
 {
     [DbContext(typeof(ToadFlowDb))]
-    [Migration("20261125130726_FamilyIterations")]
+    [Migration("20261125131131_FamilyIterations")]
     partial class FamilyIterations
     {
         /// <inheritdoc />
@@ -2219,14 +2219,14 @@ namespace ToadFlow.Server.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
                         .HasColumnName("name");
 
                     b.Property<string>("NameKey")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
                         .HasColumnName("name_key");
 
                     b.Property<string>("RelativePath")

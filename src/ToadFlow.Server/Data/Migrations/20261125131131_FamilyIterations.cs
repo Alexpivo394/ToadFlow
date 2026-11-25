@@ -75,8 +75,8 @@ namespace ToadFlow.Server.Data.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     card_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    name_key = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    name = table.Column<string>(type: "character varying(260)", maxLength: 260, nullable: false),
+                    name_key = table.Column<string>(type: "character varying(260)", maxLength: 260, nullable: false),
                     comment = table.Column<string>(type: "text", nullable: true),
                     current_version_id = table.Column<Guid>(type: "uuid", nullable: true),
                     relative_path = table.Column<string>(type: "text", nullable: false),

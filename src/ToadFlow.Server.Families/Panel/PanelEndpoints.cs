@@ -17,7 +17,23 @@ public sealed record LibraryInfo(bool Configured, string Root, string ReviewFold
 /// <param name="Path">Полный путь, куда плагин сохранил файл; должен лежать в библиотеке.</param>
 /// <param name="CardId">Новая версия этой карточки; null — новое семейство.</param>
 /// <param name="RequestId">Заявка, которую закрывает публикация.</param>
-public sealed record PublishRequest(string Path, string Hash, Guid? CardId, string? Comment, Guid? RequestId);
+public sealed record PublishRequest(string Path, string Hash, Guid? CardId, string? Comment, Guid? RequestId)
+{
+    /// <summary>Новая версия этой итерации карточки <see cref="CardId" />.</summary>
+    public Guid? IterationId { get; init; }
+
+    /// <summary>Новая итерация карточки <see cref="CardId" /> с этим названием (имя её папки).</summary>
+    public string? IterationName { get; init; }
+
+    /// <summary>Комментарий новой итерации.</summary>
+    public string? IterationComment { get; init; }
+
+    /// <summary>Без оповещения «Обновлено».</summary>
+    public bool Silent { get; init; }
+
+    /// <summary>Не пусто — версия итерации финальная, это что проделано.</summary>
+    public string? FinalComment { get; init; }
+}
 
 /// <param name="ScanStarted">Обход начат сразу; иначе — сразу после текущего.</param>
 public sealed record PublishResult(Guid PublicationId, string RelativePath, bool ScanStarted);
@@ -97,6 +113,15 @@ internal static class PanelEndpoints
             return Results.BadRequest(new { error = "Публикуется только файл семейства .rfa вне служебной папки" });
         if (request.Comment?.Length > MaxComment) return Results.BadRequest(new { error = $"Описание — до {MaxComment} знаков" });
 
+        if (request.FinalComment?.Length > MaxComment || request.IterationComment?.Length > MaxComment)
+            return Results.BadRequest(new { error = $"Комментарий — до {MaxComment} знаков" });
+        var toIteration = request.IterationId is not null || !string.IsNullOrWhiteSpace(request.IterationName);
+        if (!toIteration && !string.IsNullOrWhiteSpace(request.FinalComment))
+            return Results.BadRequest(new { error = "Финальной бывает только версия итерации" });
+        if (toIteration) return await PublishToIterationAsync(request, relative, settings, db, scanner, time, user, events, ct);
+        if (IterationPaths.Parse(relative, settings.IterationsFolder) is not null)
+            return Results.BadRequest(new { error = $"В папку «{settings.IterationsFolder}» публикуется только итерация — выберите «В итерацию»" });
+
         var name = LibraryPaths.FamilyName(relative);
         var key = name.ToLowerInvariant();
         var owner = await db.Set<FamilyCard>().AsNoTracking().FirstOrDefaultAsync(c => c.NameKey == key && c.State != CardState.Archived, ct);
@@ -122,15 +147,73 @@ internal static class PanelEndpoints
             Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim(),
             CardId = request.CardId,
             RequestId = request.RequestId,
+            Silent = request.Silent,
             CreatedAt = time.GetUtcNow()
         };
+        return await SavePublicationAsync(publication, db, scanner, user, events, ct);
+    }
+
+    private static async Task<IResult> SavePublicationAsync(FamilyPublication publication, ToadFlowDb db, LibraryScanner scanner, ClaimsPrincipal user,
+        IDomainEvents events, CancellationToken ct)
+    {
         db.Set<FamilyPublication>().Add(publication);
         await db.SaveChangesAsync(ct);
-        events.Publish(new CatalogChanged(user.Actor(), ScanApplier.UiEntity, publication.Id, $"Семейства: опубликовано «{relative}»"));
+        events.Publish(new CatalogChanged(user.Actor(), ScanApplier.UiEntity, publication.Id, $"Семейства: опубликовано «{publication.RelativePath}»"));
 
         var scan = await scanner.RequestAsync(ct);
-        return Results.Ok(new PublishResult(publication.Id, relative, scan.Outcome == ScanStart.Started));
+        return Results.Ok(new PublishResult(publication.Id, publication.RelativePath, scan.Outcome == ScanStart.Started));
     }
+
+    /// <summary>
+    ///     Публикация в итерацию — сразу, без папки проверки. Существующая итерация: файл — на её месте, итерация не завершена. Новая: название
+    ///     свободно в карточке, файл — в папке новой итерации; итерацию создаст обход, увидев файл.
+    /// </summary>
+    private static async Task<IResult> PublishToIterationAsync(PublishRequest request, string relative, FamiliesSettings settings, ToadFlowDb db,
+        LibraryScanner scanner, TimeProvider time, ClaimsPrincipal user, IDomainEvents events, CancellationToken ct)
+    {
+        if (request.CardId is not { } cardId) return Results.BadRequest(new { error = "Итерация публикуется для семейства библиотеки — выберите его" });
+        var card = await db.Set<FamilyCard>().AsNoTracking().FirstOrDefaultAsync(c => c.Id == cardId, ct);
+        if (card is null || card.State == CardState.Archived) return Results.NotFound(new { error = "Семейство не найдено в каталоге" });
+
+        string expected;
+        if (request.IterationId is { } iterationId)
+        {
+            var iteration = await db.Set<FamilyIteration>().AsNoTracking().FirstOrDefaultAsync(i => i.Id == iterationId && i.CardId == cardId, ct);
+            if (iteration is null) return Results.NotFound(new { error = "Итерация не найдена" });
+            if (iteration.IsFinal) return Results.BadRequest(new { error = $"Итерация «{iteration.Name}» завершена — снимите финал в карточке семейства в вебе" });
+            expected = iteration.RelativePath.Length > 0 ? iteration.RelativePath : IterationPaths.PathOf(settings.IterationsFolder, card.Name, iteration.Name);
+        }
+        else
+        {
+            var name = request.IterationName!.Trim();
+            if (IterationPaths.NameError(name) is { } error) return Results.BadRequest(new { error });
+            var key = name.ToLowerInvariant();
+            if (await db.Set<FamilyIteration>().AnyAsync(i => i.CardId == cardId && i.NameKey == key, ct))
+                return Results.Conflict(new { error = $"Итерация «{name}» у семейства «{card.Name}» уже есть — выберите её из списка" });
+            expected = IterationPaths.PathOf(settings.IterationsFolder, card.Name, name);
+        }
+
+        if (!relative.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { error = $"Файл итерации лежит в «{expected}»" });
+
+        return await SavePublicationAsync(new FamilyPublication
+        {
+            Id = Guid.CreateVersion7(),
+            RelativePath = relative,
+            Hash = request.Hash,
+            AuthorUserId = user.UserId(),
+            Comment = Clean(request.Comment),
+            CardId = cardId,
+            RequestId = null,
+            IterationId = request.IterationId,
+            IterationComment = request.IterationId is null ? Clean(request.IterationComment) : null,
+            Silent = request.Silent,
+            FinalComment = Clean(request.FinalComment),
+            CreatedAt = time.GetUtcNow()
+        }, db, scanner, user, events, ct);
+    }
+
+    private static string? Clean(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 
     private static async Task<IResult> LoadAsync(Guid id, LoadReport report, ToadFlowDb db, TimeProvider time, ClaimsPrincipal user, CancellationToken ct)
     {

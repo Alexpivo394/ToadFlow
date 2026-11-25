@@ -24,7 +24,7 @@ public sealed record ScanApplied(int NewCards, int NewVersions, int Moved, int A
 ///     версии и случаи «Нужно решение» — всё в одной транзакции. Отчёт применяется один раз: обход помечается завершённым в той же
 ///     транзакции, и второй такой же отчёт (или отчёт обхода, который сервер уже счёл потерянным) ничего не меняет.
 /// </summary>
-public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsStore, TimeProvider time, IDomainEvents events, ILogger<ScanApplier> logger,
+public sealed partial class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsStore, TimeProvider time, IDomainEvents events, ILogger<ScanApplier> logger,
     Requests.RequestNotices notices, Requests.FamilyNotices familyNotices)
 {
     public const string CatalogNote = "изменён каталог типоразмеров";
@@ -32,7 +32,7 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
     public const string UiEntity = "families";
 
     /// <summary>Случаи, которые закрываются сами, когда их причина пропала из отчёта.</summary>
-    private static readonly IssueKind[] FileIssues = [IssueKind.NameConflict, IssueKind.Duplicate, IssueKind.Ambiguous];
+    private static readonly IssueKind[] FileIssues = [IssueKind.NameConflict, IssueKind.Duplicate, IssueKind.Ambiguous, IssueKind.MisplacedIteration];
 
     private readonly Dictionary<Guid, FamilyCard> _cards = [];
     private readonly Dictionary<Guid, FamilyVersion> _versions = [];
@@ -64,11 +64,17 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
                 .SetProperty(x => x.Errors, errors), ct);
         if (claimed == 0) return null;
 
-        _reviewFolder = (await settingsStore.GetAsync(ct)).ReviewFolder;
-        var scanned = Scanned(report);
+        var settings = await settingsStore.GetAsync(ct);
+        _reviewFolder = settings.ReviewFolder;
+        _iterationsFolder = settings.IterationsFolder;
+        var all = Scanned(report);
+        // Файлы папки итераций правилам ядра не подлежат: одноимённость и одинаковое с «Основной» содержимое там — норма.
+        var iterationFiles = all.Where(f => IterationPaths.Parse(f.RelativePath, _iterationsFolder) is not null).ToList();
+        var scanned = all.Except(iterationFiles).ToList();
         var unsettled = report.Unsettled.Select(Normalize).ToList();
         var certain = report.Complete && unsettled.Count == 0;
         var known = await LoadAsync(ct);
+        await LoadIterationsAsync(ct);
         var currentBefore = _cards.Values.ToDictionary(c => c.Id, c => c.CurrentVersionId);
         var reviewBefore = _versions.Values.Where(v => v.State == VersionState.InReview).Select(v => v.Id).ToHashSet();
         var questions = _openIssues.Where(i => i is { Kind: IssueKind.Ambiguous, CardId: not null })
@@ -119,6 +125,8 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             }
         }
 
+        ApplyIterations(iterationFiles, certain);
+
         if (certain)
         {
             foreach (var issue in _openIssues.Where(i => FileIssues.Contains(i.Kind) && !_seenIssues.Contains((i.Kind, i.RelativePath.ToLowerInvariant()))))
@@ -166,6 +174,8 @@ public sealed class ScanApplier(ToadFlowDb db, FamiliesSettingsStore settingsSto
             match.AppliedAt = _now;
             version.AuthorUserId = match.AuthorUserId ?? version.AuthorUserId;
             version.Comment = match.Comment ?? version.Comment;
+            version.Silent |= match.Silent;
+            PublishToIteration(match, version);
             // Возврат версии кнопкой веба (у него своя пометка) — не «правка мимо проверки». Публикация поверх утверждённого файла остаётся ею:
             // описание и автор у версии есть, но посмотреть её всё равно нужно.
             if (match.Note.Length > 0)
