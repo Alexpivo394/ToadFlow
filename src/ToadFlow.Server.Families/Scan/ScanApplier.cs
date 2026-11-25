@@ -147,7 +147,8 @@ public sealed partial class ScanApplier(ToadFlowDb db, FamiliesSettingsStore set
         foreach (var request in await db.Set<Requests.FamilyRequest>().AsNoTracking().Where(r => closed.Select(c => c.Id).Contains(r.Id)).ToListAsync(ct))
             await notices.MembersAsync(request, Notifications.NotificationKinds.RequestReview,
                 $"«{request.Title}»: опубликовано семейство — проверьте, подходит ли", request.AssigneeUserId, ct);
-        await familyNotices.AfterScanAsync(currentBefore, reviewBefore, _cards, _versions, ct);
+        await familyNotices.AfterScanAsync(currentBefore, reviewBefore, _cards, _versions,
+            _iterations.Values.Select(i => (i, _iterationCurrentBefore.GetValueOrDefault(i.Id))).ToList(), ct);
         return applied;
     }
 

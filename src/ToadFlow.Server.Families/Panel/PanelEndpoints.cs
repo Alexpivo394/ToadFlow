@@ -40,7 +40,11 @@ public sealed record PublishResult(Guid PublicationId, string RelativePath, bool
 
 /// <param name="Hash">Хеш загруженного файла.</param>
 /// <param name="Project">Имя модели, куда загружено.</param>
-public sealed record LoadReport(string? Hash, string? Project);
+public sealed record LoadReport(string? Hash, string? Project)
+{
+    /// <summary>Из какой итерации загружено; null — «Основная».</summary>
+    public Guid? IterationId { get; init; }
+}
 
 /// <summary>Семейство открытого проекта; <paramref name="CardId" /> и <paramref name="Hash" /> — из метки, если она есть.</summary>
 public sealed record ProjectFamilyDto(string Name, Guid? CardId, string? Hash);
@@ -221,14 +225,17 @@ internal static class PanelEndpoints
         if (card is null || !user.CanSee(card, unreviewed: true)) return Results.NotFound();
 
         var now = time.GetUtcNow();
+        var iterationId = report.IterationId is { } chosen && await db.Set<FamilyIteration>().AnyAsync(i => i.Id == chosen && i.CardId == id, ct) ? chosen : (Guid?)null;
         var version = report.Hash is { Length: > 0 } hash
-            ? await db.Set<FamilyVersion>().AsNoTracking().Where(v => v.CardId == id && v.Hash == hash).Select(v => (Guid?)v.Id).FirstOrDefaultAsync(ct)
+            ? await db.Set<FamilyVersion>().AsNoTracking().Where(v => v.CardId == id && v.Hash == hash && v.IterationId == iterationId).Select(v => (Guid?)v.Id)
+                .FirstOrDefaultAsync(ct)
             : null;
         db.Set<FamilyLoad>().Add(new FamilyLoad
         {
             Id = Guid.CreateVersion7(),
             CardId = id,
             VersionId = version,
+            IterationId = iterationId,
             UserId = user.UserId(),
             Project = Truncate(report.Project?.Trim() ?? "", 260),
             At = now
