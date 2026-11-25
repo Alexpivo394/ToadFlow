@@ -37,7 +37,8 @@ public static class PersonEndpoints
         // Отбор людей на карточке не действует: она всегда про этого человека.
         var filter = await query.FilterAsync(request, ct) with { User = null, Discipline = null };
         Guid[] only = [id];
-        var operations = await SummaryEndpoints.Operations(db, filter, only).Select(o => new { o.Kind, o.Outcome, o.DurationMs, o.MachineKey }).ToListAsync(ct);
+        var operations = await SummaryEndpoints.Operations(db, filter, only).Select(o => new { o.Kind, o.Outcome, o.DurationMs, o.MachineKey, Nested = o.Kind == "Link" && o.HostModelKey != null })
+            .ToListAsync(ct);
         var sessions = await SummaryEndpoints.Sessions(db, filter, only).Select(s => new { s.StartedAt, s.MachineKey }).ToListAsync(ct);
         var activity = await db.Set<UsageSessionDay>().AsNoTracking()
             .Where(d => d.UserId == id && d.Day >= filter.From && d.Day <= filter.To && (filter.Machine == null || d.MachineKey == filter.Machine))
@@ -58,7 +59,7 @@ public static class PersonEndpoints
         var days = activity.Select(a => a.Day).Concat(sessionsByDay.Keys).Distinct().Order()
             .Select(day => new PersonDay(day, activity.FirstOrDefault(a => a.Day == day)?.Seconds ?? 0, sessionsByDay.GetValueOrDefault(day))).ToList();
         var succeeded = operations.Where(o => o.Outcome == "Succeeded").ToList();
-        var waits = new PersonWaits(succeeded.Sum(o => o.DurationMs),
+        var waits = new PersonWaits(succeeded.Where(o => !o.Nested).Sum(o => o.DurationMs),
             operations.GroupBy(o => o.Kind).Select(g =>
             {
                 var ok = g.Where(o => o.Outcome == "Succeeded").Select(o => o.DurationMs).ToList();
@@ -67,7 +68,7 @@ public static class PersonEndpoints
 
         return Results.Ok(new PersonView(
             new PersonUser(user.Id, user.DisplayName, user.Role.ToString(), user.Position, user.Disciplines), machineRefs, days, waits,
-            commands.Select(c => new PersonCommand(c.Source, c.CommandId, c.Name, c.Count)).ToList(),
+            commands.Select(c => new PersonCommand(c.Source, c.CommandId, c.Name ?? c.CommandId, c.Count)).ToList(),
             web.Select(w => new PersonSpace(w.Space, w.Visits)).ToList(), plugins.Select(p => new PersonArea(p.Area, p.Calls)).ToList()));
     }
 }
