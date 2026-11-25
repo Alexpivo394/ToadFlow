@@ -11,8 +11,9 @@ namespace ToadFlow.Server.Clash.Plugin;
 /// <param name="Level">Ключ уровня (<see cref="CollisionLevel.Key" />); <c>-</c> — без уровня.</param>
 /// <param name="Q">Номер коллизии, ElementId или UniqueId элемента.</param>
 /// <param name="Since"><c>unseen</c> — только новые для пользователя (<see cref="MyCollisions.Unseen" />).</param>
+/// <param name="Part">Часть проекта (корпус): только её коллизии и счётчики. Нет такой среди утверждённых — пустая страница.</param>
 public sealed record ModelCollisionQuery(string? Status = null, string? Group = null, string? Pair = null, string? Level = null, string? Q = null,
-    string? Since = null);
+    string? Since = null, Guid? Part = null);
 
 /// <summary>
 ///     Коллизии открытой в Revit модели по всем утверждённым частям. Своя сторона — та, чей элемент из этой модели, поэтому
@@ -28,15 +29,24 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
         if (!Guid.TryParse(key, out var id) || !await db.Set<ClashModel>().AnyAsync(m => m.Id == id, ct)) return null;
         var model = id.ToString("N");
         var parts = await MyCollisions.PartsAsync(db, ct);
-        var partIds = parts.Select(p => p.Id).ToArray();
+        var approvedIds = parts.Select(p => p.Id).ToArray();
+        // Нет такой части среди утверждённых — пустой набор: страница пустая, ошибки нет.
+        var partIds = query.Part is { } wanted ? approvedIds.Where(p => p == wanted).ToArray() : approvedIds;
 
-        var source = db.Set<ClashCollision>().AsNoTracking().Where(c => partIds.Contains(c.PartId) && (c.ModelA == model || c.ModelB == model));
+        IQueryable<ClashCollision> OfParts(Guid[] ids) =>
+            db.Set<ClashCollision>().AsNoTracking().Where(c => ids.Contains(c.PartId) && (c.ModelA == model || c.ModelB == model));
+        // Поиск и «новые для меня» сужают и список, и фасет частей.
+        IQueryable<ClashCollision> BySearch(IQueryable<ClashCollision> q)
+        {
+            if (!string.IsNullOrWhiteSpace(query.Q))
+                q = new CollisionFilter("all", null, null, null, null, null, null, query.Q, null).Apply(q, db, new Dictionary<string, string>(), time.GetUtcNow());
+            return string.Equals(query.Since?.Trim(), "unseen", StringComparison.OrdinalIgnoreCase) ? MyCollisions.Unseen(db, q, userId) : q;
+        }
+
+        var source = OfParts(partIds);
         var open = CollisionEndpoints.Open;
         var modelOpen = source.Where(c => open.Contains(c.Status));
-        if (!string.IsNullOrWhiteSpace(query.Q))
-            source = new CollisionFilter("all", null, null, null, null, null, null, query.Q, null).Apply(source, db, new Dictionary<string, string>(), time.GetUtcNow());
-
-        if (string.Equals(query.Since?.Trim(), "unseen", StringComparison.OrdinalIgnoreCase)) source = MyCollisions.Unseen(db, source, userId);
+        source = BySearch(source);
 
         var statuses = MyCollisions.Statuses(query.Status);
         var group = query.Group?.Trim().ToLowerInvariant();
@@ -143,7 +153,14 @@ public sealed class ModelCollisions(ToadFlowDb db, DisciplineOrder order, TimePr
 
         var newForMe = await MyCollisions.Unseen(db, modelOpen, userId).CountAsync(ct);
 
-        return new ModelCollisionPage(total, mine, all - mine, items, new ModelFacets(pairFacet, levelFacet, statusFacet), fresh, newForMe);
+        // Части: без собственного фильтра, с остальными; в списке — все части, где у модели есть коллизии (счётчик может стать 0).
+        var partCounts = (await ByGroup(ByStatus(ByPair(ByLevel(BySearch(OfParts(approvedIds)))))).GroupBy(c => c.PartId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct)).ToDictionary(x => x.Key, x => x.Count);
+        var withCollisions = (await OfParts(approvedIds).Select(c => c.PartId).Distinct().ToListAsync(ct)).ToHashSet();
+        var partFacet = parts.Where(p => withCollisions.Contains(p.Id)).OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(p => new FacetView(p.Id.ToString(), p.Name, partCounts.GetValueOrDefault(p.Id))).ToList();
+
+        return new ModelCollisionPage(total, mine, all - mine, items, new ModelFacets(pairFacet, levelFacet, statusFacet, partFacet), fresh, newForMe);
     }
 
     private static string SideOf(ClashCollision c, string model) => (c.ModelA == model, c.ModelB == model) switch

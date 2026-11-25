@@ -1,6 +1,8 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
+using System.Text;
+using Alexpivo394.Revit.Clash.Rules;
 using Shouldly;
 using ToadFlow.Contracts;
 using ToadFlow.Contracts.Clash;
@@ -267,6 +269,106 @@ public class ClashModelCollisionsTests : ServerTest
         page.Items.ShouldHaveSingleItem().Collision.Number.ShouldBe(2);
         page.Items.Single().Unseen.ShouldBeTrue();
         (await PageAsync(s.Admin, s.Ov)).Items.Single(r => r.Collision.Number == 1).Unseen.ShouldBeFalse();
+    }
+
+    /// <summary>Вторая часть («Корпус 2») из тех же моделей: с черновиком; первая переименована в «Корпус 1».</summary>
+    private async Task<Guid> SecondPartAsync(Setup s)
+    {
+        await DbAsync(db => db.Set<ClashPart>().Where(p => p.Id == s.PartId).ExecuteUpdateAsync(p => p.SetProperty(x => x.Name, "Корпус 1")));
+        var known = await s.Admin.GetJsonAsync<ClashModelView[]>("/api/clash/models");
+        var part = await (await s.Admin.PostJsonAsync("/api/clash/parts", new { name = "Корпус 2" })).ReadJsonAsync<ClashPartView>();
+        var ids = new[] { s.Ar, s.Ov, s.Kr }.Select(k => known.Single(m => m.Id.ToString("N") == k).Id);
+        (await s.Admin.PutJsonAsync($"/api/clash/parts/{part.Id}/models", ids.Select(id => new { modelId = id, disciplineOverride = (string?)null }).ToArray()))
+            .EnsureSuccessStatusCode();
+        var disciplines = (await s.Admin.GetJsonAsync<DraftView>($"/api/clash/parts/{part.Id}/draft")).Disciplines;
+        var any = new Condition(new PropertyRef(PropertyKind.Category), ConditionOperator.IsNotEmpty, null);
+        var config = ConfigurationDefaults.FromDisciplines(disciplines.Select(d => new DisciplineSet(Guid.NewGuid(), d, "Все", [new ConditionGroup([any])])).ToList(), [], []);
+        (await s.Admin.PutAsync($"/api/clash/parts/{part.Id}/draft", new StringContent(ConfigurationJson.Serialize(config), Encoding.UTF8, "application/json")))
+            .EnsureSuccessStatusCode();
+        (await s.Admin.PostAsync($"/api/clash/parts/{part.Id}/draft/matrix/fill", null)).EnsureSuccessStatusCode();
+        return part.Id;
+    }
+
+    /// <summary>В «Корпусе 1» КР×ОВ №1 и АР×ОВ №2, в «Корпусе 2» КР×ОВ №1 (другой этаж).</summary>
+    private async Task<(Setup S, Guid Part2)> TwoPartsAsync()
+    {
+        var s = await SetupAsync();
+        var part2 = await SecondPartAsync(s);
+        await RunAsync(s, [KrOv(s, 1), ArOv(s, 2)]);
+        await RunAsync(s, [KrOv(s, 1, "Этаж 2", 3000)], part2);
+        return (s, part2);
+    }
+
+    [Test]
+    public async Task Page_PartGiven_OnlyThatPart()
+    {
+        var (s, part2) = await TwoPartsAsync();
+        await using var _ = s.Agent;
+
+        var all = await PageAsync(s.Admin, s.Ov);
+        var second = await PageAsync(s.Admin, s.Ov, $"?part={part2}");
+
+        all.Items.Select(r => r.PartId).Distinct().Count().ShouldBe(2);
+        second.Items.ShouldHaveSingleItem().PartId.ShouldBe(part2);
+        second.Items.Single().PartName.ShouldBe("Корпус 2");
+        (await PageAsync(s.Admin, s.Ov, $"?part={s.PartId:N}")).Items.Select(r => r.PartId).ShouldAllBe(id => id == s.PartId);
+    }
+
+    [Test]
+    public async Task Page_PartGiven_CountersWithinPart()
+    {
+        var (s, part2) = await TwoPartsAsync();
+        await using var _ = s.Agent;
+        await AssignAsync(s, (await PageAsync(s.Admin, s.Ov, "?part=" + s.PartId)).Items.Single(r => r.Collision.Number == 1).Collision.Id, "SideA");
+
+        var first = await PageAsync(s.Admin, s.Ov, "?part=" + s.PartId);
+        var second = await PageAsync(s.Admin, s.Ov, "?part=" + part2);
+
+        (first.Total, first.Mine, first.Other, first.NewForMe).ShouldBe((2, 1, 1, 2));
+        first.Facets.Pairs.Select(p => (p.Label, p.Count)).ShouldBe([("АР × ОВ", 1), ("КР × ОВ", 1)]);
+        first.Facets.Levels.Select(l => (l.Value, l.Count)).ShouldBe([("Этаж 1", 2)]);
+        (second.Total, second.Mine, second.Other, second.NewForMe).ShouldBe((1, 1, 0, 1));
+        second.Facets.Pairs.Select(p => (p.Label, p.Count)).ShouldBe([("КР × ОВ", 1)]);
+        second.Facets.Levels.Select(l => (l.Value, l.Count)).ShouldBe([("Этаж 2", 1)]);
+    }
+
+    [Test]
+    public async Task Page_PartsFacet_CountsIgnorePartButApplyOtherFilters()
+    {
+        var (s, part2) = await TwoPartsAsync();
+        await using var _ = s.Agent;
+        var id = (await PageAsync(s.Admin, s.Ov, "?part=" + part2)).Items.Single().Collision.Id;
+        (await s.Admin.PostJsonAsync($"/api/clash/collisions/{id}/status", new { status = "Fake", note = "Гильза" })).EnsureSuccessStatusCode();
+
+        var open = await PageAsync(s.Admin, s.Ov, "?part=" + part2);
+        var fake = await PageAsync(s.Admin, s.Ov, "?status=fake");
+
+        open.Facets.Parts.Select(p => (p.Label, p.Count)).ShouldBe([("Корпус 1", 2), ("Корпус 2", 0)]);
+        open.Facets.Parts.Single(p => p.Label == "Корпус 2").Value.ShouldBe(part2.ToString());
+        fake.Facets.Parts.Select(p => (p.Label, p.Count)).ShouldBe([("Корпус 1", 0), ("Корпус 2", 1)]);
+    }
+
+    [Test]
+    public async Task Page_UnknownPart_EmptyNotError()
+    {
+        var (s, _) = await TwoPartsAsync();
+        await using var _ = s.Agent;
+
+        var page = await PageAsync(s.Admin, s.Ov, "?part=" + Guid.NewGuid());
+
+        (page.Total, page.Mine, page.Other, page.Items.Count).ShouldBe((0, 0, 0, 0));
+    }
+
+    [Test]
+    public async Task Page_NoPart_SameAsBefore()
+    {
+        var (s, _) = await TwoPartsAsync();
+        await using var _ = s.Agent;
+
+        var page = await PageAsync(s.Admin, s.Ov);
+
+        page.Total.ShouldBe(3);
+        page.Facets.Parts.Select(p => (p.Label, p.Count)).ShouldBe([("Корпус 1", 2), ("Корпус 2", 1)]);
     }
 
     [Test]

@@ -17,7 +17,7 @@ public sealed record FacetView(string Value, string Label, int Count);
 /// <param name="Pairs">Пары разделов в порядке справочника.</param>
 /// <param name="Levels">Уровни снизу вверх; без уровня — <c>-</c>, последним.</param>
 /// <param name="Statuses"><c>open</c>, <c>fake</c>, <c>fixed</c>, <c>all</c>.</param>
-public sealed record ModelFacets(IReadOnlyList<FacetView> Pairs, IReadOnlyList<FacetView> Levels, IReadOnlyList<FacetView> Statuses);
+public sealed record ModelFacets(IReadOnlyList<FacetView> Pairs, IReadOnlyList<FacetView> Levels, IReadOnlyList<FacetView> Statuses, IReadOnlyList<FacetView> Parts);
 
 /// <param name="Side">Сторона открытой модели: <c>A</c>, <c>B</c> или <c>AB</c>, если обе стороны из неё.</param>
 /// <param name="MineToFix">Правит сторона этой модели или обе.</param>
