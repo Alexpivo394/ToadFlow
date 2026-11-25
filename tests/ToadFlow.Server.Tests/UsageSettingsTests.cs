@@ -105,7 +105,10 @@ public class UsageOverviewTests : ServerTest
         var b = await ClientAsync(UserRole.Designer);
         var session = Guid.NewGuid();
         await SendAsync(a, Session(session, startedAt: DateTimeOffset.UtcNow.AddDays(-1), end: "Abnormal"), SessionDay(session, Today, 600),
-            Operation(durationMs: 2 * 3_600_000, startedAt: DateTimeOffset.UtcNow.AddDays(-2)), Operation(durationMs: 3_600_000, startedAt: DateTimeOffset.UtcNow.AddDays(-9)));
+            Operation(durationMs: 2 * 3_600_000, startedAt: DateTimeOffset.UtcNow.AddDays(-2)), Operation(durationMs: 3_600_000, startedAt: DateTimeOffset.UtcNow.AddDays(-9)),
+            // Связь внутри открытия — уже в его двух часах.
+            Operation(kind: "Link", durationMs: 3_600_000, startedAt: DateTimeOffset.UtcNow.AddDays(-2), modelPath: "RSN://srv01/Проект/КР.rvt",
+                hostModelPath: "RSN://srv01/Проект/АР.rvt"));
         await SendAsync(b, Session(startedAt: DateTimeOffset.UtcNow.AddDays(-3)), Session(startedAt: DateTimeOffset.UtcNow.AddDays(-20)));
 
         var overview = JsonDocument.Parse(await (await ClientAsync(UserRole.Viewer)).GetStringAsync("/api/overview")).RootElement;

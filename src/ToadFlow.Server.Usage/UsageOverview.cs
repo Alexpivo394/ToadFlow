@@ -24,7 +24,7 @@ internal sealed class UsageOverview : IOverviewSource
         var weekAgo = now.AddDays(-WeekDays);
 
         var people = await db.Set<UsageSession>().AsNoTracking().Where(s => s.SeenAt >= weekAgo).Select(s => s.UserId).Distinct().CountAsync(ct);
-        var waitMs = await db.Set<UsageOperation>().AsNoTracking().Where(o => o.StartedAt >= weekAgo && o.Outcome == "Succeeded")
+        var waitMs = await Query.SummaryEndpoints.OwnWaits(db.Set<UsageOperation>().AsNoTracking()).Where(o => o.StartedAt >= weekAgo && o.Outcome == "Succeeded")
             .SumAsync(o => (long?)o.DurationMs, ct) ?? 0;
         var abnormal = await db.Set<UsageSession>().AsNoTracking().CountAsync(s => s.StartedAt >= weekAgo && s.End == "Abnormal", ct);
 

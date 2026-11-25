@@ -80,6 +80,38 @@ public class UsageSummaryTests : ServerTest
         summary.Days.Where(d => d.Day != day).ShouldAllBe(d => d.OpenMs == 0 && d.SyncMs == 0);
     }
 
+    /// <summary>
+    ///     Revit грузит связи внутри открытия и «обновить до последней» (проверено в живом Revit 2024): связь с хост-моделью — часть
+    ///     времени хоста. В итог она не добавляется, на графике её время переносится из слоя хоста в слой связей.
+    /// </summary>
+    [Test]
+    public async Task Summary_NestedLinks_NotCountedTwice()
+    {
+        var a = await ClientAsync(UserRole.Designer);
+        var day = Today.AddDays(-1);
+        var session = Guid.NewGuid();
+        var open = At(day);
+        var reload = At(day, 12);
+        await SendAsync(a,
+            Operation(durationMs: 10_000, startedAt: open, sessionId: session, machine: "WS-9"),
+            Operation(kind: "Link", durationMs: 3000, startedAt: open.AddSeconds(2), sessionId: session, machine: "WS-9",
+                modelPath: "RSN://srv01/Проект/КР.rvt", hostModelPath: "RSN://srv01/Проект/АР.rvt"),
+            Operation(kind: "Reload", durationMs: 4000, startedAt: reload, sessionId: session, machine: "WS-9"),
+            Operation(kind: "Link", durationMs: 1000, startedAt: reload.AddSeconds(1), sessionId: session, machine: "WS-9",
+                modelPath: "RSN://srv01/Проект/КР.rvt", hostModelPath: "RSN://srv01/Проект/АР.rvt"),
+            Operation(kind: "Link", durationMs: 500, startedAt: At(day, 15), sessionId: session, machine: "WS-9", modelPath: "RSN://srv01/Проект/ОВ.rvt"));
+        var id = await UserIdAsync(a);
+        var viewer = await ClientAsync(UserRole.Viewer);
+
+        var summary = await viewer.GetJsonAsync<Summary>($"/api/usage/summary?from={Day(Today.AddDays(-6))}");
+        var person = await viewer.GetJsonAsync<Person>($"/api/usage/people/{id}");
+
+        summary.Totals.WaitMs.ShouldBe(14_500);
+        summary.Days.Single(d => d.Day == day).ShouldBe(new DayWait(day, 7000, 4500, 3000, 0));
+        summary.SlowMachines.Single().TotalMs.ShouldBe(14_500);
+        person.Waits.TotalMs.ShouldBe(14_500);
+    }
+
     [Test]
     public async Task Summary_Top5_Sorted()
     {

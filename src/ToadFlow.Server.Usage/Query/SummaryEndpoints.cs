@@ -5,7 +5,7 @@ using ToadFlow.Server.Usage.Data;
 
 namespace ToadFlow.Server.Usage.Query;
 
-/// <param name="WaitMs">Сколько ждали: сумма успешных операций всех видов.</param>
+/// <param name="WaitMs">Сколько ждали: сумма успешных операций всех видов, кроме связей внутри открытия или обновления хоста.</param>
 /// <param name="People">Люди, у которых за период была сессия Revit.</param>
 public sealed record SummaryTotals(long WaitMs, int AbnormalSessions, int People, int ToadToolsRuns);
 
@@ -36,25 +36,35 @@ public static class SummaryEndpoints
         var previous = filter with { From = filter.From.AddDays(-filter.Days), To = filter.From.AddDays(-1) };
 
         var operations = await Operations(db, filter, users).Where(o => o.Outcome == "Succeeded")
-            .Select(o => new { o.Kind, o.StartedAt, o.DurationMs, o.ModelKey, o.ModelName, o.MachineKey, o.UserId }).ToListAsync(ct);
+            .Select(o => new { o.Kind, o.StartedAt, o.DurationMs, o.ModelKey, o.ModelName, o.MachineKey, o.UserId, o.SessionId, Nested = o.Kind == "Link" && o.HostModelKey != null })
+            .ToListAsync(ct);
+        var own = operations.Where(o => !o.Nested).ToList();
+        // Связь внутри открытия или обновления: её время на графике переносится из слоя хоста в слой связей.
+        var hosts = own.Where(o => o.Kind is "Open" or "Reload").ToLookup(o => o.SessionId);
+        var moved = operations.Where(o => o.Nested)
+            .Select(link => (link.DurationMs, Host: hosts[link.SessionId].FirstOrDefault(h => h.StartedAt <= link.StartedAt && link.StartedAt < h.StartedAt.AddMilliseconds(h.DurationMs))))
+            .Where(m => m.Host is not null)
+            .ToLookup(m => OverviewDays.DayOf(m.Host!.StartedAt, filter.Zone));
         var sessions = await Sessions(db, filter, users).Select(s => new { s.UserId, s.MachineKey, s.End }).ToListAsync(ct);
         var totals = await TotalsAsync(db, filter, users, ct);
         var before = await TotalsAsync(db, previous, users, ct);
 
-        var byDay = operations.ToLookup(o => OverviewDays.DayOf(o.StartedAt, filter.Zone));
+        var byDay = own.ToLookup(o => OverviewDays.DayOf(o.StartedAt, filter.Zone));
         var days = Enumerable.Range(0, filter.Days).Select(i =>
         {
             var day = filter.From.AddDays(i);
             var ops = byDay[day].ToList();
             long Sum(params string[] kinds) => ops.Where(o => kinds.Contains(o.Kind)).Sum(o => o.DurationMs);
-            return new SummaryDay(day, Sum("Open"), Sum("Link"), Sum("Sync", "Reload"), Sum("Save"));
+            long Moved(string host) => moved[day].Where(m => m.Host!.Kind == host).Sum(m => m.DurationMs);
+            return new SummaryDay(day, Sum("Open") - Moved("Open"), Sum("Link") + Moved("Open") + Moved("Reload"), Sum("Sync", "Reload") - Moved("Reload"),
+                Sum("Save"));
         }).ToList();
 
         var machines = await query.MachinesAsync(ct);
         var slowModels = operations.Where(o => o.Kind == "Open").GroupBy(o => o.ModelKey)
             .Select(g => new SlowModel(g.Key, g.OrderByDescending(o => o.StartedAt).First().ModelName, Median(g.Select(o => o.DurationMs)), g.Count()))
             .OrderByDescending(m => m.MedianMs).Take(Top).ToList();
-        var slowMachines = operations.GroupBy(o => o.MachineKey)
+        var slowMachines = own.GroupBy(o => o.MachineKey)
             .Select(g => new SlowMachine(g.Key, machines.GetValueOrDefault(g.Key, g.Key), g.Sum(o => o.DurationMs)))
             .OrderByDescending(m => m.TotalMs).Take(Top).ToList();
         var crashing = sessions.Where(s => s.End == "Abnormal").GroupBy(s => s.MachineKey)
@@ -77,6 +87,13 @@ public static class SummaryEndpoints
         return query;
     }
 
+    /// <summary>
+    ///     Операции со своим временем ожидания. Связь с хост-моделью Revit грузит внутри открытия или «обновить до последней» хоста
+    ///     (проверено в живом Revit 2024) — её время уже есть у хоста, и в суммы она второй раз не идёт.
+    /// </summary>
+    internal static IQueryable<UsageOperation> OwnWaits(IQueryable<UsageOperation> operations) =>
+        operations.Where(o => o.Kind != "Link" || o.HostModelKey == null);
+
     /// <summary>Сессии, которые шли в период: начались до его конца и были на связи после его начала.</summary>
     internal static IQueryable<UsageSession> Sessions(ToadFlowDb db, UsageFilter filter, Guid[]? users)
     {
@@ -91,7 +108,7 @@ public static class SummaryEndpoints
 
     private static async Task<SummaryTotals> TotalsAsync(ToadFlowDb db, UsageFilter filter, Guid[]? users, CancellationToken ct)
     {
-        var wait = await Operations(db, filter, users).Where(o => o.Outcome == "Succeeded").SumAsync(o => (long?)o.DurationMs, ct) ?? 0;
+        var wait = await OwnWaits(Operations(db, filter, users)).Where(o => o.Outcome == "Succeeded").SumAsync(o => (long?)o.DurationMs, ct) ?? 0;
         var from = filter.FromUtc;
         var to = filter.ToUtc;
         var abnormal = await Sessions(db, filter, users).CountAsync(s => s.End == "Abnormal" && s.StartedAt >= from && s.StartedAt < to, ct);
