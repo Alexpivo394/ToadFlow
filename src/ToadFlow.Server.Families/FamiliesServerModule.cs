@@ -88,7 +88,19 @@ public sealed class FamiliesServerModule : IServerModule
             version.Property(v => v.ContentJson).HasColumnType("jsonb");
             version.HasIndex(v => new { v.CardId, v.SeenAt });
             version.HasIndex(v => v.Hash);
+            version.HasIndex(v => v.IterationId);
             version.HasOne<FamilyCard>().WithMany().HasForeignKey(v => v.CardId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<FamilyIteration>(iteration =>
+        {
+            iteration.ToTable("family_iterations");
+            iteration.Property(i => i.Id).ValueGeneratedNever();
+            iteration.Property(i => i.Name).HasMaxLength(100);
+            iteration.Property(i => i.NameKey).HasMaxLength(100);
+            iteration.HasIndex(i => new { i.CardId, i.NameKey }).IsUnique();
+            iteration.Ignore(i => i.IsFinal);
+            iteration.HasOne<FamilyCard>().WithMany().HasForeignKey(i => i.CardId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<FamilyIssue>(issue =>

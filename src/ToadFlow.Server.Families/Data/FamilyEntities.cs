@@ -48,7 +48,13 @@ public enum IssueKind
     Unreadable,
 
     /// <summary>Утверждённый файл перезаписан на месте, мимо папки проверки.</summary>
-    UnreviewedChange
+    UnreviewedChange,
+
+    /// <summary>Файл в папке итераций лежит не по шаблону или семейства с таким именем нет.</summary>
+    MisplacedIteration,
+
+    /// <summary>Файл завершённой итерации изменился.</summary>
+    ChangedAfterFinal
 }
 
 /// <summary>Семейство библиотеки: одна карточка на семейство, с историей версий. Файл лежит в сетевой папке, в базе — путь и хеш.</summary>
@@ -103,6 +109,12 @@ public sealed class FamilyCard
 
     public DateTimeOffset? LastLoadedAt { get; set; }
 
+    /// <summary>Загружают только координаторы (вся карточка, все итерации); проектировщик видит её с замком.</summary>
+    public bool CoordinatorsOnly { get; set; }
+
+    /// <summary>Без оповещений: «Обновлено» по этой карточке не рассылается.</summary>
+    public bool Silent { get; set; }
+
     public void SetName(string name)
     {
         Name = name;
@@ -117,11 +129,17 @@ public sealed class FamilyVersion
 
     public Guid CardId { get; set; }
 
+    /// <summary>Итерация; null — «Основная».</summary>
+    public Guid? IterationId { get; set; }
+
     public string Hash { get; set; } = "";
 
     public string? CatalogHash { get; set; }
 
     public long Size { get; set; }
+
+    /// <summary>Опубликована «без оповещения»: «Обновлено» по ней не рассылается.</summary>
+    public bool Silent { get; set; }
 
     /// <summary>Версия Revit по файлу, прочитанная агентом без Revit.</summary>
     public int? RevitYear { get; set; }
@@ -239,6 +257,18 @@ public sealed class FamilyPublication
     /// <summary>Заявка, которую закрывает публикация.</summary>
     public Guid? RequestId { get; set; }
 
+    /// <summary>Итерация, в которую публиковали (или созданная из веба); null — «Основная» или новое семейство.</summary>
+    public Guid? IterationId { get; set; }
+
+    /// <summary>Комментарий новой итерации — когда обход создаст её по файлу публикации.</summary>
+    public string? IterationComment { get; set; }
+
+    /// <summary>Без оповещения.</summary>
+    public bool Silent { get; set; }
+
+    /// <summary>Не пусто — опубликованная версия становится финальной для своей итерации, это комментарий финала.</summary>
+    public string? FinalComment { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>Версия, к которой публикация привязана; null — обход файл ещё не увидел.</summary>
@@ -257,10 +287,67 @@ public sealed class FamilyLoad
     /// <summary>Загруженная версия; null — хеш файла не совпал ни с одной версией карточки.</summary>
     public Guid? VersionId { get; set; }
 
+    /// <summary>Итерация, из которой загружено; null — «Основная» (или панель старше итераций).</summary>
+    public Guid? IterationId { get; set; }
+
     public Guid UserId { get; set; }
 
     /// <summary>Имя модели, в которую загружено.</summary>
     public string Project { get; set; } = "";
 
     public DateTimeOffset At { get; set; }
+}
+
+/// <summary>
+///     Итерация семейства — проектный вариант (например, дверь под один проект). Файл лежит в папке итераций:
+///     <c>&lt;папка итераций&gt;\&lt;семейство&gt;\&lt;название&gt;\&lt;семейство&gt;.rfa</c>; у итерации своя линейная история версий. «Основная» — это сама
+///     карточка, отдельной записи у неё нет.
+/// </summary>
+public sealed class FamilyIteration
+{
+    public Guid Id { get; set; }
+
+    public Guid CardId { get; set; }
+
+    /// <summary>Название — имя папки итерации.</summary>
+    public string Name { get; private set; } = "";
+
+    /// <summary>Название в нижнем регистре: уникально в карточке.</summary>
+    public string NameKey { get; private set; } = "";
+
+    public string? Comment { get; set; }
+
+    /// <summary>Действующая версия итерации; null — файл ещё не увиден обходом (итерацию только что создали).</summary>
+    public Guid? CurrentVersionId { get; set; }
+
+    /// <summary>Путь файла от корня библиотеки.</summary>
+    public string RelativePath { get; set; } = "";
+
+    /// <summary>Загружают только координаторы; проектировщик видит итерацию с замком.</summary>
+    public bool CoordinatorsOnly { get; set; }
+
+    /// <summary>Финальная версия: проект закончен, итерация завершена. null — итерация в работе.</summary>
+    public Guid? FinalVersionId { get; set; }
+
+    /// <summary>Что проделано — обязательный комментарий финала.</summary>
+    public string? FinalComment { get; set; }
+
+    public Guid? FinalByUserId { get; set; }
+
+    public DateTimeOffset? FinalAt { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>Файл итерации убран из библиотеки (полный обход его не нашёл); история осталась.</summary>
+    public DateTimeOffset? RemovedAt { get; set; }
+
+    public bool IsFinal => FinalVersionId is not null;
+
+    public void SetName(string name)
+    {
+        Name = name;
+        NameKey = name.ToLowerInvariant();
+    }
 }

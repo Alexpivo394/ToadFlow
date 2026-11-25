@@ -2001,6 +2001,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("category");
 
+                    b.Property<bool>("CoordinatorsOnly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("coordinators_only");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -2060,6 +2064,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("section");
+
+                    b.Property<bool>("Silent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("silent");
 
                     b.Property<string>("State")
                         .IsRequired()
@@ -2164,6 +2172,83 @@ namespace ToadFlow.Server.Data.Migrations
                     b.ToTable("family_issues", (string)null);
                 });
 
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyIteration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("card_id");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text")
+                        .HasColumnName("comment");
+
+                    b.Property<bool>("CoordinatorsOnly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("coordinators_only");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CurrentVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_version_id");
+
+                    b.Property<DateTimeOffset?>("FinalAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("final_at");
+
+                    b.Property<Guid?>("FinalByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("final_by_user_id");
+
+                    b.Property<string>("FinalComment")
+                        .HasColumnType("text")
+                        .HasColumnName("final_comment");
+
+                    b.Property<Guid?>("FinalVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("final_version_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NameKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_key");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("relative_path");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_family_iterations");
+
+                    b.HasIndex("CardId", "NameKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_family_iterations_card_id_name_key");
+
+                    b.ToTable("family_iterations", (string)null);
+                });
+
             modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyLoad", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2177,6 +2262,10 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<Guid>("CardId")
                         .HasColumnType("uuid")
                         .HasColumnName("card_id");
+
+                    b.Property<Guid?>("IterationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("iteration_id");
 
                     b.Property<string>("Project")
                         .IsRequired()
@@ -2227,11 +2316,23 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("FinalComment")
+                        .HasColumnType("text")
+                        .HasColumnName("final_comment");
+
                     b.Property<string>("Hash")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("hash");
+
+                    b.Property<string>("IterationComment")
+                        .HasColumnType("text")
+                        .HasColumnName("iteration_comment");
+
+                    b.Property<Guid?>("IterationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("iteration_id");
 
                     b.Property<string>("Note")
                         .IsRequired()
@@ -2246,6 +2347,10 @@ namespace ToadFlow.Server.Data.Migrations
                     b.Property<Guid?>("RequestId")
                         .HasColumnType("uuid")
                         .HasColumnName("request_id");
+
+                    b.Property<bool>("Silent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("silent");
 
                     b.Property<Guid?>("VersionId")
                         .HasColumnType("uuid")
@@ -2339,6 +2444,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("hash");
 
+                    b.Property<Guid?>("IterationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("iteration_id");
+
                     b.Property<string>("Note")
                         .IsRequired()
                         .HasColumnType("text")
@@ -2371,6 +2480,10 @@ namespace ToadFlow.Server.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("seen_at");
 
+                    b.Property<bool>("Silent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("silent");
+
                     b.Property<long>("Size")
                         .HasColumnType("bigint")
                         .HasColumnName("size");
@@ -2386,6 +2499,9 @@ namespace ToadFlow.Server.Data.Migrations
 
                     b.HasIndex("Hash")
                         .HasDatabaseName("ix_family_versions_hash");
+
+                    b.HasIndex("IterationId")
+                        .HasDatabaseName("ix_family_versions_iteration_id");
 
                     b.HasIndex("CardId", "SeenAt")
                         .HasDatabaseName("ix_family_versions_card_id_seen_at");
@@ -3772,6 +3888,16 @@ namespace ToadFlow.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_schedule_changes_schedules_schedule_id");
+                });
+
+            modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyIteration", b =>
+                {
+                    b.HasOne("ToadFlow.Server.Families.Data.FamilyCard", null)
+                        .WithMany()
+                        .HasForeignKey("CardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_family_iterations_family_cards_card_id");
                 });
 
             modelBuilder.Entity("ToadFlow.Server.Families.Data.FamilyLoad", b =>

@@ -68,6 +68,38 @@ public class FamiliesSettingsTests : ServerTest
     }
 
     [Test]
+    [Arguments(@"Итерации\Проекты")]
+    [Arguments("")]
+    [Arguments(".toadflow")]
+    [Arguments("_На проверке")]
+    public async Task Settings_InvalidIterationsFolder_400(string folder)
+    {
+        var response = await (await AdminAsync()).PutJsonAsync("/api/families/settings",
+            new FamiliesSettings(@"\\nas\Families", "_На проверке", 10, null, 5, folder));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Папка итераций");
+    }
+
+    [Test]
+    public async Task Settings_IterationsFolder_DefaultAndSaved()
+    {
+        var admin = await AdminAsync();
+        // Параметры, сохранённые до итераций, — без поля: берётся имя по умолчанию.
+        await DbAsync(async db =>
+        {
+            db.Settings.Add(new ToadFlow.Server.Data.Entities.Setting { Key = "families.settings", Value = """{"root":"\\\\nas\\Families","reviewFolder":"_На проверке","scanIntervalMinutes":10}""" });
+            await db.SaveChangesAsync();
+        });
+        (await admin.GetJsonAsync<FamiliesSettings>("/api/families/settings")).IterationsFolder.ShouldBe("_Итерации");
+
+        var response = await admin.PutJsonAsync("/api/families/settings", new FamiliesSettings(@"\\nas\Families", "_На проверке", 10, null, 5, "_Проекты"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await admin.GetJsonAsync<FamiliesSettings>("/api/families/settings")).IterationsFolder.ShouldBe("_Проекты");
+    }
+
+    [Test]
     [Arguments(0)]
     [Arguments(1441)]
     public async Task Settings_IntervalOutOfRange_400(int minutes)
