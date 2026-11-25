@@ -198,6 +198,7 @@ public sealed class FamiliesServerModule : IServerModule
         families.MapFamiliesReview();
         families.MapFamiliesVersions();
         families.MapFamiliesActions();
+        families.MapFamiliesIterations();
         families.MapFamiliesAnalytics();
     }
 

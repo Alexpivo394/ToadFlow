@@ -98,7 +98,8 @@ internal static partial class RequestEndpoints
             .ToDictionaryAsync(v => v.Id, v => v.Hash, ct);
         var families = cards.OrderByDescending(c => words.Count(w => c.SearchText.Contains(w))).ThenByDescending(c => c.LoadCount).Take(SimilarCount)
             .Select(c => new FamilyHit(c.Id, c.Name, c.Section, c.RelativePath, c.Category, c.RevitYear, c.TypeCount, c.State,
-                c.CurrentVersionId is { } v && previews.ContainsKey(v), c.UpdatedAt, c.CurrentVersionId is { } p ? previews.GetValueOrDefault(p) : null, c.LoadCount))
+                c.CurrentVersionId is { } v && previews.ContainsKey(v), c.UpdatedAt, c.CurrentVersionId is { } p ? previews.GetValueOrDefault(p) : null, c.LoadCount,
+                c.CoordinatorsOnly, 0))
             .ToList();
 
         var openStates = FamilyRequest.OpenStates;

@@ -21,7 +21,9 @@ public sealed record FamilyHit(
     bool HasPreview,
     DateTimeOffset UpdatedAt,
     string? PreviewHash,
-    int LoadCount);
+    int LoadCount,
+    bool CoordinatorsOnly,
+    int IterationCount);
 
 public sealed record FacetValue(string Value, int Count);
 
@@ -81,10 +83,12 @@ internal static class SearchEndpoints
         var size = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
         var number = Math.Max(page ?? 1, 1);
         var versions = db.Set<FamilyVersion>();
+        var iterations = db.Set<FamilyIteration>();
         var items = await ordered.ThenBy(c => c.Name).ThenBy(c => c.Id).Skip((number - 1) * size).Take(size)
             .Select(c => new FamilyHit(c.Id, c.Name, c.Section, c.RelativePath, c.Category, c.RevitYear, c.TypeCount, c.State,
                 versions.Any(v => v.Id == c.CurrentVersionId && v.HasPreview), c.UpdatedAt,
-                versions.Where(v => v.Id == c.CurrentVersionId && v.HasPreview).Select(v => v.Hash).FirstOrDefault(), c.LoadCount))
+                versions.Where(v => v.Id == c.CurrentVersionId && v.HasPreview).Select(v => v.Hash).FirstOrDefault(), c.LoadCount, c.CoordinatorsOnly,
+                iterations.Count(i => i.CardId == c.Id && i.RemovedAt == null && i.FinalVersionId == null)))
             .ToListAsync(ct);
         return new Page<FamilyHit>(items, total);
     }

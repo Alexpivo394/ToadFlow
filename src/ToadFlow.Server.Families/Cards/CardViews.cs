@@ -17,7 +17,9 @@ public sealed record FamilyVersionView(
     bool HasPreview,
     bool IsCurrent,
     string? AuthorName,
-    string? Comment);
+    string? Comment,
+    Guid? IterationId,
+    bool Silent);
 
 /// <summary>Карточка семейства с содержимым действующей версии и историей версий (новые первыми).</summary>
 /// <param name="FullPath">Где лежит файл: корень библиотеки и путь от него.</param>
@@ -48,7 +50,10 @@ public sealed record FamilyCardView(
     int LoadCount,
     DateTimeOffset? LastLoadedAt,
     IReadOnlyList<CardRequestLink> OpenFixRequests,
-    IReadOnlyList<string> LoadedProjects);
+    IReadOnlyList<string> LoadedProjects,
+    bool CoordinatorsOnly,
+    bool Silent,
+    IReadOnlyList<FamilyIterationView> Iterations);
 
 /// <summary>Открытая заявка «исправить» на это семейство — известная проблема.</summary>
 public sealed record CardRequestLink(Guid Id, int Number, string Title);
@@ -82,3 +87,28 @@ public sealed record LibraryStatus(
     IReadOnlyList<string> LastScanErrors,
     int PendingReads,
     int FailedReads);
+
+/// <summary>Итерация семейства в карточке: проектный вариант со своей действующей версией.</summary>
+/// <param name="FullPath">Где лежит файл; пусто — проектировщику, если итерация или семейство «только координаторы».</param>
+/// <param name="Content">Содержимое действующей версии итерации; null — ферма ещё не прочитала.</param>
+public sealed record FamilyIterationView(
+    Guid Id,
+    string Name,
+    string? Comment,
+    Guid? CurrentVersionId,
+    string RelativePath,
+    string FullPath,
+    bool CoordinatorsOnly,
+    bool IsFinal,
+    Guid? FinalVersionId,
+    string? FinalComment,
+    string? FinalByName,
+    DateTimeOffset? FinalAt,
+    DateTimeOffset? RemovedAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    int? RevitYear,
+    string? CurrentHash,
+    string? PreviewHash,
+    ReadState? CurrentReadState,
+    FamilyContent? Content);

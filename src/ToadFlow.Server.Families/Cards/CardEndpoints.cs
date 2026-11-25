@@ -59,7 +59,7 @@ internal static class CardEndpoints
     {
         var issue = await db.Set<FamilyIssue>().SingleOrDefaultAsync(i => i.Id == id, ct);
         if (issue is null) return Results.NotFound();
-        if (issue.Kind != IssueKind.UnreviewedChange)
+        if (issue.Kind is not (IssueKind.UnreviewedChange or IssueKind.ChangedAfterFinal))
             return Results.BadRequest(new { error = "Этот случай закроется сам, когда его причину исправят в папке библиотеки" });
         if (issue.ResolvedAt is null)
         {
@@ -80,13 +80,20 @@ internal static class CardEndpoints
 
         var versions = await db.Set<FamilyVersion>().AsNoTracking().Where(v => v.CardId == id).OrderByDescending(v => v.SeenAt).ThenByDescending(v => v.Id)
             .ToListAsync(ct);
+        var designer = user.IsDesigner();
+        var iterations = await db.Set<FamilyIteration>().AsNoTracking().Where(i => i.CardId == id).OrderBy(i => i.Name).ToListAsync(ct);
+        // Убранные итерации проектировщику не показываются; их версии — тоже.
+        if (designer) iterations = iterations.Where(i => i.RemovedAt is null).ToList();
+        var shownIterations = iterations.Select(i => i.Id).ToHashSet();
         // Проектировщик получает действующую версию и утверждённые; кандидаты и отклонённые — только если сам включил непроверенные.
-        if (user.IsDesigner())
-            versions = versions.Where(v => v.Id == card.CurrentVersionId || v.State == VersionState.Approved || (unreviewed == true && v.State == VersionState.InReview))
+        if (designer)
+            versions = versions.Where(v => v.IterationId is { } iterationId
+                    ? shownIterations.Contains(iterationId)
+                    : v.Id == card.CurrentVersionId || v.State == VersionState.Approved || (unreviewed == true && v.State == VersionState.InReview))
                 .ToList();
         var current = versions.FirstOrDefault(v => v.Id == card.CurrentVersionId);
         var root = (await store.GetAsync(ct)).Root;
-        var authorIds = versions.Select(v => v.AuthorUserId).OfType<Guid>().Distinct().ToList();
+        var authorIds = versions.Select(v => v.AuthorUserId).Concat(iterations.Select(i => i.FinalByUserId)).OfType<Guid>().Distinct().ToList();
         var authors = await db.Users.AsNoTracking().Where(u => authorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
         var open = Requests.FamilyRequest.OpenStates;
         var fixes = await db.Set<Requests.FamilyRequest>().AsNoTracking()
@@ -95,12 +102,22 @@ internal static class CardEndpoints
         var loadsSince = time.GetUtcNow().AddDays(-180);
         var projects = await db.Set<FamilyLoad>().AsNoTracking().Where(l => l.CardId == id && l.At >= loadsSince && l.Project != "")
             .GroupBy(l => l.Project).OrderByDescending(g => g.Max(l => l.At)).Select(g => g.Key).Take(20).ToListAsync(ct);
-        return Results.Ok(new FamilyCardView(card.Id, card.Name, card.RelativePath, FullPath(root, card.RelativePath), card.Section, card.State, card.Category,
+        var byId = versions.ToDictionary(v => v.Id);
+        // Путь к файлу «только координаторы» проектировщику не отдаётся: панель всё равно не даст загрузить.
+        string PathFor(string relative, bool locked) => designer && (locked || card.CoordinatorsOnly) ? "" : FullPath(root, relative);
+        var iterationViews = iterations.Select(i =>
+        {
+            var head = i.CurrentVersionId is { } headId ? byId.GetValueOrDefault(headId) : null;
+            return new FamilyIterationView(i.Id, i.Name, i.Comment, i.CurrentVersionId, i.RelativePath, PathFor(i.RelativePath, i.CoordinatorsOnly), i.CoordinatorsOnly,
+                i.IsFinal, i.FinalVersionId, i.FinalComment, i.FinalByUserId is { } by ? authors.GetValueOrDefault(by) : null, i.FinalAt, i.RemovedAt, i.CreatedAt,
+                i.UpdatedAt, head?.RevitYear, head?.Hash, head?.HasPreview == true ? head.Hash : null, head?.ReadState, SearchText.ContentOf(head));
+        }).ToList();
+        return Results.Ok(new FamilyCardView(card.Id, card.Name, card.RelativePath, PathFor(card.RelativePath, false), card.Section, card.State, card.Category,
             card.Placement, card.RevitYear, card.TypeCount, card.Description, card.Tags, card.Manufacturer, card.CreatedAt, card.UpdatedAt, card.ArchivedAt,
             card.CurrentVersionId, current?.ReadState, current?.ReadError, current?.HasPreview == true, SearchText.ContentOf(current),
             versions.Select(v => new FamilyVersionView(v.Id, v.Hash, v.RevitYear, v.State, v.Note, v.RelativePath, v.SeenAt, v.ReadState, v.ReadError, v.HasPreview,
-                v.Id == card.CurrentVersionId, v.AuthorUserId is { } author ? authors.GetValueOrDefault(author) : null, v.Comment)).ToList(),
-            card.LoadCount, card.LastLoadedAt, fixes, projects));
+                v.Id == card.CurrentVersionId, v.AuthorUserId is { } author ? authors.GetValueOrDefault(author) : null, v.Comment, v.IterationId, v.Silent)).ToList(),
+            card.LoadCount, card.LastLoadedAt, fixes, projects, card.CoordinatorsOnly, card.Silent, iterationViews));
     }
 
     public static string FullPath(string root, string relativePath) =>

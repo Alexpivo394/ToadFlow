@@ -12,7 +12,7 @@ using ToadFlow.Server.Families.Search;
 namespace ToadFlow.Server.Families.Panel;
 
 /// <summary>Библиотека для панели Revit: где лежат файлы и может ли этот пользователь публиковать.</summary>
-public sealed record LibraryInfo(bool Configured, string Root, string ReviewFolder, bool CanPublish);
+public sealed record LibraryInfo(bool Configured, string Root, string ReviewFolder, bool CanPublish, string IterationsFolder);
 
 /// <param name="Path">Полный путь, куда плагин сохранил файл; должен лежать в библиотеке.</param>
 /// <param name="CardId">Новая версия этой карточки; null — новое семейство.</param>
@@ -47,7 +47,11 @@ public sealed record LoadReport(string? Hash, string? Project)
 }
 
 /// <summary>Семейство открытого проекта; <paramref name="CardId" /> и <paramref name="Hash" /> — из метки, если она есть.</summary>
-public sealed record ProjectFamilyDto(string Name, Guid? CardId, string? Hash);
+public sealed record ProjectFamilyDto(string Name, Guid? CardId, string? Hash)
+{
+    /// <summary>Итерация из метки; null — «Основная» (и метка до итераций).</summary>
+    public Guid? IterationId { get; init; }
+}
 
 public sealed record ProjectStatusRequest(IReadOnlyList<ProjectFamilyDto> Families, bool? Unreviewed);
 
@@ -76,7 +80,19 @@ public sealed record ProjectFamilyStatus(
     string? CurrentHash,
     int? RevitYear,
     string? FullPath,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt)
+{
+    /// <summary>Итерация, с которой сравнивалось; null — «Основная».</summary>
+    public Guid? IterationId { get; init; }
+
+    public string? IterationName { get; init; }
+
+    /// <summary>Итерация завершена: обновлять нечего.</summary>
+    public bool IterationFinal { get; init; }
+
+    /// <summary>Загружают только координаторы (семейство или итерация).</summary>
+    public bool CoordinatorsOnly { get; init; }
+}
 
 public sealed record VersionCommentRequest(string? Comment, bool Mine);
 
@@ -102,7 +118,7 @@ internal static class PanelEndpoints
     private static async Task<LibraryInfo> LibraryAsync(FamiliesSettingsStore store, ClaimsPrincipal user, CancellationToken ct)
     {
         var settings = await store.GetAsync(ct);
-        return new LibraryInfo(settings.Configured, settings.Root, settings.ReviewFolder, user.IsStaff());
+        return new LibraryInfo(settings.Configured, settings.Root, settings.ReviewFolder, user.IsStaff(), settings.IterationsFolder);
     }
 
     private static async Task<IResult> PublishAsync(PublishRequest request, ToadFlowDb db, FamiliesSettingsStore store, LibraryScanner scanner, TimeProvider time,
@@ -252,17 +268,40 @@ internal static class PanelEndpoints
         if (families.Count > MaxProjectFamilies) return Results.BadRequest(new { error = $"Не больше {MaxProjectFamilies} семейств за раз" });
 
         var root = (await store.GetAsync(ct)).Root;
+        var designer = user.IsDesigner();
         var ids = families.Where(f => f.CardId is not null).Select(f => f.CardId!.Value).Distinct().ToList();
         var keys = families.Where(f => f.CardId is null).Select(f => f.Name.ToLowerInvariant()).Distinct().ToList();
         var stamped = await db.Set<FamilyCard>().AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
         var byName = (await db.Set<FamilyCard>().AsNoTracking().Visible(user, null, request.Unreviewed == true).Where(c => keys.Contains(c.NameKey)).ToListAsync(ct))
             .GroupBy(c => c.NameKey).ToDictionary(g => g.Key, g => g.First());
-        var currentIds = stamped.Values.Concat(byName.Values).Select(c => c.CurrentVersionId).OfType<Guid>().Distinct().ToList();
-        var currents = await db.Set<FamilyVersion>().AsNoTracking().Where(v => currentIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id, v => v.Hash, ct);
+        var iterationIds = families.Select(f => f.IterationId).OfType<Guid>().Distinct().ToList();
+        var iterations = await db.Set<FamilyIteration>().AsNoTracking().Where(i => iterationIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        var currentIds = stamped.Values.Concat(byName.Values).Select(c => c.CurrentVersionId).Concat(iterations.Values.Select(i => i.CurrentVersionId))
+            .OfType<Guid>().Distinct().ToList();
+        var currents = await db.Set<FamilyVersion>().AsNoTracking().Where(v => currentIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id, ct);
 
-        ProjectFamilyStatus Status(string name, ProjectFamilyState state, FamilyCard? card) =>
-            new(name, state, card?.Id, card?.Name, card?.CurrentVersionId is { } current ? currents.GetValueOrDefault(current) : null, card?.RevitYear,
-                card is null ? null : CardEndpoints.FullPath(root, card.RelativePath), card?.UpdatedAt);
+        string? PathFor(FamilyCard card, string relative, bool locked) => designer && (card.CoordinatorsOnly || locked) ? null : CardEndpoints.FullPath(root, relative);
+
+        ProjectFamilyStatus Status(string name, ProjectFamilyState state, FamilyCard? card)
+        {
+            var current = card?.CurrentVersionId is { } currentId ? currents.GetValueOrDefault(currentId) : null;
+            return new ProjectFamilyStatus(name, state, card?.Id, card?.Name, current?.Hash, card?.RevitYear, card is null ? null : PathFor(card, card.RelativePath, false),
+                card?.UpdatedAt) { CoordinatorsOnly = card?.CoordinatorsOnly == true };
+        }
+
+        ProjectFamilyStatus IterationStatus(ProjectFamilyDto family, FamilyCard card, FamilyIteration iteration)
+        {
+            var current = iteration.CurrentVersionId is { } currentId ? currents.GetValueOrDefault(currentId) : null;
+            var state = card.State == CardState.Archived || iteration.RemovedAt is not null ? ProjectFamilyState.Archived
+                : !iteration.IsFinal && current is not null && !current.Hash.Equals(family.Hash, StringComparison.OrdinalIgnoreCase) ? ProjectFamilyState.Outdated
+                : ProjectFamilyState.Current;
+            return new ProjectFamilyStatus(family.Name, state, card.Id, card.Name, current?.Hash, current?.RevitYear, PathFor(card, iteration.RelativePath, iteration.CoordinatorsOnly),
+                iteration.UpdatedAt)
+            {
+                IterationId = iteration.Id, IterationName = iteration.Name, IterationFinal = iteration.IsFinal,
+                CoordinatorsOnly = card.CoordinatorsOnly || iteration.CoordinatorsOnly
+            };
+        }
 
         var result = new List<ProjectFamilyStatus>(families.Count);
         foreach (var family in families)
@@ -270,8 +309,16 @@ internal static class PanelEndpoints
             // По метке — состояние для всех: проектировщик видит и «убрано в архив», хотя саму карточку архива ему не открыть.
             if (family.CardId is { } cardId && stamped.TryGetValue(cardId, out var card))
             {
+                if (family.IterationId is { } iterationId)
+                {
+                    result.Add(iterations.TryGetValue(iterationId, out var iteration) && iteration.CardId == cardId
+                        ? IterationStatus(family, card, iteration)
+                        : Status(family.Name, ProjectFamilyState.Archived, card) with { IterationId = iterationId });
+                    continue;
+                }
+
                 var state = card.State == CardState.Archived ? ProjectFamilyState.Archived
-                    : card.CurrentVersionId is { } current && currents.GetValueOrDefault(current) is { } hash && !hash.Equals(family.Hash, StringComparison.OrdinalIgnoreCase)
+                    : card.CurrentVersionId is { } current && currents.GetValueOrDefault(current)?.Hash is { } hash && !hash.Equals(family.Hash, StringComparison.OrdinalIgnoreCase)
                         ? ProjectFamilyState.Outdated
                         : ProjectFamilyState.Current;
                 result.Add(Status(family.Name, state, card));

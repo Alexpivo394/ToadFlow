@@ -133,6 +133,7 @@ internal static class ActionEndpoints
     {
         var (version, card, current) = await VersionAsync(db, id, ct);
         if (version is null || card is null) return Results.NotFound();
+        if (version.IterationId is { } iterationId) return await RevertIterationAsync(version, card, iterationId, db, files, time, user, events, ct);
         if (card.State != CardState.Approved || current is null || version.Id == card.CurrentVersionId || version.State != VersionState.Approved)
             return Error("Вернуть можно прошлую утверждённую версию утверждённого семейства");
         if (version.Hash == current.Hash && version.CatalogHash == current.CatalogHash) return Error("Эта версия и так действует");
@@ -159,6 +160,41 @@ internal static class ActionEndpoints
         }
 
         return await DoAsync(Task.FromResult(error), events, user, card, publication.Note);
+    }
+
+    /// <summary>Возврат прошлой версии итерации: её содержимое ложится на файл итерации, «Основная» не меняется.</summary>
+    private static async Task<IResult> RevertIterationAsync(FamilyVersion version, FamilyCard card, Guid iterationId, ToadFlowDb db, LibraryFiles files,
+        TimeProvider time, ClaimsPrincipal user, IDomainEvents events, CancellationToken ct)
+    {
+        var iteration = await db.Set<FamilyIteration>().AsNoTracking().SingleAsync(i => i.Id == iterationId, ct);
+        var current = iteration.CurrentVersionId is { } currentId ? await db.Set<FamilyVersion>().AsNoTracking().SingleOrDefaultAsync(v => v.Id == currentId, ct) : null;
+        if (card.State == CardState.Archived || iteration.RemovedAt is not null || current is null)
+            return Error("Итерация убрана — сначала верните её");
+        if (iteration.IsFinal) return Error($"Итерация «{iteration.Name}» завершена — снимите финал, чтобы менять её");
+        if (version.Hash == current.Hash && version.CatalogHash == current.CatalogHash) return Error("Эта версия и так действует");
+
+        var publication = new FamilyPublication
+        {
+            Id = Guid.CreateVersion7(),
+            RelativePath = iteration.RelativePath,
+            Hash = version.Hash,
+            AuthorUserId = user.UserId(),
+            Note = $"возврат к версии от {version.SeenAt:dd.MM.yyyy}",
+            CardId = card.Id,
+            IterationId = iteration.Id,
+            CreatedAt = time.GetUtcNow()
+        };
+        db.Set<FamilyPublication>().Add(publication);
+        await db.SaveChangesAsync(ct);
+
+        var error = await files.RunAsync(FamilyFileActionKind.Restore, iteration.RelativePath, null, version.Hash, version.CatalogHash, current.Hash, ct);
+        if (error is not null)
+        {
+            db.Set<FamilyPublication>().Remove(publication);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+
+        return await DoAsync(Task.FromResult(error), events, user, card, $"итерация «{iteration.Name}»: {publication.Note}");
     }
 
     private static async Task<IResult> AnswerAsync(Guid id, IssueAnswer body, ToadFlowDb db, LibraryFiles files, FamiliesSettingsStore store, FamilyReadJobs reads,
